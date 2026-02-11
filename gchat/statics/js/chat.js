@@ -13,6 +13,9 @@ class ChatBot {
 
         this.COLLAPSE_THRESHOLD = 10;  // Mostra N item, collassa il resto
 
+        // Sender ID unico per sessione browser (evita conflitti di stato tra utenti)
+        this.senderId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
         this.initializeEventListeners();
         this.initializeTheme();
         this.initSpeechRecognition();
@@ -244,7 +247,7 @@ class ChatBot {
         // Prepare the payload with additional context if available
         const payload = {
             message: message,
-            sender: 'user'
+            sender: this.senderId
         };
 
         // Add ASL context if available from query parameters - prioritize asl_name over asl_id
@@ -1207,7 +1210,7 @@ ${cleanAnswer}
     async connectSSE(message, thinkingDiv) {
         const payload = {
             message: message,
-            sender: 'user',
+            sender: this.senderId,
             asl: window.queryParams?.asl_name || window.queryParams?.asl_id,
             asl_id: window.queryParams?.asl_id,
             user_id: window.queryParams?.user_id,

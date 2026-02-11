@@ -28,8 +28,7 @@ class Router:
 
     VALID_INTENTS = [
         "greet", "goodbye", "ask_help",
-        "ask_piano_stabilimenti", "ask_piano_generic",
-        "ask_piano_description", "ask_piano_statistics", "search_piani_by_topic",
+        "ask_piano_stabilimenti", "ask_piano_description", "ask_piano_statistics", "search_piani_by_topic",
         "ask_priority_establishment", "ask_risk_based_priority", "ask_suggest_controls",
         "ask_nearby_priority",
         "ask_delayed_plans", "check_if_plan_delayed", "ask_establishment_history",
@@ -48,7 +47,6 @@ class Router:
     REQUIRED_SLOTS = {
         "ask_piano_description": ["piano_code"],
         "ask_piano_stabilimenti": ["piano_code"],
-        "ask_piano_generic": ["piano_code"],
         "check_if_plan_delayed": ["piano_code"],
         "search_piani_by_topic": ["topic"],
         "ask_establishment_history": ["num_registrazione", "partita_iva", "ragione_sociale"],  # almeno uno
@@ -64,7 +62,7 @@ class Router:
 {"intent":"NOME","slots":{},"needs_clarification":false}
 
 INTENT:
-ask_piano_description(piano_code) | ask_piano_stabilimenti(piano_code) | ask_piano_generic(piano_code) | ask_piano_statistics
+ask_piano_description(piano_code) | ask_piano_stabilimenti(piano_code) | ask_piano_statistics
 search_piani_by_topic(topic) | ask_priority_establishment | ask_risk_based_priority | ask_suggest_controls
 ask_nearby_priority(location,radius_km) | ask_delayed_plans | check_if_plan_delayed(piano_code)
 ask_establishment_history(num_registrazione|partita_iva|ragione_sociale)
@@ -88,20 +86,21 @@ REGOLE:
 - SE c'è CONTESTO RISPOSTA PRECEDENTE, risolvi riferimenti ("le varianti"→varianti del piano, "quelli"→elementi citati)
 
 ESEMPI:
-"piano A1" → {"intent":"ask_piano_generic","slots":{"piano_code":"A1"},"needs_clarification":false}
+"piano A1" → {"intent":"ask_piano_stabilimenti","slots":{"piano_code":"A1"},"needs_clarification":false}
 "piani su latte" → {"intent":"search_piani_by_topic","slots":{"topic":"latte"},"needs_clarification":false}
+"piani che trattano di igiene" → {"intent":"search_piani_by_topic","slots":{"topic":"igiene"},"needs_clarification":false}
 "stabilimenti a rischio" → {"intent":"ask_risk_based_priority","slots":{},"needs_clarification":false}
 "attività più rischiose" → {"intent":"ask_top_risk_activities","slots":{},"needs_clarification":false}
 "piani in ritardo" → {"intent":"ask_delayed_plans","slots":{},"needs_clarification":false}
 "il piano B2 è in ritardo?" → {"intent":"check_if_plan_delayed","slots":{"piano_code":"B2"},"needs_clarification":false}
-"dimmi del piano" → {"intent":"ask_piano_generic","slots":{},"needs_clarification":true}
+"dimmi del piano" → {"intent":"ask_piano_stabilimenti","slots":{},"needs_clarification":true}
 "di cosa si occupa il piano A1" → {"intent":"ask_piano_description","slots":{"piano_code":"A1"},"needs_clarification":false}
 "chi devo controllare per primo" → {"intent":"ask_priority_establishment","slots":{},"needs_clarification":false}
 "procedura ispezione semplice" → {"intent":"info_procedure","slots":{},"needs_clarification":false}
 "stabilimenti vicino a Piazza Garibaldi Napoli" → {"intent":"ask_nearby_priority","slots":{"location":"Piazza Garibaldi Napoli"},"needs_clarification":false}
 "controlli entro 3 km da Via Roma, Benevento" → {"intent":"ask_nearby_priority","slots":{"location":"Via Roma, Benevento","radius_km":3},"needs_clarification":false}
 "pizza?" → {"intent":"fallback","slots":{},"needs_clarification":false}
-[con CONTESTO: "info piano - piano A2 - 5 varianti"] "quali sono le varianti?" → {"intent":"ask_piano_generic","slots":{"piano_code":"A2"},"needs_clarification":false}
+[con CONTESTO: "info piano - piano A2 - 5 varianti"] "quali sono le varianti?" → {"intent":"ask_piano_stabilimenti","slots":{"piano_code":"A2"},"needs_clarification":false}
 
 Rispondi SOLO JSON."""
 
@@ -126,9 +125,9 @@ OUTPUT:"""
     # Partita IVA: 10-11 cifre, opzionalmente preceduto da "p.iva" o "partita iva"
     RE_PARTITA_IVA = re.compile(r'(?:p\.?\s*iva|partita\s*iva)?\s*(\d{10,11})\b', re.IGNORECASE)
 
-    # Topic: estrae argomento dopo "piani su/per/riguardanti"
+    # Topic: estrae argomento dopo "piani su/per/riguardanti/che trattano"
     RE_TOPIC = re.compile(
-        r"\bpiani\s+(?:su|per|riguardant[io]|(?:che\s+)?riguardano)\s+(?:la\s+|il\s+|i\s+|le\s+|gli\s+|l['\u2019])?(.+)",
+        r"\bpiani\s+(?:su|per|riguardant[io]|(?:che\s+)?riguardano|(?:che\s+)?trattano\s+(?:di\s+)?)\s*(?:la\s+|il\s+|i\s+|le\s+|gli\s+|l['\u2019])?(.+)",
         re.IGNORECASE
     )
 
@@ -278,7 +277,7 @@ OUTPUT:"""
 
     # Cerca piani per topic
     SEARCH_PIANI_PATTERNS = re.compile(
-        r'\b(cerca\s*piani|piani\s*(su|per|riguardant[io]|(?:che\s*)?riguardano))\b',
+        r'\b(cerca\s*piani|piani\s*(su|per|riguardant[io]|(?:che\s*)?riguardano|(?:che\s*)?trattano))\b',
         re.IGNORECASE
     )
 
@@ -289,14 +288,9 @@ OUTPUT:"""
     )
 
     # Piano stabilimenti: "stabilimenti controllati", "dove è stato applicato", "quali stabilimenti", "OSA controllati"
+    # Include anche pattern generici info piano: "dimmi del piano", "parlami del piano", "info sul piano", "attività del piano"
     PIANO_STABILIMENTI_PATTERNS = re.compile(
-        r'\b(stabiliment[io]\s*controllat[io]|dove\s*[eè]\s*stato\s*applicato|stabiliment[io]\s*(del\s*)?piano|quali\s*stabiliment[io]|stabiliment[io].{0,30}controll[io]|controll[io].{0,30}stabiliment[io]|OSA\s*controllat[io]|quali\s*OSA)\b',
-        re.IGNORECASE
-    )
-
-    # Piano generic: "dimmi del piano", "parlami del piano", "attività del piano"
-    PIANO_GENERIC_PATTERNS = re.compile(
-        r'\b(dimmi\s*(del\s*)?piano|parlami\s*(del\s*)?piano|info\s*(sul\s*)?piano|attivit[aà]\s*(del\s*)?piano|quali\s*attivit[aà]\s*(riguarda|prevede))\b',
+        r'\b(stabiliment[io]\s*controllat[io]|dove\s*[eè]\s*stato\s*applicato|stabiliment[io]\s*(del\s*)?piano|quali\s*stabiliment[io]|stabiliment[io].{0,30}controll[io]|controll[io].{0,30}stabiliment[io]|OSA\s*controllat[io]|quali\s*OSA|dimmi\s*(del\s*)?piano|parlami\s*(del\s*)?piano|info\s*(sul\s*)?piano|attivit[aà]\s*(del\s*)?piano|quali\s*attivit[aà]\s*(riguarda|prevede))\b',
         re.IGNORECASE
     )
 
@@ -547,24 +541,20 @@ OUTPUT:"""
         if self.PIANO_DESCRIPTION_PATTERNS.search(message):
             return {"intent": "ask_piano_description", "slots": {}, "needs_clarification": False}
 
-        # Piano stabilimenti (stabilimenti controllati, dove è stato applicato)
+        # Piano stabilimenti (stabilimenti controllati, dove è stato applicato, dimmi del piano, info piano)
         if self.PIANO_STABILIMENTI_PATTERNS.search(message):
             return {"intent": "ask_piano_stabilimenti", "slots": {}, "needs_clarification": False}
-
-        # Piano generic (dimmi del piano, parlami del piano, attività del piano)
-        if self.PIANO_GENERIC_PATTERNS.search(message):
-            return {"intent": "ask_piano_generic", "slots": {}, "needs_clarification": False}
 
         # Cerca piani per topic
         if self.SEARCH_PIANI_PATTERNS.search(message):
             return {"intent": "search_piani_by_topic", "slots": {}, "needs_clarification": False}
 
-        # Catch-all: "piano" + piano_code → ask_piano_generic
+        # Catch-all: "piano" + piano_code → ask_piano_stabilimenti
         # Escludi "ritardo" per non interferire con check_if_plan_delayed
         if (self.RE_PIANO_CODE.search(message) and
             re.search(r'\bpiano\b', message, re.IGNORECASE) and
             not re.search(r'\britard', message, re.IGNORECASE)):
-            return {"intent": "ask_piano_generic", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_piano_stabilimenti", "slots": {}, "needs_clarification": False}
 
         return None
 
@@ -796,11 +786,11 @@ OUTPUT:"""
     # Pattern semantici per correzione intent
     _SEMANTIC_CORRECTIONS = [
         # Se il messaggio contiene "piano" + piano_code ma l'intent è rischio → riclassifica
-        (r'\bpiano\b.*\b[A-Z]\d', {"ask_risk_based_priority", "ask_top_risk_activities"}, "ask_piano_generic"),
+        (r'\bpiano\b.*\b[A-Z]\d', {"ask_risk_based_priority", "ask_top_risk_activities"}, "ask_piano_stabilimenti"),
         # Se il messaggio chiede "stabilimenti" ma classificato come piano → riclassifica
-        (r'\bstabiliment[io]\b.*\brischio\b', {"ask_piano_generic", "ask_piano_description"}, "ask_risk_based_priority"),
+        (r'\bstabiliment[io]\b.*\brischio\b', {"ask_piano_stabilimenti", "ask_piano_description"}, "ask_risk_based_priority"),
         # Se il messaggio chiede "attività" + "rischio" ma classificato come piano → riclassifica
-        (r'\battivit[aà]\b.*\brischi[eo]\b', {"ask_piano_generic", "ask_piano_description"}, "ask_top_risk_activities"),
+        (r'\battivit[aà]\b.*\brischi[eo]\b', {"ask_piano_stabilimenti", "ask_piano_description"}, "ask_top_risk_activities"),
     ]
 
     def _post_validate(self, result: Dict[str, Any], message: str = "") -> Dict[str, Any]:

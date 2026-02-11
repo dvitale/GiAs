@@ -88,8 +88,28 @@ def _load_intent_metadata():
         logger.warning(f"[ChatLog] Could not load intent metadata: {e}")
 
 
-def log_chat(ask: str, intent: str, answer: str, metadata: Dict[str, Any]):
-    """Insert a record into chat_log in a background thread."""
+def log_chat(
+    ask: str,
+    intent: str,
+    answer: str,
+    metadata: Dict[str, Any],
+    session_id: str = "",
+    slots: Optional[Dict[str, Any]] = None,
+    response_time_ms: Optional[int] = None,
+    error: Optional[str] = None,
+):
+    """Insert a record into chat_log in a background thread.
+
+    Args:
+        ask: User's question/message
+        intent: Classified intent
+        answer: Generated response
+        metadata: User metadata (asl, user_id, codice_fiscale, etc.)
+        session_id: Session/sender identifier for multi-turn tracking
+        slots: Extracted slots as dict (stored as JSONB)
+        response_time_ms: Total execution time in milliseconds
+        error: Error message if any (separate from answer)
+    """
     def _insert():
         try:
             from data_sources.postgresql_source import PostgreSQLDataSource
@@ -100,34 +120,51 @@ def log_chat(ask: str, intent: str, answer: str, metadata: Dict[str, Any]):
 
             user_id = metadata.get("user_id", "")
             codice_fiscale = metadata.get("codice_fiscale", "")
-            who = f"{user_id}-{codice_fiscale}" if codice_fiscale else str(user_id)
-            when = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            asl = metadata.get("asl", "") or metadata.get("asl_id", "")
+
+            # Formato who: asl-user_id-codice_fiscale (include ASL per analisi territoriali)
+            who_parts = [str(asl), str(user_id), str(codice_fiscale)]
+            who = "-".join(p for p in who_parts if p)
+            if not who:
+                who = "anonymous"
 
             intent_meta = _intent_metadata_cache.get(intent, {})
             tool = intent_meta.get("tool") or None
             dataretriever_class = intent_meta.get("dataretriever_class") or None
             two_phase_threshold = intent_meta.get("two_phase_threshold")
             two_phase_resp = two_phase_threshold is not None and two_phase_threshold > 0
-            sql = intent_meta.get("sql") or None
+            sql_equivalent = intent_meta.get("sql") or None
+
+            # Serialize slots to JSON string for JSONB column
+            import json
+            slots_json = json.dumps(slots) if slots else None
 
             from sqlalchemy import text
             with engine.connect() as conn:
                 conn.execute(text(
-                    "INSERT INTO chat_log (ask, intent, tool, two_phase_resp, dataretriever_class, sql, who, \"when\", answer) "
-                    "VALUES (:ask, :intent, :tool, :two_phase_resp, :dataretriever_class, :sql, :who, :when, :answer)"
+                    """INSERT INTO chat_log
+                    (ask, intent, tool, two_phase_resp, dataretriever_class, sql, who, "when", answer,
+                     session_id, asl, slots, response_time_ms, error)
+                    VALUES
+                    (:ask, :intent, :tool, :two_phase_resp, :dataretriever_class, :sql, :who, NOW(), :answer,
+                     :session_id, :asl, :slots::jsonb, :response_time_ms, :error)"""
                 ), {
                     "ask": ask,
                     "intent": intent,
                     "tool": tool,
                     "two_phase_resp": two_phase_resp,
                     "dataretriever_class": dataretriever_class,
-                    "sql": sql,
+                    "sql": sql_equivalent,
                     "who": who,
-                    "when": when,
                     "answer": answer,
+                    "session_id": session_id or None,
+                    "asl": str(asl) if asl else None,
+                    "slots": slots_json,
+                    "response_time_ms": response_time_ms,
+                    "error": error,
                 })
                 conn.commit()
-            logger.debug(f"[ChatLog] Logged: intent={intent}, who={who}")
+            logger.debug(f"[ChatLog] Logged: intent={intent}, who={who}, asl={asl}, time={response_time_ms}ms")
         except Exception as e:
             logger.error(f"[ChatLog] Failed to log chat: {e}")
 
@@ -553,12 +590,16 @@ async def webhook(message: RasaMessage) -> List[RasaResponse]:
 
         logger.info(f"[Webhook] Risposta generata ({len(response_text)} caratteri)")
 
-        # Log to chat_log table
+        # Log to chat_log table with extended fields
         log_chat(
             ask=message.message,
             intent=result.get("intent", ""),
             answer=response_text,
             metadata=metadata,
+            session_id=message.sender,
+            slots=result.get("slots"),
+            response_time_ms=result.get("total_execution_ms"),
+            error=error if error else None,
         )
 
         # Costruisci custom payload con execution tracking
@@ -819,6 +860,17 @@ async def webhook_stream(message: RasaMessage):
 
             if error:
                 logger.error(f"[WebhookStream] Errore: {error}")
+                # FIX: Log anche gli errori (prima venivano persi)
+                log_chat(
+                    ask=message.message,
+                    intent=result.get("intent", ""),
+                    answer=f"❌ Errore: {error}",
+                    metadata=metadata,
+                    session_id=message.sender,
+                    slots=result.get("slots"),
+                    response_time_ms=result.get("total_execution_ms"),
+                    error=error,
+                )
                 yield await format_sse_event({
                     "type": "error",
                     "timestamp": int(time.time() * 1000),
@@ -832,12 +884,16 @@ async def webhook_stream(message: RasaMessage):
 
             logger.info(f"[WebhookStream] Risposta generata ({len(final_response)} caratteri)")
 
-            # Log to chat_log table
+            # Log to chat_log table with extended fields
             log_chat(
                 ask=message.message,
                 intent=result.get("intent", ""),
                 answer=final_response,
                 metadata=metadata,
+                session_id=message.sender,
+                slots=result.get("slots"),
+                response_time_ms=result.get("total_execution_ms"),
+                error=None,
             )
 
             # Yield evento finale con risposta completa
@@ -1000,6 +1056,426 @@ async def get_config_info():
         "data_source_type": config.get_data_source_type(),
         "status": "ok"
     }
+
+
+# =============================================================================
+# CHAT LOG ANALYTICS API
+# =============================================================================
+
+def _get_db_engine():
+    """Get database engine for chat_log queries."""
+    try:
+        from data_sources.postgresql_source import PostgreSQLDataSource
+        return PostgreSQLDataSource._engine
+    except Exception:
+        return None
+
+
+@app.get("/api/chat-log/stats")
+async def chat_log_stats(days: int = 7):
+    """
+    Statistiche aggregate chat_log.
+
+    Query params:
+        days: numero di giorni da considerare (default: 7)
+
+    Returns:
+        - totale messaggi
+        - totale errori
+        - tempo medio risposta
+        - distribuzione per intent
+        - distribuzione per ASL
+    """
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            # Stats generali
+            stats_query = text("""
+                SELECT
+                    COUNT(*) AS totale_messaggi,
+                    COUNT(*) FILTER (WHERE error IS NOT NULL) AS totale_errori,
+                    ROUND(AVG(response_time_ms)) AS tempo_medio_ms,
+                    ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY response_time_ms)) AS p95_ms,
+                    COUNT(DISTINCT session_id) AS sessioni_uniche,
+                    COUNT(DISTINCT asl) AS asl_attive
+                FROM chat_log
+                WHERE "when"::timestamp >= NOW() - INTERVAL '1 day' * :days
+                   OR "when" IS NULL
+            """)
+            stats = conn.execute(stats_query, {"days": days}).fetchone()
+
+            # Top intent
+            intent_query = text("""
+                SELECT intent, COUNT(*) AS count
+                FROM chat_log
+                WHERE ("when"::timestamp >= NOW() - INTERVAL '1 day' * :days OR "when" IS NULL)
+                  AND intent IS NOT NULL AND intent != ''
+                GROUP BY intent
+                ORDER BY count DESC
+                LIMIT 10
+            """)
+            intents = conn.execute(intent_query, {"days": days}).fetchall()
+
+            # Top ASL
+            asl_query = text("""
+                SELECT asl, COUNT(*) AS count
+                FROM chat_log
+                WHERE ("when"::timestamp >= NOW() - INTERVAL '1 day' * :days OR "when" IS NULL)
+                  AND asl IS NOT NULL AND asl != ''
+                GROUP BY asl
+                ORDER BY count DESC
+                LIMIT 10
+            """)
+            asls = conn.execute(asl_query, {"days": days}).fetchall()
+
+            return {
+                "period_days": days,
+                "totale_messaggi": stats[0] or 0,
+                "totale_errori": stats[1] or 0,
+                "tasso_errore_pct": round(100 * (stats[1] or 0) / max(stats[0] or 1, 1), 2),
+                "tempo_medio_ms": stats[2] or 0,
+                "p95_ms": stats[3] or 0,
+                "sessioni_uniche": stats[4] or 0,
+                "asl_attive": stats[5] or 0,
+                "top_intents": [{"intent": r[0], "count": r[1]} for r in intents],
+                "top_asl": [{"asl": r[0], "count": r[1]} for r in asls],
+            }
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat-log/recent")
+async def chat_log_recent(limit: int = 50, offset: int = 0, asl: Optional[str] = None):
+    """
+    Ultimi messaggi chat_log.
+
+    Query params:
+        limit: numero massimo di record (default: 50, max: 200)
+        offset: offset per paginazione
+        asl: filtro opzionale per ASL
+    """
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    limit = min(limit, 200)
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT
+                    id,
+                    "when" AS timestamp,
+                    session_id,
+                    asl,
+                    who,
+                    ask,
+                    intent,
+                    slots::text AS slots_json,
+                    LEFT(answer, 500) AS answer_preview,
+                    response_time_ms,
+                    error,
+                    tool,
+                    two_phase_resp
+                FROM chat_log
+                WHERE (:asl IS NULL OR asl = :asl)
+                ORDER BY "when" DESC NULLS LAST, id DESC
+                LIMIT :limit OFFSET :offset
+            """)
+            rows = conn.execute(query, {"asl": asl, "limit": limit, "offset": offset}).fetchall()
+
+            # Count totale per paginazione
+            count_query = text("""
+                SELECT COUNT(*) FROM chat_log
+                WHERE (:asl IS NULL OR asl = :asl)
+            """)
+            total = conn.execute(count_query, {"asl": asl}).fetchone()[0]
+
+            return {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "asl_filter": asl,
+                "records": [
+                    {
+                        "id": r[0],
+                        "timestamp": r[1] if isinstance(r[1], str) else (r[1].isoformat() if r[1] else None),
+                        "session_id": r[2],
+                        "asl": r[3],
+                        "who": r[4],
+                        "ask": r[5],
+                        "intent": r[6],
+                        "slots": r[7],
+                        "answer_preview": r[8],
+                        "response_time_ms": r[9],
+                        "error": r[10],
+                        "tool": r[11],
+                        "two_phase_resp": r[12],
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in recent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat-log/by-asl")
+async def chat_log_by_asl(days: int = 30):
+    """
+    Statistiche raggruppate per ASL.
+
+    Query params:
+        days: numero di giorni da considerare (default: 30)
+    """
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT
+                    COALESCE(asl, 'N/D') AS asl,
+                    COUNT(*) AS totale,
+                    COUNT(*) FILTER (WHERE error IS NOT NULL) AS errori,
+                    ROUND(AVG(response_time_ms)) AS tempo_medio_ms,
+                    COUNT(DISTINCT session_id) AS sessioni,
+                    COUNT(DISTINCT intent) AS intents_diversi
+                FROM chat_log
+                WHERE "when"::timestamp >= NOW() - INTERVAL '1 day' * :days
+                   OR "when" IS NULL
+                GROUP BY COALESCE(asl, 'N/D')
+                ORDER BY totale DESC
+            """)
+            rows = conn.execute(query, {"days": days}).fetchall()
+
+            return {
+                "period_days": days,
+                "data": [
+                    {
+                        "asl": r[0],
+                        "totale": r[1],
+                        "errori": r[2],
+                        "tasso_errore_pct": round(100 * r[2] / max(r[1], 1), 2),
+                        "tempo_medio_ms": r[3] or 0,
+                        "sessioni": r[4],
+                        "intents_diversi": r[5],
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in by-asl: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat-log/by-intent")
+async def chat_log_by_intent(days: int = 30):
+    """
+    Statistiche raggruppate per intent.
+
+    Query params:
+        days: numero di giorni da considerare (default: 30)
+    """
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT
+                    COALESCE(intent, 'unknown') AS intent,
+                    COUNT(*) AS totale,
+                    COUNT(*) FILTER (WHERE error IS NOT NULL) AS errori,
+                    ROUND(AVG(response_time_ms)) AS tempo_medio_ms,
+                    ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY response_time_ms)) AS p95_ms,
+                    tool
+                FROM chat_log
+                WHERE "when"::timestamp >= NOW() - INTERVAL '1 day' * :days
+                   OR "when" IS NULL
+                GROUP BY COALESCE(intent, 'unknown'), tool
+                ORDER BY totale DESC
+            """)
+            rows = conn.execute(query, {"days": days}).fetchall()
+
+            return {
+                "period_days": days,
+                "data": [
+                    {
+                        "intent": r[0],
+                        "totale": r[1],
+                        "errori": r[2],
+                        "tasso_errore_pct": round(100 * r[2] / max(r[1], 1), 2),
+                        "tempo_medio_ms": r[3] or 0,
+                        "p95_ms": r[4] or 0,
+                        "tool": r[5],
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in by-intent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat-log/errors")
+async def chat_log_errors(limit: int = 50, days: int = 7):
+    """
+    Lista errori recenti.
+
+    Query params:
+        limit: numero massimo di record (default: 50)
+        days: numero di giorni da considerare (default: 7)
+    """
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    limit = min(limit, 200)
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT
+                    id,
+                    "when" AS timestamp,
+                    session_id,
+                    asl,
+                    ask,
+                    intent,
+                    error,
+                    response_time_ms
+                FROM chat_log
+                WHERE error IS NOT NULL
+                  AND ("when"::timestamp >= NOW() - INTERVAL '1 day' * :days OR "when" IS NULL)
+                ORDER BY "when" DESC NULLS LAST, id DESC
+                LIMIT :limit
+            """)
+            rows = conn.execute(query, {"days": days, "limit": limit}).fetchall()
+
+            # Raggruppamento errori per tipo
+            error_types_query = text("""
+                SELECT
+                    CASE
+                        WHEN error ILIKE '%timeout%' THEN 'timeout'
+                        WHEN error ILIKE '%connection%' THEN 'connection'
+                        WHEN error ILIKE '%database%' OR error ILIKE '%sql%' THEN 'database'
+                        WHEN error ILIKE '%llm%' OR error ILIKE '%ollama%' THEN 'llm'
+                        ELSE 'other'
+                    END AS error_type,
+                    COUNT(*) AS count
+                FROM chat_log
+                WHERE error IS NOT NULL
+                  AND ("when"::timestamp >= NOW() - INTERVAL '1 day' * :days OR "when" IS NULL)
+                GROUP BY 1
+                ORDER BY count DESC
+            """)
+            error_types = conn.execute(error_types_query, {"days": days}).fetchall()
+
+            return {
+                "period_days": days,
+                "total_errors": len(rows),
+                "error_types": [{"type": r[0], "count": r[1]} for r in error_types],
+                "records": [
+                    {
+                        "id": r[0],
+                        "timestamp": r[1] if isinstance(r[1], str) else (r[1].isoformat() if r[1] else None),
+                        "session_id": r[2],
+                        "asl": r[3],
+                        "ask": r[4],
+                        "intent": r[5],
+                        "error": r[6],
+                        "response_time_ms": r[7],
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in errors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat-log/timeline")
+async def chat_log_timeline(days: int = 7, granularity: str = "hour"):
+    """
+    Timeline messaggi per grafici.
+
+    Query params:
+        days: numero di giorni (default: 7)
+        granularity: 'hour' o 'day' (default: 'hour')
+    """
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    if granularity not in ("hour", "day"):
+        granularity = "hour"
+
+    try:
+        with engine.connect() as conn:
+            if granularity == "hour":
+                query = text("""
+                    SELECT
+                        DATE_TRUNC('hour', "when"::timestamp) AS bucket,
+                        COUNT(*) AS count,
+                        COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
+                        ROUND(AVG(response_time_ms)) AS avg_time_ms
+                    FROM chat_log
+                    WHERE "when"::timestamp >= NOW() - INTERVAL '1 day' * :days
+                      AND "when" IS NOT NULL
+                    GROUP BY DATE_TRUNC('hour', "when"::timestamp)
+                    ORDER BY bucket
+                """)
+            else:
+                query = text("""
+                    SELECT
+                        DATE_TRUNC('day', "when"::timestamp) AS bucket,
+                        COUNT(*) AS count,
+                        COUNT(*) FILTER (WHERE error IS NOT NULL) AS errors,
+                        ROUND(AVG(response_time_ms)) AS avg_time_ms
+                    FROM chat_log
+                    WHERE "when"::timestamp >= NOW() - INTERVAL '1 day' * :days
+                      AND "when" IS NOT NULL
+                    GROUP BY DATE_TRUNC('day', "when"::timestamp)
+                    ORDER BY bucket
+                """)
+
+            rows = conn.execute(query, {"days": days}).fetchall()
+
+            return {
+                "period_days": days,
+                "granularity": granularity,
+                "data": [
+                    {
+                        "timestamp": r[0] if isinstance(r[0], str) else (r[0].isoformat() if r[0] else None),
+                        "count": r[1],
+                        "errors": r[2],
+                        "avg_time_ms": r[3] or 0,
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in timeline: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
