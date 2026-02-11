@@ -1,0 +1,57 @@
+--- test_server.py.orig	2026-02-02 12:00:00.000000000 +0100
++++ test_server.py	2026-02-02 12:30:00.000000000 +0100
+@@ -55,6 +55,7 @@
+
+ import argparse
+ import json
++import urllib.parse
+ import os
+ import re
+ import subprocess
+@@ -76,8 +77,29 @@
+ SERVER_URL = os.environ.get("GIAS_SERVER_URL", "http://localhost:5005")
+ WEBHOOK = f"{SERVER_URL}/webhooks/rest/webhook"
+ STATUS_URL = f"{SERVER_URL}/status"
+-TIMEOUT_CACHED = 30
+-TIMEOUT_UNCACHED = 120
++
++# ═══════════════════════════════════════════════════════════════════════════
++# Dynamic Timeout Configuration (adatta timeout per Ollama remoto)
++# ═══════════════════════════════════════════════════════════════════════════
++
++def is_ollama_remote() -> bool:
++    """Verifica se Ollama è configurato come remoto (non localhost)"""
++    try:
++        project_root = Path(__file__).parent.parent
++        config_file = project_root / "configs" / "config.json"
++        with open(config_file, 'r') as f:
++            config = json.load(f)
++        ollama_host = config.get('llm_backend', {}).get('ollama', {}).get('host', 'localhost')
++        parsed = urllib.parse.urlparse(ollama_host if '://' in ollama_host else f'http://{ollama_host}')
++        hostname = parsed.hostname or 'localhost'
++        return hostname not in ('localhost', '127.0.0.1', '0.0.0.0')
++    except:
++        return False
++
++# Adatta timeout se Ollama è remoto (aggiunge margine per latenza rete)
++IS_OLLAMA_REMOTE = is_ollama_remote()
++TIMEOUT_CACHED = 90 if IS_OLLAMA_REMOTE else 30
++TIMEOUT_UNCACHED = 180 if IS_OLLAMA_REMOTE else 120
+ PARALLEL_JOBS = 4
+
+ # ═══════════════════════════════════════════════════════════════════════════
+@@ -303,6 +325,14 @@
+ # ═══════════════════════════════════════════════════════════════════════════
+
+ def log(ctx: TestContext, msg: str):
++    # Log configurazione timeout alla prima esecuzione
++    if not hasattr(log, '_logged_config'):
++        if not ctx.json_output:
++            print(f"\n{'='*60}")
++            print(f"⏱️  Ollama remoto: {IS_OLLAMA_REMOTE}")
++            print(f"⏱️  Timeout CACHED: {TIMEOUT_CACHED}s | UNCACHED: {TIMEOUT_UNCACHED}s")
++            print(f"{'='*60}")
++        log._logged_config = True
+     if not ctx.json_output:
+         print(msg)
+

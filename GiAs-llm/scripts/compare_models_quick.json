@@ -1,0 +1,44 @@
+{
+  "models": {
+    "baseline": "llama3.2",
+    "candidate": "falcon"
+  },
+  "test_sections": [2, 3, 14],
+  "server": {
+    "start_timeout": 60,
+    "health_check_retries": 10,
+    "health_check_interval": 3,
+    "shutdown_grace_period": 5,
+    "gias_server_url": "http://localhost:5005",
+    "ollama_host": "localhost"
+  },
+  "thresholds": {
+    "min_accuracy": 0.90,
+    "max_avg_response_time": 3.0,
+    "acceptable_accuracy_delta": -0.05,
+    "significant_accuracy_improvement": 0.02,
+    "acceptable_speed_degradation": 1.0
+  },
+  "output": {
+    "results_dir": "runtime/comparison",
+    "save_json": true,
+    "save_markdown": true,
+    "save_logs": true
+  },
+  "test_config": {
+    "test_script": "tests/test_server.py",
+    "server_script": "scripts/server.sh",
+    "json_mode": true,
+    "verbose": false
+  },
+  "section_weights": {
+    "2": 3.0,
+    "3": 2.0,
+    "14": 3.0
+  },
+  "description": {
+    "2": "Intent Classification (28 intents) - CRITICAL",
+    "3": "Performance (response time) - CRITICAL",
+    "14": "TRUE Intent Classification (no regex fallacy) - CRITICAL"
+  }
+}

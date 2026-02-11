@@ -1,0 +1,110 @@
+# Binari compilati
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# File eseguibili Go
+/bin/
+/build/
+/dist/
+main
+
+# File di test e coverage
+*.test
+*.prof
+coverage.txt
+coverage.html
+*.coverprofile
+
+# Dipendenze Go
+/vendor/
+go.work
+go.work.sum
+
+# File IDE e Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.kate-swp
+.*.sw?
+
+# File di configurazione locale
+.env
+.env.local
+*.local
+config.local.yml
+secrets.yml
+
+# Log
+*.log
+logs/
+
+# File temporanei
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Database locali
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache Go
+go.sum.backup
+
+# File di debug
+__debug_bin
+debug
+debug.test
+core
+
+# Air (live reload)
+tmp/
+.air.toml
+
+# Documentazione generata
+/docs/generated/
+
+# Certificati e chiavi (per sicurezza)
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# Build artifacts
+*.a
+*.o
+
+# Profiling
+cpu.prof
+mem.prof
+block.prof
+mutex.prof
+
+# Terraform (se usi infra as code)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Docker
+docker-compose.override.yml
+
+# Linux specifici
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Backup files
+*.bak
+*.backup
+*~

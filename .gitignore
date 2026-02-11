@@ -1,0 +1,30 @@
+# Cartelle di dipendenze e sistema (Blocca tutto il contenuto)
+lib/
+lib64/
+bin/
+include/
+share/
+
+# Python - Bytecode e Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Log e file temporanei
+*.log
+gchat/log/
+backups/
+
+# Ambienti Virtuali (comuni nomi di cartelle venv)
+venv/
+.venv/
+env/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+github-token.txt

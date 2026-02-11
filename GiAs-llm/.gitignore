@@ -1,0 +1,21 @@
+#
+lib/
+lib64/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+include
+#
+# File compilati Python
+*.pyc
+*.pyo
+*.pyd
+
+# Directory cache Python
+__pycache__/
+
+# Tutti i file e directory che iniziano con __
+__*
+
+*.csv

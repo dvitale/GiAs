@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Fixed Welcome Message</title>
+</head>
+<body>
+    <div id="output"></div>
+    <script>
+        // Simulate the exact code from our fixed template
+        window.welcomeData = {
+            message: JSON.parse("\"Sono il tuo assistente virtuale per l'**Anno 2025**. Posso aiutarti a gestire i Controlli Ufficiali del sistema Gisa?\\n\\n📅 **Anno di riferimento: 2025** (per programmazioni e ritardi)\\n💾 **Dati storici: 2016-2025** (per analisi di rischio)\\n\\n### 💬 Cosa puoi chiedere?\\n\\n**Piani di Controllo:**\\n- \\\"Di cosa tratta il piano A1?\\\"\\n- \\\"Quali stabilimenti rientrano nel piano B2?\\\"\\n- \\\"Cerca piani sui bovini\\\" (ricerca semantica)\\n\\n**Programmazione e Priorità 2025:**\\n- \\\"Quale stabilimento dovrei controllare per primo?\\\"\\n- \\\"Quali piani sono in ritardo quest'anno?\\\"\\n- \\\"Suggerisci controlli basati sul rischio storico\\\"\\n\\n**Analisi Non Conformità:**\\n- \\\"Problemi HACCP nella mia ASL\\\"\\n- \\\"Trend igiene alimenti ultimo anno\\\"\\n- \\\"Stabilimenti a rischio NC strutture\\\"\\n- \\\"Predici categorie NC per ristoranti\\\"\\n\\n**Storico Stabilimenti:**\\n- \\\"Storico controlli partita IVA 2611810645\\\"\\n- \\\"Controlli stabilimento IT 2287\\\"\\n- \\\"Storia controlli per SEPE\\\" (ragione sociale)\\n\\n**Informazioni Generali:**\\n- \\\"Aiuto\\\" / \\\"Cosa puoi fare?\\\"\""),
+            userName: "BERARDINO"
+        };
+
+        // Display the processed message
+        document.getElementById('output').innerHTML = '<pre>' +
+            'Processed message length: ' + window.welcomeData.message.length + '\n' +
+            'First 200 chars: ' + window.welcomeData.message.substring(0, 200) + '\n' +
+            'Contains newlines: ' + (window.welcomeData.message.includes('\n') ? 'YES' : 'NO') + '\n' +
+            'Contains quotes: ' + (window.welcomeData.message.includes('"') ? 'YES' : 'NO') + '\n' +
+            'Sample line: ' + window.welcomeData.message.split('\n')[0] +
+            '</pre>';
+
+        console.log('Welcome message processed successfully:', window.welcomeData.message.substring(0, 100));
+    </script>
+</body>
+</html>

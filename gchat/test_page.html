@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistente Gisa</title>
+    <link rel="stylesheet" href="/gias/webchat/static/css/style.css">
+    <link rel="stylesheet" href="/gias/webchat/static/css/new-formatting.css">
+</head>
+
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="header-top">
+                <h1 class="header-title">Assistente Gisa</h1>
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                    <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="header-content">
+                <img src="/gias/webchat/static/img/gias.png" alt="GIAS Logo" class="header-logo">
+                
+                <div class="header-text">
+                    <div class="user-info">
+                        <div class="user-details">
+                            <span class="user-name-line">BERARDINO IZZO</span>
+                            <p class="user-asl-inline">ASL BENEVENTO</p>
+                            
+                            <ul class="user-hierarchy">
+                                <li>DIPARTIMENTO DI PREVENZIONE BENEVENTO<ul>
+<li>UNITA&#39; OPERATIVA COMPLESSA IGIENE DEGLI ALLEVAMENTI E DELLE PRODUZIONI ZOOTECNICHE<ul>
+<li>UOV IAPZ 1</li></ul></li></ul></li>
+                            </ul>
+                            
+                        </div>
+                    </div>
+                </div>
+                
+                <img src="/gias/webchat/static/img/logo-reg.png" alt="Logo Regione" class="header-logo">
+            </div>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot-message" id="welcomeMessage">
+                <div class="message-content" id="welcomeContent">
+                    
+                </div>
+                <div class="message-time" id="welcomeTime"></div>
+            </div>
+        </div>
+        <div class="predefined-questions" id="predefinedQuestions">
+            <div class="questions-header">
+                <h4>Domande rapide ed esempi:</h4>
+            </div>
+            <div class="questions-container" id="questionsContainer">
+                
+            </div>
+        </div>
+        <div class="chat-input">
+            <div class="input-container">
+                <input type="text" id="messageInput" placeholder="Scrivi il tuo messaggio..." autocomplete="off">
+                <button id="sendButton">Invia</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="typing-indicator" id="typingIndicator">
+        <div class="typing-dots">
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+        <span>Il bot sta scrivendo...</span>
+    </div>
+
+    <script>
+        
+        window.basePath = "\/gias\/webchat";
+
+        
+        window.transcriptionEnabled =  true ;
+
+        
+        
+        window.welcomeMessage = "\"Sono il tuo assistente virtuale per l'**Anno 2025**. Posso aiutarti a gestire i Controlli Ufficiali del sistema Gisa?\\n\\n📅 **Anno di riferimento: 2025** (per programmazioni e ritardi)\\n💾 **Dati storici: 2016-2025** (per analisi di rischio)\\n\\n### 💬 Cosa puoi chiedere?\\n\\n**Piani di Controllo:**\\n- \\\"Di cosa tratta il piano A1?\\\"\\n- \\\"Quali stabilimenti rientrano nel piano B2?\\\"\\n- \\\"Cerca piani sui bovini\\\" (ricerca semantica)\\n\\n**Programmazione e Priorità 2025:**\\n- \\\"Quale stabilimento dovrei controllare per primo?\\\"\\n- \\\"Quali piani sono in ritardo quest'anno?\\\"\\n- \\\"Suggerisci controlli basati sul rischio storico\\\"\\n\\n**Analisi Non Conformità:**\\n- \\\"Problemi HACCP nella mia ASL\\\"\\n- \\\"Trend igiene alimenti ultimo anno\\\"\\n- \\\"Stabilimenti a rischio NC strutture\\\"\\n- \\\"Predici categorie NC per ristoranti\\\"\\n\\n**Storico Stabilimenti:**\\n- \\\"Storico controlli partita IVA 2611810645\\\"\\n- \\\"Controlli stabilimento IT 2287\\\"\\n- \\\"Storia controlli per SEPE\\\" (ragione sociale)\\n\\n**Informazioni Generali:**\\n- \\\"Aiuto\\\" / \\\"Cosa puoi fare?\\\"\"";
+        window.welcomeData = {
+            message: window.welcomeMessage.slice(1, -1), 
+            userName: "BERARDINO"
+        };
+
+        
+        window.queryParams = {
+            asl_id: null,
+            asl_name: "BENEVENTO",
+            user_id: "6448",
+            codice_fiscale: null,
+            username: null
+        };
+    </script>
+    <script src="/gias/webchat/static/js/chat.js"></script>
+</body>
+
+</html>

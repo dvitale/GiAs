@@ -1,0 +1,10 @@
+#!/bin/bash
+# Configurazione centralizzata per script di sincronizzazione remota
+# Modificare questo file per cambiare l'host remoto per tutti gli script
+
+REMOTE_USER="root"
+#REMOTE_HOST="192.168.10.10"
+
+# Configurazioni alternative (commentate):
+#REMOTE_HOST="gias.u-s.it"
+REMOTE_HOST="100.83.250.3"

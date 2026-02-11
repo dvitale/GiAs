@@ -1,0 +1,138 @@
+# Test cases per validazione consistenza RAG - Intent info_procedure
+# Ogni test case verifica che le risposte siano coerenti con i PDF indicizzati
+
+test_cases:
+  # Categoria A: Controlli Ufficiali (CU)
+  - id: cu_01
+    query: "Come si inserisce un controllo ufficiale in GISA?"
+    source: ManualeGisa.pdf
+    source_pages: "50-53"
+    expected_keywords:
+      - "inseri"      # matcha inserire/inserimento/inserisci
+      - "controllo"
+      - "gisa"
+    min_confidence: medium
+
+  - id: cu_02
+    query: "Quali sono i vincoli per inserire un controllo ufficiale?"
+    source: ManualeGisa.pdf
+    source_pages: "64-65"
+    expected_keywords:
+      - "controllo"
+      - "vincol"
+      - "regol"
+    min_confidence: medium
+
+  - id: cu_03
+    query: "Come funziona la categorizzazione del rischio nei controlli ufficiali?"
+    source: ManualeGisa.pdf
+    source_pages: "54-62"
+    expected_keywords:
+      - "rischio"
+      - "controllo"
+      - "sorveglianza"
+    min_confidence: medium
+
+  # Categoria B: Non Conformita (NC)
+  - id: nc_01
+    query: "Come si registra una non conformita in GISA?"
+    source: ManualeGisa.pdf
+    source_pages: "77-79"
+    expected_keywords:
+      - "non conformit"
+      - "punteggio"
+    expected_facts:
+      - "7 punti"
+      - "50 punti"
+    min_confidence: medium
+
+  - id: nc_02
+    query: "Quali provvedimenti si possono adottare per le non conformita?"
+    source: ManualeGisa.pdf
+    source_pages: "78"
+    expected_keywords:
+      - "diffida"
+      - "provvediment"
+    min_confidence: medium
+
+  # Categoria C: Campioni
+  - id: camp_01
+    query: "Come si inserisce un campione su un controllo ufficiale?"
+    source: ManualeGisa.pdf
+    source_pages: "67-70"
+    expected_keywords:
+      - "campion"
+      - "controllo"
+      - "inseri"
+    min_confidence: medium
+
+  - id: camp_02
+    query: "Come si gestisce un campione in GISA?"
+    source: ManualeGisa.pdf
+    source_pages: "67-76"
+    expected_keywords:
+      - "campion"
+      - "controllo"
+    min_confidence: medium
+
+  # Categoria D: Matrix e Formule
+  - id: matrix_01
+    query: "Cos'e Matrix in GISA e come funziona?"
+    source: help_matrix_rev1.5.pdf
+    source_pages: "1-4"
+    expected_keywords:
+      - "matrix"
+      - "distribuzione"
+      - "controlli"
+    min_confidence: medium
+
+  - id: matrix_02
+    query: "Cos'e il borsellino in Matrix?"
+    source: help_matrix_rev1.5.pdf
+    source_pages: "4-5"
+    expected_keywords:
+      - "borsellino"
+      - "risors"
+    min_confidence: low
+
+  - id: matrix_03
+    query: "Come si calcola la capacita operativa in Matrix?"
+    source: help_matrix_rev1.5.pdf
+    source_pages: "modello 4"
+    expected_keywords:
+      - "capacit"
+      - "operativ"
+    min_confidence: low
+
+  # Categoria E: Procedure Specifiche
+  - id: api_01
+    query: "Come si apre un controllo ufficiale su un apiario?"
+    source: ManualeGisa.pdf
+    source_pages: "38-49"
+    expected_keywords:
+      - "apiari"
+      - "apicoltura"
+    min_confidence: medium
+
+  - id: suap_01
+    query: "Come si gestisce una pratica SUAP in GISA?"
+    source: ManualeGisa.pdf
+    source_pages: "19+"
+    expected_keywords:
+      - "suap"
+      - "pratica"
+    min_confidence: medium
+
+# Configurazione globale test
+config:
+  api_url: "http://localhost:5005/webhooks/rest/webhook"
+  status_url: "http://localhost:5005/status"
+  timeout_seconds: 60
+  expected_intent: "info_procedure"
+
+# Metriche target
+targets:
+  keyword_coverage_min: 0.80
+  forbidden_avoidance: 1.00
+  fact_accuracy_min: 0.90
+  confidence_medium_min: 0.70

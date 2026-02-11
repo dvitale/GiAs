@@ -1,0 +1,500 @@
+   38  ./start_server.sh 
+   39  curl -X POST 'http://localhost:5005/webhooks/rest/webhook' -H 'Content-Type: application/json' -H 'User-Agent: GChat/1.0' -H 'X-Source: gchat-debug' -d '{"sender":"user","message":"Sulla base del rischio storico chi dovrei controllare per primo?","metadata":{"asl":"BENEVENTO","codice_fiscale":"ZZIBRD65R11A783K","user_id":"6448"}}'
+   40  claude
+   41  cd gchat
+   42  cd ../gchat/
+   43  claude
+   44  opencode
+   45  exit
+   46  cd /opt/go_projects/gojstat/
+   47  vi .gitignore
+   48  ll
+   49  ll doc
+   50  git init
+   51  git add .
+   52  git commit -m "First commit"
+   53  git remote add origin https://github.com/dantevitale/gojstat.git
+   54  git push -u origin main
+   55  git push -u origin master
+   56  git push -u origin master
+   57  git push -u origin master
+   58  git push -u origin master
+   59  git push -u origin master
+   60  git push -u origin master
+   61  git push -u origin master
+   62  git status
+   63  git branch -M main
+   64  git push -u origin main
+   65  git push -u origin main --force
+   66  git push origin --delete master
+   67  loangenv
+   68  langenv
+   69  cd .,.,
+   70  cd ..
+   71  ll
+   72  ll backup
+   73  ll backups
+   74  ./backup.sh 
+   75  langenv
+   76  npm install -g @openai/codex
+   77   codex
+   78  cd ../gchat/
+   79   codex
+   80  langenv
+   81  codex
+   82  codex
+   83  g
+   84  cd /opt/go_projects/gojstat/
+   85  opencode
+   86  langenv
+   87  cd gc
+   88  cd ../gchat/
+   89  ll
+   90  cd log
+   91  ll
+   92  vi err.txt 
+   93  claude
+   94  cd ..
+   95  /clear
+   96  claude
+   97  2
+   98  cd /opt/go_projects/gojstat/
+   99  cd bin
+  100  claude /doctor
+  101  claude /doctor
+  102  bun remove -g @anthropic-ai/claude-code
+  103  claude
+  104  bun install -g @anthropic-ai/claude-code
+  105  claude
+  106  claude /doctor
+  107  langenv
+  108  claude
+  109  langemv
+  110  langenv
+  111  claude
+  112  claude-code /doctor
+  113  claude /doctor
+  114  langenv
+  115  codex
+  116  codex
+  117  codex
+  118  langenv
+  119  ./stop_server.sh 
+  120  ./start_server.sh 
+  121  ollama list
+  122  cd ../gchat/
+  123  ./all.sh 
+  124  cat all.sh 
+  125  ll all.sh 
+  126  cd ../GiAs-llm/
+  127  ll
+  128  ll log
+  129  cat start_server.sh 
+  130  netstat -ntlp
+  131  ./start_server.sh 
+  132  ./stop_server.sh 
+  133  ./start_server.sh 
+  134  netstat -ntlp
+  135  cd logs/
+  136  ll -t
+  137  htop
+  138  cd ..
+  139  ./start_server.sh 
+  140  netstat -ntlp
+  141  netstat -ntlp
+  142  netstat -ntlp
+  143  ll -t
+  144  cat  /webhooks/rest/webhook
+  145  ./test_server.sh
+  146  netstat -ntlp
+  147  telnet loclahost 5005
+  148  telnet localhost 5005
+  149  cd ../gchat/
+  150  claude
+  151  free
+  152  htop
+  153  langenv
+  154  langenv
+  155  cd ../gchat/
+  156  claude
+  157  langenv
+  158  ./start_server.sh 
+  159  ./test_server.sh 
+  160  curl http://localhost:11434/api/tags
+  161  cd /opt
+  162  pip freeze>requirements.txt
+  163  curl http://localhost:5005/status
+  164  langenv
+  165  ./stop_server.sh 
+  166  ./start_server.sh 
+  167  curl http://localhost:5005/status
+  168  curl http://localhost:5005/status
+  169  ollama list
+  170   time curl -s http://localhost:11434/api/chat -d '{
+  171      "model": "mistral-nemo:latest",
+  172      "messages": [{"role": "user", "content": "Rispondi solo JSON: {\"intent\": \"test\", \"slots\": {}}"}],
+  173      "stream": false
+  174    }' | head -c 200
+  175  ll doc
+  176  ll docs/md
+  177  mv docs/md/Proposta\ Tecnica\ 2.pdf tec_prop.pdf
+  178  ll docs/md
+  179  mv tec_prop.pdf docs/md/
+  180  cd docs
+  181  mv md mdc
+  182  cd ..
+  183  codex
+  184  langenv
+  185  cd ../gchat/
+  186  ./all.sh 
+  187  git status
+  188  git init
+  189  vi .gitignore
+  190  git add .
+  191  git committ -m "primo commit"
+  192  git commit -m "primo commit"
+  193  git status
+  194  ./all.sh 
+  195  grep -r "model" /opt/lang-env/GiAs-llm/*.py | grep -i ollama
+  196  ollama list
+  197  cd ../GiAs-llm/
+  198  codex
+  199  claude
+  200  cd ..
+  201  ll
+  202  chmod +x ollama-monitor.sh 
+  203  ./ollama-monitor.sh 
+  204  ./ollama-monitor.sh 
+  205  cd GiAs-llm/
+  206  ./test_server.sh 
+  207  ./test_server.sh 
+  208  cd
+  209  cat .bashrc
+  210  langenv
+  211  cd ../gchat/
+  212  vi config/config.json 
+  213  ./restart.sh 
+  214  vi config/config.json 
+  215  ./restart.sh 
+  216  ./all.sh 
+  217  cd ../GiAs-llm/
+  218  ./stop_server.sh 
+  219  ./start_server.sh 
+  220  netstat -ntlp
+  221  netstat -ntlp
+  222  netstat -ntlp
+  223  cat start_server.sh 
+  224  curl -X  POST http://localhost:5005/webhooks/rest/webhook -H "Content-Type: application/json" -d '{"sender": "test", "message": "stabilimenti del piano A22",     "metadata": {"asl": "AVELLINO"}}'
+  225  curl -X  POST http://localhost:5005/webhooks/rest/webhook -H "Content-Type: application/json" -d '{"sender": "test", "message": "stabilimenti del piano A22",  "metadata": {"asl": "AVELLINO"}}'
+  226  time curl -X  POST http://localhost:5005/webhooks/rest/webhook -H "Content-Type: application/json" -d '{"sender": "test", "message": "stabilimenti del piano A22", "metadata": {"asl": "AVELLINO"}}'
+  227   curl -X  POST http://localhost:5005/webhooks/rest/webhook -H "Content-Type: application/json" -d '{"sender": "test", "message": "stabilimenti del piano A22", "metadata": {"asl": "AVELLINO"}}'
+  228  ollama ps
+  229  ollama ps
+  230  ollama ps
+  231  ollama ps
+  232  ollama ps
+  233  ollama ps
+  234  python <<"
+  235  import GPUtil
+  236  gpus = GPUtil.getGPUs()
+  237  for gpu in gpus:
+  238      print(f"ID: {gpu.id}, Nome: {gpu.name}")
+  239      print(f"Memoria Totale: {gpu.memoryTotal}MB")
+  240      print(f"Carico attuale: {gpu.load*100}%")
+  241  "
+  242  python <<"
+  243  import GPUtil
+  244  gpus = GPUtil.getGPUs()
+  245  for gpu in gpus:
+  246      print(f"ID: {gpu.id}, Nome: {gpu.name}")
+  247      print(f"Memoria Totale: {gpu.memoryTotal}MB")
+  248      print(f"Carico attuale: {gpu.load*100}%")
+  249  "
+  250  vi gpu.py
+  251  python py
+  252  python gpu.py
+  253  pip istall gputils
+  254  pip install gputil
+  255  python gpu.py
+  256  vi aggiorna_da_remoto.sh
+  257  mv aggiorna_da_remoto.sh ..
+  258  cd ..
+  259  chmod +x aggiorna_da_remoto.sh 
+  260  ./aggiorna_da_remoto.sh 
+  261  vi aggiorna_da_remoto.sh 
+  262  ./aggiorna_da_remoto.sh 
+  263  ./aggiorna_da_remoto.sh 
+  264  apt install rsync
+  265  ./aggiorna_da_remoto.sh 
+  266  ssh gias.u-s.it ls -l /opt/lang-env/GiAs-llm -t
+  267  cd GiAs-llm/
+  268  rsync -n  gias.u-s.it:/opt/lang-env/GiAs-llm .
+  269  rsync -na  gias.u-s.it:/opt/lang-env/GiAs-llm .
+  270  rsync -na  gias.u-s.it:/opt/lang-env/GiAs-llm/* .
+  271  rsync -nva  gias.u-s.it:/opt/lang-env/GiAs-llm/* .
+  272  cd ..
+  273  ./aggiorna_da_remoto.sh 
+  274  vi aggiorna_da_remoto.sh 
+  275  ./aggiorna_da_remoto.sh 
+  276  ./aggiorna_da_remoto.sh 
+  277  vi aggiorna_da_remoto.sh 
+  278  ./aggiorna_da_remoto.sh 
+  279  vi aggiorna_da_remoto.sh 
+  280  ./aggiorna_da_remoto.sh 
+  281  vi aggiorna_da_remoto.sh 
+  282  vi aggiorna_da_remoto.sh 
+  283  ./aggiorna_da_remoto.sh 
+  284  vi aggiorna_da_remoto.sh 
+  285  vi aggiorna_da_remoto.sh 
+  286  ./aggiorna_da_remoto.sh 
+  287  ./aggiorna_da_remoto.sh 
+  288  ssh-keygen -t ed25519 -C "chiave-per-sync"
+  289  ssh-copy-id root@server.remoto.it
+  290  ssh-copy-id root@gias.u-s.it
+  291  ./aggiorna_da_remoto.sh 
+  292  ./aggiorna_da_remoto.sh 
+  293  ./aggiorna_da_remoto.sh 
+  294  ping 100.125.245.51 -c 4
+  295  nmap gias.u-s.it
+  296  nmap gias.u-s.it -Pn
+  297  ping 8.8.8.8
+  298  ll
+  299  cd GiAs-llm/
+  300  ll grep dirname * -r
+  301  grep dirname * -r
+  302  grep dirname * -r 2> /dev/null
+  303  vi start_server.sh 
+  304  ll *sh -t
+  305  ll restart_with_llama32.sh
+  306  updatedb
+  307  locate restart_with_llama32.sh
+  308  pwd
+  309  ll GiAs-llm/
+  310  cd GiAs-llm/
+  311  ll
+  312  mv * ..
+  313  mv * .. -f
+  314  ll
+  315  cd ..
+  316  ll
+  317  rm -rf GiAs-llm/
+  318  cd ..
+  319  ll
+  320  vi aggiorna_da_remoto.sh 
+  321  ./aggiorna_da_remoto.sh 
+  322  vi aggiorna_da_remoto.sh 
+  323  ./aggiorna_da_remoto.sh 
+  324  ./aggiorna_da_remoto.sh 
+  325  vi aggiorna_da_remoto.sh 
+  326  ./aggiorna_da_remoto.sh 
+  327  vi aggiorna_da_remoto.sh 
+  328  ./aggiorna_da_remoto.sh 
+  329  vi aggiorna_da_remoto.sh 
+  330  ./aggiorna_da_remoto.sh 
+  331  ll
+  332  ll GiAs-llm/
+  333  ll GiAs-llm/ -t
+  334  ll GiAs-llm/ -t *sh
+  335  ll GiAs-llm/*sh -t
+  336  ll GiAs-llm/*sh -t
+  337  vi GiAs-llm/restart_with_llama32.sh 
+  338  ./aggiorna_da_remoto.sh 
+  339  cp aggiorna_da_remoto.sh aggiorna_da_remoto_g.sh 
+  340  mv aggiorna_da_remoto.sh aggiorna_da_remoto_G.sh
+  341  vi aggiorna_da_remoto_g.sh 
+  342  ./aggiorna_da_remoto_g.sh 
+  343  vi
+  344  vi aggiorna_da_remoto_g.sh 
+  345  ./aggiorna_da_remoto_g.sh 
+  346  ./aggiorna_da_remoto_g.sh 
+  347  ./aggiorna_da_remoto_g.sh 
+  348  ll gchat/
+  349  ./aggiorna_da_remoto_g.sh 
+  350  vi ./aggiorna_da_remoto_g.sh 
+  351  ./aggiorna_da_remoto_g.sh 
+  352  langenv
+  353  ./test_server.sh 
+  354  python <<"
+  355  import GPUtil
+  356  gpus = GPUtil.getGPUs()
+  357  for gpu in gpus:
+  358      print(f"ID: {gpu.id}, Nome: {gpu.name}")
+  359      print(f"Memoria Totale: {gpu.memoryTotal}MB")
+  360      print(f"Carico attuale: {gpu.load*100}%")
+  361  "
+  362  python3 -c 'import GPUtil; gpus = GPUtil.getGPUs(); [print(f"GPU {g.id}: {g.load*100}% carico") for g in gpus]'
+  363  python3 -c 'import GPUtil; gpus = GPUtil.getGPUs(); [print(f"GPU {g.id}: {g.load*100}% carico") for g in gpus]'
+  364  python3 -c 'import GPUtil; [print(f"Modello: {g.name} | Carico: {g.load*100}%") for g in GPUtil.getGPUs()]'
+  365  gpu
+  366  vi /root/.bashrc
+  367  . /root/.bashrc
+  368  gpu
+  369  ./restart_with_llama32.sh 
+  370  gpu
+  371  ollama ps
+  372  ollama ps
+  373  cd logs/
+  374  ll -t
+  375  tail -f api-server.log
+  376  cd ..
+  377  python test_server.py -v
+  378  curl -X  POST http://localhost:5005/webhooks/rest/webhook -H "Content-Type: application/json" -d '{"sender": "test", "message": "Cosa posso chiederti?", "metadata": {"asl": "AVELLINO"}}'
+  379   curl -s http://localhost:11434/api/chat -d '{
+  380      "model": "llama3.2:3b",
+  381      "messages": [{
+  382        "role": "user",
+  383        "content": "Sei un assistente per il monitoraggio veterinario della Regione Campania.
+  384    \n\n**TASK:**\nClassifica il seguente messaggio utente e restituisci un JSON con:\n-
+  385    `intent`: uno degli intent validi\n- `slots`: oggetto con parametri estratti\n-
+  386    `needs_clarification`: true se servono più informazioni\n\n**INTENT VALIDI:**\n1.
+  387    `greet`\n2. `goodbye`\n3. `ask_help`\n4. `ask_piano_description`\n5.
+  388    `ask_piano_stabilimenti`\n6. `ask_piano_attivita`\n7. `ask_piano_generic`\n8.
+  389    `ask_piano_statistics`\n9. `search_piani_by_topic`\n10. `ask_priority_establishment`\n11.
+  390    `ask_risk_based_priority`\n12. `ask_suggest_controls`\n13. `ask_delayed_plans`\n14.
+  391    `check_if_plan_delayed`\n15. `ask_establishment_history`\n16.
+  392    `ask_top_risk_activities`\n17. `analyze_nc_by_category`\n18. `fallback`\n\nMessaggio
+  393    utente: \"Cosa posso chiederti?\"\n\nRispondi SOLO con il JSON."
+  394      }],
+  395      "options": { "temperature": 0.1 }
+  396    }'
+  397    - Confronto: “Cosa puoi fare?” (dovrebbe essere ask_help)
+  398    curl -s http://localhost:11434/api/chat -d '{
+  399      "model": "llama3.2:3b",
+  400      "messages": [{
+  401        "role": "user",
+  402        "content": "Classifica il seguente messaggio utente e restituisci SOLO JSON con
+  403    intent, slots, needs_clarification. Messaggio utente: \"Cosa puoi fare?\""
+  404      }],
+  405      "options": { "temperature": 0.1 }
+  406    }'
+  407   curl -s http://localhost:11434/api/chat -d '{
+  408      "model": "llama3.2:3b",
+  409      "messages": [{
+  410        "role": "user",
+  411        "content": "Sei un assistente per il monitoraggio veterinario della Regione Campania.
+  412    \n\n**TASK:**\nClassifica il seguente messaggio utente e restituisci un JSON con:\n-
+  413    `intent`: uno degli intent validi\n- `slots`: oggetto con parametri estratti\n-
+  414    `needs_clarification`: true se servono più informazioni\n\n**INTENT VALIDI:**\n1.
+  415    `greet`\n2. `goodbye`\n3. `ask_help`\n4. `ask_piano_description`\n5.
+  416    `ask_piano_stabilimenti`\n6. `ask_piano_attivita`\n7. `ask_piano_generic`\n8.
+  417    `ask_piano_statistics`\n9. `search_piani_by_topic`\n10. `ask_priority_establishment`\n11.
+  418    `ask_risk_based_priority`\n12. `ask_suggest_controls`\n13. `ask_delayed_plans`\n14.
+  419    `check_if_plan_delayed`\n15. `ask_establishment_history`\n16.
+  420    `ask_top_risk_activities`\n17. `analyze_nc_by_category`\n18. `fallback`\n\nMessaggio
+  421    utente: \"Cosa posso chiederti?\"\n\nRispondi SOLO con il JSON."
+  422      }],
+  423      "options": { "temperature": 0.1 }
+  424    }'
+  425  curl -s http://localhost:11434/api/chat -d '{
+  426    "model": "llama3.2:3b",
+  427    "messages": [{
+  428      "role": "user",
+  429      "content": "Sei un assistente per il monitoraggio veterinario della Regione Campania.\n\n**TASK:**\nClassifica il seguente messaggio utente e restituisci un JSON con:\n- `intent`: uno degli intent validi\n- `slots`: oggetto con parametri estratti\n- `needs_clarification`: true se servono più informazioni\n\n**INTENT VALIDI:**\n1. `greet`\n2. `goodbye`\n3. `ask_help`\n4. `ask_piano_description`\n5. `ask_piano_stabilimenti`\n6. `ask_piano_attivita`\n7. `ask_piano_generic`\n8. `ask_piano_statistics`\n9. `search_piani_by_topic`\n10. `ask_priority_establishment`\n11. `ask_risk_based_priority`\n12. `ask_suggest_controls`\n13. `ask_delayed_plans`\n14. `check_if_plan_delayed`\n15. `ask_establishment_history`\n16. `ask_top_risk_activities`\n17. `analyze_nc_by_category`\n18. `fallback`\n\nMessaggio utente: \"Cosa posso chiederti?\"\n\nRispondi SOLO con il JSON."
+  430    }],
+  431    "options": { "temperature": 0.1 }
+  432  }'
+  433  curl -s http://localhost:11434/api/chat -d '{
+  434    "model": "llama3.2:3b",
+  435    "messages": [{
+  436      "role": "user",
+  437      "content": "Sei un assistente per il monitoraggio veterinario della Regione Campania.\n\n**TASK:**\nClassifica il seguente messaggio utente e restituisci un JSON con:\n- `intent`: uno degli intent validi\n- `slots`: oggetto con parametri estratti\n- `needs_clarification`: true se servono più informazioni\n\n**INTENT VALIDI:**\n1. `greet`\n2. `goodbye`\n3. `ask_help`\n4. `ask_piano_description`\n5. `ask_piano_stabilimenti`\n6. `ask_piano_attivita`\n7. `ask_piano_generic`\n8. `ask_piano_statistics`\n9. `search_piani_by_topic`\n10. `ask_priority_establishment`\n11. `ask_risk_based_priority`\n12. `ask_suggest_controls`\n13. `ask_delayed_plans`\n14. `check_if_plan_delayed`\n15. `ask_establishment_history`\n16. `ask_top_risk_activities`\n17. `analyze_nc_by_category`\n18. `fallback`\n\nMessaggio utente: \"Cosa posso chiederti?\"\n\nRispondi SOLO con il JSON."
+  438    }],
+  439    "options": { "temperature": 0.1 }
+  440  }'
+  441  curl -s http://localhost:11434/api/chat -d '{
+  442    "model": "llama3.2:3b",
+  443    "stream": false,
+  444    "messages": [{
+  445      "role": "user",
+  446      "content": "Sei un assistente per il monitoraggio veterinario della Regione Campania.\n\n**TASK:**\nClassifica il seguente messaggio utente e restituisci un JSON con:\n- `intent`: uno degli intent validi\n- `slots`: oggetto con parametri estratti\n- `needs_clarification`: true se servono più informazioni\n\n**INTENT VALIDI:**\n1. `greet`\n2. `goodbye`\n3. `ask_help`\n4. `ask_piano_description`\n5. `ask_piano_stabilimenti`\n6. `ask_piano_attivita`\n7. `ask_piano_generic`\n8. `ask_piano_statistics`\n9. `search_piani_by_topic`\n10. `ask_priority_establishment`\n11. `ask_risk_based_priority`\n12. `ask_suggest_controls`\n13. `ask_delayed_plans`\n14. `check_if_plan_delayed`\n15. `ask_establishment_history`\n16. `ask_top_risk_activities`\n17. `analyze_nc_by_category`\n18. `fallback`\n\nMessaggio utente: \"Cosa posso chiederti?\"\n\nRispondi SOLO con il JSON."
+  447    }],
+  448    "options": { "temperature": 0.1 }
+  449  }'
+  450    curl -s http://localhost:8000/model/parse -H 'Content-Type: application/json' -d
+  451    '{"text":"Cosa posso chiederti?"}'
+  452  curl -s http://localhost:8000/model/parse -H 'Content-Type: application/json' -d   '{"text":"Cosa posso chiederti?"}'
+  453  claude
+  454  curl -X POST 'https://gisa.regione.campania.it/gias/webchat/' -H 'Content-Type: application/json' -d '{"asl_id":"202","user_id":"6448","codice_fiscale":"ZZIBRD65R11A783K","asl_name":"BENEVENTO"}'
+  455  cd
+  456  vi .gitconfig
+  457  mkdir -p ~/bin/git-scripts
+  458  ~/bin/git-scripts
+  459  cd ~/bin/git-scripts
+  460  ll
+  461  vi git-before-claude.sh
+  462  vi git-after-claude.sh
+  463  vi git-daily-save.sh
+  464  vi git-safe-restore.sh
+  465  chmod +x ~/bin/git-scripts/*.sh
+  466  echo 'export PATH="$HOME/bin/git-scripts:$PATH"' >> ~/.bashrc
+  467  .  ~/.bashrc
+  468  langenv
+  469  git diff
+  470  git alias
+  471  git config --get-regexp ^alias\. | sed 's/alias\.//'
+  472  git config --get-regexp ^alias\. | sed 's/alias\.//'
+  473  vi /root/.bashrc
+  474  . /root/.bashrc
+  475  gitalias
+  476  git-alias
+  477  cat /root/.bashrc
+  478  pip freeze |grep psycop
+  479  ping gias.u-s.it
+  480  claude
+  481  ll doc/md
+  482  ll doc
+  483  ll doc
+  484  ll framework/
+  485  mv framework/ docs
+  486  ll docs/md
+  487  claude
+  488  claude
+  489  ll test_server.sh 
+  490  claude
+  491  claude
+  492  claude
+  493  export ANTGROPIC_API_KEY=
+  494  unset ANTGROPIC_API_KEY
+  495  claude
+  496  claude
+  497  claude
+  498  cd /opt/lang-env
+  499  ll
+  500  cp aggiorna_da_remoto_G.sh aggiorna_verso_remoto_G.sh
+  501  tailscale up
+  502  tailscale list
+  503  tailscale /?
+  504  tailscale help
+  505  ping gias
+  506  vi /etc/hosts
+  507  vi aggiorna_verso_remoto_G.sh 
+  508  ./aggiorna_verso_remoto_G.sh 
+  509  ping gIAS
+  510  nmap GIAS
+  511  ./aggiorna_verso_remoto_G.sh 
+  512  cat aggiorna_verso_remoto_G.sh 
+  513  vi aggiorna_verso_remoto_G.sh 
+  514  ./aggiorna_verso_remoto_G.sh 
+  515  vi aggiorna_verso_remoto_G.sh 
+  516  ./aggiorna_verso_remoto_G.sh 
+  517  ssh gias
+  518  tailscale down
+  519  vi /ect/hosts
+  520  vi /ect/hosts
+  521  vi /etc/hosts
+  522  ssh gias
+  523  ./aggiorna_verso_remoto_G.sh 
+  524  nmap gias
+  525  vi aggiorna_verso_remoto_G.sh 
+  526* nmap 
+  527  nmap 10.83.250.3
+  528  vi aggiorna_verso_remoto_G.sh 
+  529  ./aggiorna_verso_remoto_G.sh 
+  530  nmap 100.83.250.3
+  531  ssh 100.83.250.3
+  532  tailscal ip -4
+  533  tailscale ip -4
+  534  ssh -v 100.83.250.3
+  535  history 
+  536  history |grep aggiorna
+  537  history >his

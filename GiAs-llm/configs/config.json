@@ -1,0 +1,104 @@
+{
+  "current_year": 2025,
+  "llm_backend": {
+    "type": "ollama",
+    "options": [
+      "ollama",
+      "llamacpp"
+    ],
+    "description": {
+      "ollama": "Ollama server (porta 11434, API /api/chat)",
+      "llamacpp": "Llama.cpp server (porta 11435, API OpenAI-compatible /v1/chat/completions)"
+    },
+    "ollama": {
+      "host": "http://localhost:11434",
+      "api_endpoint": "/api/chat",
+      "health_endpoint": "/api/tags",
+      "timeout_seconds": 60,
+      "_host_comment": "Priorità configurazione host: OLLAMA_HOST env var > questo campo > localhost. Esempi: 'localhost', 'http://192.168.1.100:11434', 'http://ollama.example.com:11434'"
+    },
+    "llamacpp": {
+      "host": "http://localhost:11435",
+      "api_endpoint": "/v1/chat/completions",
+      "health_endpoint": "/health",
+      "model_name": "Llama-3.2-3B-Instruct-Q6_K_L.gguf",
+      "timeout_seconds": 90
+    }
+  },
+  "risk_predictor": {
+    "type": "statistical",
+    "options": [
+      "ml",
+      "statistical"
+    ],
+    "description": {
+      "ml": "Predittore ML con modello addestrato su dati storici NC",
+      "statistical": "Predittore statistico rule-based (Risk Score = P(NC) × Impatto × 100)"
+    }
+  },
+  "streaming": {
+    "enabled": true,
+    "max_duration_seconds": 120,
+    "heartbeat_interval_seconds": 30,
+    "description": "Configurazione Server-Sent Events (SSE) per streaming progressivo delle risposte"
+  },
+  "data_source": {
+    "type": "postgresql",
+    "csv": {
+      "directory": "data/dataset.10",
+      "files": {
+        "piani": "piani_monitoraggio.csv",
+        "attivita": "Master list rev 11_filtered.csv",
+        "controlli": "vw_cu.csv",
+        "osa_mai_controllati": "osa_mai_controllati_con_linea_852-3_filtered.csv",
+        "ocse": "isp_sempl_in_chiaro_2016_2025.csv",
+        "diff_prog_eseg": "vw_diff_programmati_eseguiti.csv",
+        "personale": "personale_filtered.csv"
+      },
+      "personale_separator": "|",
+      "ocse_separator": "$"
+    },
+    "postgresql": {
+      "enabled": true,
+      "host": "GIAS",
+      "port": 5432,
+      "database": "gias_db",
+      "user": "gisa_owner",
+      "password": "5XRe4g8Q5QSg",
+      "tables": {
+        "piani": "piani_monitoraggio",
+        "attivita": "masterlist",
+        "controlli": "cu_eseguiti",
+        "osa_mai_controllati": "osa_mai_controllati",
+        "ocse": "ocse_isp_semp",
+        "diff_prog_eseg": "cu_diff_programmati_eseguiti",
+        "personale": "personale"
+      }
+    }
+  },
+  "hybrid_search": {
+    "cpu_mode": true,
+    "default_strategy": "vector_only",
+    "description": "Su macchine CPU-only, disabilitare LLM reranking per risparmiare 1-2s per ricerca. Impostare cpu_mode a false per abilitare hybrid/llm_only."
+  },
+  "rag_documents": {
+    "enabled": true,
+    "documents_dir": "data/documents",
+    "collection_name": "procedure_documents",
+    "chunk_size": 600,
+    "chunk_overlap": 100,
+    "top_k": 5,
+    "score_threshold": 0.30,
+    "description": "RAG per documentazione e manuali procedure operative"
+  },
+  "fallback_recovery": {
+    "enabled": true,
+    "keyword_threshold": 15,
+    "max_suggestions": 4,
+    "llm_timeout": 5,
+    "max_consecutive_fallbacks": 3,
+    "enable_llm_phase": true,
+    "enable_category_menu": true,
+    "description": "Configurazione sistema di fallback intelligente con approssimazioni successive (keyword + LLM + menu categorizzato)"
+  }
+}

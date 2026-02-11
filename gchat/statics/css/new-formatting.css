@@ -1,0 +1,409 @@
+/* Compact formatting styles for new message system */
+
+.list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.list-item-compact {
+    background: rgba(245, 245, 247, 0.8);
+    border-radius: 8px;
+    padding: 8px 12px;
+    /* border-left: 3px solid #007acc; */
+    line-height: 1.4;
+}
+
+.list-item-compact[data-number]:before {
+    content: attr(data-number) ". ";
+    font-weight: 600;
+    color: #007acc;
+    margin-right: 4px;
+}
+
+.establishment-header {
+    font-size: 0.95em;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+.establishment-header strong {
+    color: #007acc;
+}
+
+.detail-line,
+.risk-score,
+.nc-line,
+.controls-line,
+.date-line {
+    font-size: 0.9em;
+    margin: 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.detail-line .label,
+.risk-score .label,
+.nc-line .label,
+.controls-line .label,
+.date-line .label {
+    font-weight: 500;
+    color: #555;
+    min-width: 80px;
+}
+
+.detail-line .value,
+.controls-line .value,
+.date-line .value {
+    color: #222;
+}
+
+.risk-score .score.high {
+    background: #fee2e2;
+    color: #dc2626;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.nc-line .severe {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.nc-line .minor {
+    color: #ea580c;
+    font-weight: 500;
+}
+
+.bullet-item-compact {
+    background: rgba(245, 245, 247, 0.6);
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin: 4px 0;
+    /* border-left: 2px solid #10b981; */
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.field-group {
+    margin: 6px 0;
+}
+
+.field-line {
+    margin: 3px 0;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.field-label {
+    color: #555;
+    margin-right: 4px;
+}
+
+.field-value {
+    color: #222;
+}
+
+.section-header {
+    background: linear-gradient(135deg, #007acc, #005293);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin: 12px 0 8px 0;
+    font-size: 0.95em;
+    font-weight: 600;
+}
+
+.sub-header {
+    background: rgba(0, 122, 204, 0.1);
+    border: 1px solid rgba(0, 122, 204, 0.3);
+    color: #005293;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin: 8px 0 6px 0;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.text-content {
+    margin: 4px 0;
+    line-height: 1.5;
+    color: #333;
+    font-size: 0.9em;
+}
+
+/* =============================================================================
+   Scroll-to-bottom button
+   ============================================================================= */
+
+.scroll-to-bottom {
+    position: absolute;
+    bottom: 16px;
+    right: 24px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #007acc;
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+    z-index: 10;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.scroll-to-bottom:hover {
+    background: #005293;
+    transform: scale(1.1);
+}
+
+.scroll-to-bottom.visible {
+    display: flex;
+}
+
+/* =============================================================================
+   Collapsible list sections
+   ============================================================================= */
+
+.collapsible-item {
+    display: none;
+}
+
+.collapsible-item.expanded {
+    display: block;
+}
+
+.expand-toggle {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    margin: 4px 0;
+    background: rgba(0, 122, 204, 0.08);
+    border: 1px dashed rgba(0, 122, 204, 0.3);
+    border-radius: 8px;
+    color: #007acc;
+    font-size: 0.9em;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.expand-toggle:hover {
+    background: rgba(0, 122, 204, 0.15);
+    border-color: #007acc;
+}
+
+.expand-toggle.expanded {
+    background: rgba(0, 122, 204, 0.05);
+}
+
+/* =============================================================================
+   Suggestions bar (above input, replaces inline suggestions)
+   ============================================================================= */
+
+.suggestions-bar {
+    padding: 8px 12px;
+    background: #f0f7ff;
+    border-top: 1px solid #d0e3f5;
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.suggestions-bar.visible {
+    display: flex;
+}
+
+.suggestions-bar .suggestion-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 12px;
+    background: white;
+    border: 1px solid #b8d4e6;
+    border-radius: 16px;
+    color: #003d6e;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.suggestions-bar .suggestion-chip:hover {
+    background: #007acc;
+    color: white;
+    border-color: #007acc;
+    transform: translateY(-1px);
+}
+
+.suggestions-bar .suggestions-label {
+    font-size: 0.8em;
+    color: #666;
+    font-weight: 500;
+    margin-right: 4px;
+}
+
+/* =============================================================================
+   Inline suggestions in bot messages
+   ============================================================================= */
+
+.suggestions-container {
+    margin-top: 12px;
+    padding: 10px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.suggestions-header {
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.suggestion-link {
+    display: block;
+    padding: 6px 10px;
+    margin: 4px 0;
+    background: #e8f4f8;
+    border: 1px solid #b8d4e6;
+    border-radius: 6px;
+    color: #003d6e;
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+}
+
+.suggestion-link:hover {
+    background: #0066cc;
+    color: #ffffff;
+    border-color: #0066cc;
+    transform: translateX(4px);
+}
+
+/* Dark theme support */
+.dark-theme .list-item-compact {
+    background: rgba(55, 65, 81, 0.8);
+    /* border-left-color: #60a5fa; */
+    color: #e5e7eb;
+}
+
+.dark-theme .establishment-header {
+    color: #e5e7eb;
+}
+
+.dark-theme .establishment-header strong {
+    color: #60a5fa;
+}
+
+.dark-theme .detail-line .label,
+.dark-theme .risk-score .label,
+.dark-theme .nc-line .label,
+.dark-theme .controls-line .label,
+.dark-theme .date-line .label {
+    color: #9ca3af;
+}
+
+.dark-theme .detail-line .value,
+.dark-theme .controls-line .value,
+.dark-theme .date-line .value {
+    color: #e5e7eb;
+}
+
+.dark-theme .bullet-item-compact {
+    background: rgba(55, 65, 81, 0.6);
+    /*  border-left-color: #34d399; */
+    color: #e5e7eb;
+}
+
+.dark-theme .field-label {
+    color: #9ca3af;
+}
+
+.dark-theme .field-value {
+    color: #e5e7eb;
+}
+
+.dark-theme .section-header {
+    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+}
+
+.dark-theme .sub-header {
+    background: rgba(29, 78, 216, 0.2);
+    border-color: rgba(29, 78, 216, 0.4);
+    color: #60a5fa;
+}
+
+.dark-theme .text-content {
+    color: #e5e7eb;
+}
+
+.dark-theme .scroll-to-bottom {
+    background: #8b5cf6;
+}
+
+.dark-theme .scroll-to-bottom:hover {
+    background: #7c3aed;
+}
+
+.dark-theme .expand-toggle {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.3);
+    color: #8b5cf6;
+}
+
+.dark-theme .expand-toggle:hover {
+    background: rgba(139, 92, 246, 0.2);
+    border-color: #8b5cf6;
+}
+
+.dark-theme .suggestions-bar {
+    background: #2a2a2a;
+    border-top-color: #3a3a3a;
+}
+
+.dark-theme .suggestions-bar .suggestion-chip {
+    background: #3a3a3a;
+    border-color: #4a4a4a;
+    color: #e5e7eb;
+}
+
+.dark-theme .suggestions-bar .suggestion-chip:hover {
+    background: #8b5cf6;
+    color: white;
+    border-color: #8b5cf6;
+}
+
+.dark-theme .suggestions-bar .suggestions-label {
+    color: #9ca3af;
+}
+
+.dark-theme .suggestions-container {
+    border-top-color: #4a4a4a;
+}
+
+.dark-theme .suggestions-header {
+    color: #9ca3af;
+}
+
+.dark-theme .suggestion-link {
+    background: #3a3a3a;
+    border-color: #4a4a4a;
+    color: #e5e7eb;
+}
+
+.dark-theme .suggestion-link:hover {
+    background: #8b5cf6;
+    color: white;
+    border-color: #8b5cf6;
+}

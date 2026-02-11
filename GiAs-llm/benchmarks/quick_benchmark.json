@@ -1,0 +1,303 @@
+{
+  "timestamp": "2026-01-28T16:13:58.938739",
+  "test_config": {
+    "test_cases": 10,
+    "iterations": 1,
+    "backends": [
+      "llamacpp",
+      "ollama"
+    ]
+  },
+  "statistics": {
+    "llamacpp": {
+      "backend": "llamacpp",
+      "total_tests": 10,
+      "correct": 10,
+      "incorrect": 0,
+      "accuracy": 100.0,
+      "avg_response_time_ms": 0.03,
+      "min_response_time_ms": 0.02,
+      "max_response_time_ms": 0.04,
+      "std_response_time_ms": 0.01,
+      "errors": 0
+    },
+    "ollama": {
+      "backend": "ollama",
+      "total_tests": 10,
+      "correct": 10,
+      "incorrect": 0,
+      "accuracy": 100.0,
+      "avg_response_time_ms": 0.03,
+      "min_response_time_ms": 0.02,
+      "max_response_time_ms": 0.04,
+      "std_response_time_ms": 0.01,
+      "errors": 0
+    }
+  },
+  "detailed_results": {
+    "llamacpp": [
+      {
+        "backend": "llamacpp",
+        "intent": "greet",
+        "message": "ciao",
+        "expected_intent": "greet",
+        "predicted_intent": "greet",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "ask_piano_description",
+        "message": "di cosa tratta il piano A1?",
+        "expected_intent": "ask_piano_description",
+        "predicted_intent": "ask_piano_description",
+        "correct": true,
+        "response_time_ms": 0.04,
+        "slots_extracted": {
+          "piano_code": "A1"
+        },
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "ask_piano_stabilimenti",
+        "message": "stabilimenti controllati dal piano A1",
+        "expected_intent": "ask_piano_stabilimenti",
+        "predicted_intent": "ask_piano_stabilimenti",
+        "correct": true,
+        "response_time_ms": 0.04,
+        "slots_extracted": {
+          "piano_code": "A1"
+        },
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "ask_piano_statistics",
+        "message": "quale piano è più frequente?",
+        "expected_intent": "ask_piano_statistics",
+        "predicted_intent": "ask_piano_statistics",
+        "correct": true,
+        "response_time_ms": 0.03,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "search_piani_by_topic",
+        "message": "piani su latte",
+        "expected_intent": "search_piani_by_topic",
+        "predicted_intent": "search_piani_by_topic",
+        "correct": true,
+        "response_time_ms": 0.03,
+        "slots_extracted": {
+          "topic": "latte"
+        },
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "ask_priority_establishment",
+        "message": "chi devo controllare per primo?",
+        "expected_intent": "ask_priority_establishment",
+        "predicted_intent": "ask_priority_establishment",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "ask_top_risk_activities",
+        "message": "attività più rischiose",
+        "expected_intent": "ask_top_risk_activities",
+        "predicted_intent": "ask_top_risk_activities",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "ask_suggest_controls",
+        "message": "stabilimenti mai controllati",
+        "expected_intent": "ask_suggest_controls",
+        "predicted_intent": "ask_suggest_controls",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "check_if_plan_delayed",
+        "message": "il piano B2 è in ritardo?",
+        "expected_intent": "check_if_plan_delayed",
+        "predicted_intent": "check_if_plan_delayed",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {
+          "piano_code": "B2"
+        },
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "llamacpp",
+        "intent": "ask_establishment_history",
+        "message": "storia controlli stabilimento IT 123",
+        "expected_intent": "ask_establishment_history",
+        "predicted_intent": "ask_establishment_history",
+        "correct": true,
+        "response_time_ms": 0.03,
+        "slots_extracted": {
+          "num_registrazione": "IT 123"
+        },
+        "needs_clarification": false,
+        "error": null
+      }
+    ],
+    "ollama": [
+      {
+        "backend": "ollama",
+        "intent": "greet",
+        "message": "ciao",
+        "expected_intent": "greet",
+        "predicted_intent": "greet",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "ask_piano_description",
+        "message": "di cosa tratta il piano A1?",
+        "expected_intent": "ask_piano_description",
+        "predicted_intent": "ask_piano_description",
+        "correct": true,
+        "response_time_ms": 0.04,
+        "slots_extracted": {
+          "piano_code": "A1"
+        },
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "ask_piano_stabilimenti",
+        "message": "stabilimenti controllati dal piano A1",
+        "expected_intent": "ask_piano_stabilimenti",
+        "predicted_intent": "ask_piano_stabilimenti",
+        "correct": true,
+        "response_time_ms": 0.03,
+        "slots_extracted": {
+          "piano_code": "A1"
+        },
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "ask_piano_statistics",
+        "message": "quale piano è più frequente?",
+        "expected_intent": "ask_piano_statistics",
+        "predicted_intent": "ask_piano_statistics",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "search_piani_by_topic",
+        "message": "piani su latte",
+        "expected_intent": "search_piani_by_topic",
+        "predicted_intent": "search_piani_by_topic",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {
+          "topic": "latte"
+        },
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "ask_priority_establishment",
+        "message": "chi devo controllare per primo?",
+        "expected_intent": "ask_priority_establishment",
+        "predicted_intent": "ask_priority_establishment",
+        "correct": true,
+        "response_time_ms": 0.03,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "ask_top_risk_activities",
+        "message": "attività più rischiose",
+        "expected_intent": "ask_top_risk_activities",
+        "predicted_intent": "ask_top_risk_activities",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "ask_suggest_controls",
+        "message": "stabilimenti mai controllati",
+        "expected_intent": "ask_suggest_controls",
+        "predicted_intent": "ask_suggest_controls",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {},
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "check_if_plan_delayed",
+        "message": "il piano B2 è in ritardo?",
+        "expected_intent": "check_if_plan_delayed",
+        "predicted_intent": "check_if_plan_delayed",
+        "correct": true,
+        "response_time_ms": 0.02,
+        "slots_extracted": {
+          "piano_code": "B2"
+        },
+        "needs_clarification": false,
+        "error": null
+      },
+      {
+        "backend": "ollama",
+        "intent": "ask_establishment_history",
+        "message": "storia controlli stabilimento IT 123",
+        "expected_intent": "ask_establishment_history",
+        "predicted_intent": "ask_establishment_history",
+        "correct": true,
+        "response_time_ms": 0.04,
+        "slots_extracted": {
+          "num_registrazione": "IT 123"
+        },
+        "needs_clarification": false,
+        "error": null
+      }
+    ]
+  }
+}

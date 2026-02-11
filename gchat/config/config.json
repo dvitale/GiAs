@@ -1,0 +1,80 @@
+{
+  "server": {
+    "port": "8080",
+    "host": "localhost"
+  },
+  "llm_server": {
+    "url": "http://localhost:5005",
+    "timeout": 60
+  },
+  "log": {
+    "level": "info",
+    "file": "log/app.log"
+  },
+  "predefined_questions": [
+    {
+      "id": "q1",
+      "text": "📋 Piani in ritardo",
+      "title": "Risposta immediata: elenco piani con ritardo nella tua ASL/UOC",
+      "question": "Piani in ritardo",
+      "category": "single_turn",
+      "color": "#10b981",
+      "order": 1
+    },
+    {
+      "id": "q2",
+      "text": "⚠️ Attività più rischiose",
+      "title": "Risposta immediata: classifica attività per rischio (P(NC) × Impatto)",
+      "question": "Attività più rischiose",
+      "category": "single_turn",
+      "color": "#059669",
+      "order": 2
+    },
+    {
+      "id": "q3",
+      "text": "🎯 Stabilimenti a rischio",
+      "title": "Sintesi + dettagli: stabilimenti mai controllati ordinati per rischio storico NC",
+      "question": "Stabilimenti a rischio",
+      "category": "two_phase",
+      "color": "#3b82f6",
+      "order": 3
+    },
+    {
+      "id": "q4",
+      "text": "🔍 Piani sul benessere animale",
+      "title": "Sintesi + dettagli: ricerca semantica tra i piani di monitoraggio",
+      "question": "Piani sul benessere animale",
+      "category": "two_phase",
+      "color": "#2563eb",
+      "order": 4
+    },
+    {
+      "id": "q5",
+      "text": "💬 Verifica ritardo piano",
+      "title": "Conversazione: ti chiederò quale piano verificare (es. A1, B2)",
+      "question": "Voglio verificare se un piano è in ritardo",
+      "category": "multiturn",
+      "color": "#f97316",
+      "order": 5
+    },
+    {
+      "id": "q6",
+      "text": "📊 Storico controlli",
+      "title": "Conversazione: ti chiederò i dati dello stabilimento (ragione sociale, P.IVA o n. riconoscimento)",
+      "question": "Storico controlli stabilimento",
+      "category": "multiturn",
+      "color": "#ea580c",
+      "order": 6
+    }
+  ],
+  "ui": {
+    "welcome_message": "Sono il tuo assistente per i **Controlli Ufficiali GISA** (**Anno 2025**).\n\n**Clicca su una domanda** per provarla, oppure scrivimi liberamente!\n\n💡 **Tip:** Le domande sono organizzate per tipo di flusso:\n• **Verde** = Risposta immediata\n• **Blu** = Sintesi + dettagli su richiesta\n• **Arancio** = Conversazione interattiva",
+    "enable_streaming": true,
+    "auto_fallback_on_error": true,
+    "show_thinking_animation": true
+  },
+  "transcription": {
+    "enabled": false,
+    "url": "http://localhost:8090/inference"
+  }
+}

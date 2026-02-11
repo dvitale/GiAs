@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}}</title>
+    <link rel="stylesheet" href="{{.basePath}}/static/css/style.css">
+    <style>
+        :root {
+            --text-muted: #6b7280;
+        }
+
+        body.dark-theme {
+            --text-muted: #94a3b8;
+        }
+
+        .debug-container {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            grid-template-rows: auto 1fr auto;
+            gap: 10px;
+            height: 100vh;
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 10px;
+        }
+
+        .debug-header {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .header-left {
+            flex: 1;
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .theme-icon {
+            width: 20px;
+            height: 20px;
+            color: white;
+        }
+
+        .moon-icon {
+            display: none;
+        }
+
+        body.dark-theme .sun-icon {
+            display: none;
+        }
+
+        body.dark-theme .moon-icon {
+            display: block;
+        }
+
+        /* Dark Theme */
+        body.dark-theme {
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e293b 100%);
+        }
+
+        body.dark-theme .debug-container {
+            color: #f1f5f9;
+        }
+
+        body.dark-theme .chat-area {
+            background: #1e293b;
+            border-color: #475569;
+        }
+
+        body.dark-theme .debug-panel {
+            background: #1e293b;
+            border-color: #475569;
+        }
+
+        body.dark-theme .debug-section {
+            background: #334155;
+            border-left-color: #818cf8;
+        }
+
+        body.dark-theme .debug-section h3 {
+            color: #a5b4fc;
+        }
+
+        body.dark-theme .architecture-info {
+            background: #334155;
+            border-color: #475569;
+            color: #e2e8f0;
+        }
+
+        body.dark-theme .architecture-info strong {
+            color: #a5b4fc;
+        }
+
+        body.dark-theme .intent-display {
+            color: #e2e8f0;
+        }
+
+        body.dark-theme .confidence-text {
+            color: #94a3b8;
+        }
+
+        body.dark-theme .section-subtitle {
+            color: #94a3b8;
+        }
+
+        body.dark-theme .slot-source {
+            color: #94a3b8;
+        }
+
+        body.dark-theme .entity-item,
+        body.dark-theme .slot-item,
+        body.dark-theme .agent-item {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+
+        body.dark-theme .entity-name,
+        body.dark-theme .slot-name,
+        body.dark-theme .agent-name {
+            color: #e2e8f0;
+        }
+
+        body.dark-theme .entity-value,
+        body.dark-theme .slot-value,
+        body.dark-theme .agent-value {
+            color: #a5b4fc;
+        }
+
+        body.dark-theme .empty-state {
+            color: #64748b;
+        }
+
+        body.dark-theme .chat-messages {
+            background: #0f172a;
+        }
+
+        body.dark-theme .message-content {
+            color: #e2e8f0;
+        }
+
+        body.dark-theme .chat-input {
+            background: #1e293b;
+        }
+
+        body.dark-theme #messageInput {
+            background: #0f172a;
+            border-color: #475569;
+            color: #f1f5f9;
+        }
+
+        body.dark-theme #sendButton {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+        }
+
+        .architecture-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            margin-left: 10px;
+            font-weight: 600;
+        }
+
+        .debug-info {
+            font-size: 0.9em;
+            margin-top: 10px;
+            opacity: 0.9;
+        }
+
+        .chat-area {
+            grid-column: 1;
+            grid-row: 2;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .debug-panel {
+            grid-column: 2;
+            grid-row: 2 / 4;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .debug-section {
+            background: white;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 6px;
+            border-left: 4px solid #4f46e5;
+        }
+
+        .debug-section h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.95em;
+            color: #4f46e5;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .section-subtitle {
+            font-size: 0.75em;
+            color: #6b7280;
+            font-weight: normal;
+            text-transform: none;
+            margin-top: 2px;
+        }
+
+        .intent-display {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .confidence-bar {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #81C784);
+            transition: width 0.3s ease;
+        }
+
+        .confidence-text {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .entity-item,
+        .slot-item,
+        .agent-item {
+            background: #f1f3f5;
+            padding: 8px;
+            margin: 6px 0;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .entity-name,
+        .slot-name,
+        .agent-name {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .entity-value,
+        .slot-value,
+        .agent-value {
+            color: #4f46e5;
+            font-family: 'Courier New', monospace;
+        }
+
+        .slot-source {
+            font-size: 0.75em;
+            color: #868e96;
+            font-style: italic;
+            margin-left: 8px;
+        }
+
+        .agent-badge {
+            display: inline-block;
+            background: #e0e7ff;
+            color: #4338ca;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            margin-left: 8px;
+        }
+
+        .architecture-info {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 12px;
+            font-size: 0.85em;
+        }
+
+        .architecture-info strong {
+            color: #1e40af;
+        }
+
+        .empty-state {
+            color: #adb5bd;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .chat-input {
+            grid-column: 1;
+            grid-row: 3;
+        }
+
+        @media (max-width: 1200px) {
+            .debug-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr 300px auto;
+            }
+
+            .debug-panel {
+                grid-column: 1;
+                grid-row: 3;
+            }
+
+            .chat-input {
+                grid-row: 4;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="debug-container">
+        <div class="debug-header">
+            <div class="header-left">
+                <div style="display: flex; gap: 8px; margin-bottom: 4px; font-size: 0.75rem;">
+                    <a href="{{.basePath}}/{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}" style="color: #60a5fa; text-decoration: none;">Home</a>
+                    <span style="color: #6b7280;">|</span>
+                    <span style="color: #e5e7eb;">Debug</span>
+                    <span style="color: #6b7280;">|</span>
+                    <a href="{{.basePath}}/debug/langgraph{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}" style="color: #60a5fa; text-decoration: none;">LangGraph Visualizer</a>
+                </div>
+                <h1 style="margin: 0;">
+                    {{.title}}
+                    <span class="architecture-badge">{{if .framework}}{{.framework}}{{else}}LangGraph{{end}} + {{if .llmModel}}{{.llmModel}}{{else}}LLM{{end}}</span>
+                </h1>
+                {{if .user}}
+                <div class="debug-info">
+                    👤 <strong>{{.user.namefirst}} {{.user.namelast}}</strong> |
+                    🏥 ASL {{.user.asl}} |
+                    🆔 User ID: {{.user.user_id}}
+                </div>
+                {{else}}
+                <div class="debug-info">⚠️ Nessun contesto utente configurato</div>
+                {{end}}
+            </div>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+        </div>
+
+        <div class="chat-area">
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot-message">
+                    <div class="message-content">{{.welcomeMessage}}</div>
+                    <div class="message-time" id="welcomeTime"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="debug-panel">
+            <div class="architecture-info">
+                <strong>🏗️ Architettura:</strong> LangGraph State Machine<br>
+                <strong>🤖 Router:</strong> LLM-based Intent Classification<br>
+                <strong>🤖 Agents:</strong> Piano, Priority, Risk, Search
+            </div>
+
+            <div class="debug-section">
+                <h3>
+                    🎯 Intent Classification
+                    <div class="section-subtitle">LLM Router (pattern-based)</div>
+                </h3>
+                <div id="intentDisplay" class="empty-state">In attesa di messaggio...</div>
+            </div>
+
+            <div class="debug-section">
+                <h3>
+                    🏷️ Entities Estratte
+                    <div class="section-subtitle">Slots from intent classification</div>
+                </h3>
+                <div id="entitiesDisplay" class="empty-state">Nessuna entity</div>
+            </div>
+
+            <div class="debug-section">
+                <h3>
+                    🤖 Agents Eseguiti
+                    <div class="section-subtitle">LangGraph agent nodes</div>
+                </h3>
+                <div id="agentsDisplay" class="empty-state">Nessun agent</div>
+            </div>
+
+            <div class="debug-section">
+                <h3>
+                    💾 Conversation State
+                    <div class="section-subtitle">Metadata & Context</div>
+                </h3>
+                <div id="stateDisplay" class="empty-state">Caricamento...</div>
+            </div>
+        </div>
+
+        <div class="chat-input">
+            <div class="input-container">
+                <input type="text" id="messageInput" placeholder="Scrivi il tuo messaggio..." autocomplete="off">
+                <button id="sendButton">Invia</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="typing-indicator" id="typingIndicator">
+        <div class="typing-dots">
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+        <span>Il sistema sta elaborando...</span>
+    </div>
+
+    <script>
+        window.basePath = {{.basePath | json}};
+        window.queryParams = {
+            asl_id: {{if .queryParams.asl_id}}{{.queryParams.asl_id | json}}{{else}}null{{end}},
+            asl_name: {{if .queryParams.asl_name}}{{.queryParams.asl_name | json}}{{else}}null{{end}},
+            user_id: {{if .queryParams.user_id}}{{.queryParams.user_id | json}}{{else}}null{{end}},
+            codice_fiscale: {{if .queryParams.codice_fiscale}}{{.queryParams.codice_fiscale | json}}{{else}}null{{end}},
+            username: {{if .queryParams.username}}{{.queryParams.username | json}}{{else}}null{{end}}
+        };
+
+        // Theme management
+        (function() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark-theme');
+            }
+
+            document.getElementById('themeToggle').addEventListener('click', function() {
+                document.body.classList.toggle('dark-theme');
+                const isDark = document.body.classList.contains('dark-theme');
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            });
+        })();
+    </script>
+    <script src="{{.basePath}}/static/js/debug_langgraph.js"></script>
+</body>
+
+</html>

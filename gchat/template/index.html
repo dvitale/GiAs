@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}}</title>
+    <link rel="stylesheet" href="{{.basePath}}/static/css/style.css">
+    <link rel="stylesheet" href="{{.basePath}}/static/css/new-formatting.css">
+</head>
+
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="header-top">
+                <h1 class="header-title">{{.title}}</h1>
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                    <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="header-content">
+                <img src="{{.basePath}}/static/img/gias.png" alt="GIAS Logo" class="header-logo" id="giasLogo"
+                    title="Ctrl+Click: debug | Shift+Click: langgraph">
+                {{if .user}}
+                <div class="header-text">
+                    <div class="user-info">
+                        <div class="user-details">
+                            <span class="user-name-line">{{.user.namefirst}} {{.user.namelast}}</span>
+                            {{if .user.asl}}<p class="user-asl-inline">ASL {{.user.asl}}</p>{{end}}
+                            {{if .user.hierarchy}}
+                            <ul class="user-hierarchy">
+                                {{.user.hierarchy}}
+                            </ul>
+                            {{end}}
+                        </div>
+                    </div>
+                </div>
+                {{end}}
+                <img src="{{.basePath}}/static/img/logo-reg.png" alt="Logo Regione" class="header-logo">
+            </div>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot-message" id="welcomeMessage">
+                <div class="message-content" id="welcomeContent">
+                    <!-- Welcome message will be rendered by JavaScript -->
+                </div>
+                <div class="message-time" id="welcomeTime"></div>
+            </div>
+        </div>
+        <div class="predefined-questions" id="predefinedQuestions">
+            <div class="questions-header">
+                <h4>Domande rapide ed esempi:</h4>
+            </div>
+            <div class="questions-container" id="questionsContainer">
+                <!-- Question buttons will be loaded here dynamically -->
+            </div>
+        </div>
+        <div class="chat-input">
+            <div class="input-container">
+                <input type="text" id="messageInput" placeholder="Scrivi il tuo messaggio..." autocomplete="off">
+                <button id="sendButton">Invia</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="typing-indicator" id="typingIndicator">
+        <div class="typing-dots">
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+        <span>Sto recuperando le informazioni...</span>
+    </div>
+
+    <script>
+        // Base path for API calls
+        window.basePath = "{{.basePath}}";
+
+        // Transcription feature flag
+        window.transcriptionEnabled = {{.transcriptionEnabled }};
+
+        // Welcome message and user data
+        window.welcomeData = {
+            message: JSON.parse({{.welcomeMessage | printf "%q"}}),
+            userName: {{if .user}}{{.user.namefirst | json}}{{else}}null{{end}}
+        };
+
+        // Pass query parameters to JavaScript
+        window.queryParams = {
+            asl_id: {{if .queryParams.asl_id}}{{.queryParams.asl_id | json}}{{else}}null{{end}},
+            asl_name: {{if .queryParams.asl_name}}{{.queryParams.asl_name | json}}{{else}}null{{end}},
+            user_id: {{if .queryParams.user_id}}{{.queryParams.user_id | json}}{{else}}null{{end}},
+            codice_fiscale: {{if .queryParams.codice_fiscale}}{{.queryParams.codice_fiscale | json}}{{else}}null{{end}},
+            username: {{if .queryParams.username}}{{.queryParams.username | json}}{{else}}null{{end}}
+        };
+    </script>
+    <script src="{{.basePath}}/static/js/chat.js"></script>
+</body>
+
+</html>

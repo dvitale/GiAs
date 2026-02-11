@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test JavaScript String Processing</title>
+</head>
+<body>
+    <div id="output"></div>
+    <script>
+        // Test the exact processing from our template
+        const rawMessage = "\"Sono il tuo assistente virtuale per l'**Anno 2025**. Posso aiutarti a gestire i Controlli Ufficiali del sistema Gisa?\\n\\n📅 **Anno di riferimento: 2025** (per programmazioni e ritardi)\\n💾 **Dati storici: 2016-2025** (per analisi di rischio)\\n\\n### 💬 Cosa puoi chiedere?\\n\\n**Piani di Controllo:**\\n- \\\"Di cosa tratta il piano A1?\\\"\\n- \\\"Quali stabilimenti rientrano nel piano B2?\\\"\\n- \\\"Cerca piani sui bovini\\\" (ricerca semantica)\\n\\n**Programmazione e Priorità 2025:**\\n- \\\"Quale stabilimento dovrei controllare per primo?\\\"\\n- \\\"Quali piani sono in ritardo quest'anno?\\\"\\n- \\\"Suggerisci controlli basati sul rischio storico\\\"\\n\\n**Analisi Non Conformità:**\\n- \\\"Problemi HACCP nella mia ASL\\\"\\n- \\\"Trend igiene alimenti ultimo anno\\\"\\n- \\\"Stabilimenti a rischio NC strutture\\\"\\n- \\\"Predici categorie NC per ristoranti\\\"\\n\\n**Storico Stabilimenti:**\\n- \\\"Storico controlli partita IVA 2611810645\\\"\\n- \\\"Controlli stabilimento IT 2287\\\"\\n- \\\"Storia controlli per SEPE\\\" (ragione sociale)\\n\\n**Informazioni Generali:**\\n- \\\"Aiuto\\\" / \\\"Cosa puoi fare?\\\"\"";
+
+        // Current processing
+        const currentResult = rawMessage.slice(1, -1).replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+
+        // Better processing - handle JSON-style escapes properly
+        let betterResult;
+        try {
+            betterResult = JSON.parse(rawMessage);
+        } catch (e) {
+            betterResult = "JSON parsing failed: " + e.message;
+        }
+
+        document.getElementById('output').innerHTML = '<pre>' +
+            'Raw length: ' + rawMessage.length + '\n' +
+            'Current method result length: ' + currentResult.length + '\n' +
+            'JSON.parse result length: ' + betterResult.length + '\n\n' +
+            'Current method first 200 chars:\n' + currentResult.substring(0, 200) + '\n\n' +
+            'JSON.parse first 200 chars:\n' + betterResult.substring(0, 200) + '\n\n' +
+            'Current has newlines: ' + (currentResult.includes('\n') ? 'YES' : 'NO') + '\n' +
+            'JSON.parse has newlines: ' + (betterResult.includes('\n') ? 'YES' : 'NO') +
+            '</pre>';
+
+        console.log('Current method:', currentResult.substring(0, 100));
+        console.log('JSON.parse method:', betterResult.substring(0, 100));
+    </script>
+</body>
+</html>

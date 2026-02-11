@@ -1,0 +1,194 @@
+package main
+
+import (
+	"bytes"
+//	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+//	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+type TranscriptionResponse struct {
+	Text     string `json:"text"`
+	Language string `json:"language,omitempty"`
+}
+
+type WhisperResponse struct {
+	Text string `json:"text"`
+}
+
+func TranscribeHandler(c *gin.Context) {
+	startHandler := time.Now()
+
+	file, err := c.FormFile("audio")
+	if err != nil {
+		log.Printf("ERROR_TRANSCRIBE: failed to receive audio file: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File audio mancante"})
+		return
+	}
+
+	language := c.PostForm("language")
+	if language == "" {
+		language = "it"
+	}
+
+	log.Printf("TRANSCRIBE_REQUEST: filename=%s, size=%d bytes, language=%s", file.Filename, file.Size, language)
+	log.Printf("PROFILE_HANDLER_RECEIVE: %.2fms", time.Since(startHandler).Seconds()*1000)
+
+	startTempFile := time.Now()
+	tmpFile, err := os.CreateTemp("", "whisper-*.wav")
+	if err != nil {
+		log.Printf("ERROR_TRANSCRIBE: failed to create temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Errore creazione file temporaneo"})
+		return
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	src, err := file.Open()
+	if err != nil {
+		log.Printf("ERROR_TRANSCRIBE: failed to open uploaded file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Errore apertura file"})
+		return
+	}
+	defer src.Close()
+
+	if _, err := io.Copy(tmpFile, src); err != nil {
+		log.Printf("ERROR_TRANSCRIBE: failed to save uploaded file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Errore salvataggio file"})
+		return
+	}
+
+	tmpFile.Close()
+	log.Printf("PROFILE_HANDLER_FILE_SAVE: %.2fms", time.Since(startTempFile).Seconds()*1000)
+
+	whisperURL := os.Getenv("WHISPER_URL")
+	if whisperURL == "" {
+		whisperURL = "http://localhost:8090/inference"
+	}
+
+	log.Printf("TRANSCRIBE_WHISPER: sending to %s", whisperURL)
+
+	startWhisper := time.Now()
+	transcription, err := callWhisper(tmpFile.Name(), whisperURL, language)
+	log.Printf("PROFILE_HANDLER_WHISPER_CALL: %.2fms (%.2fs)", time.Since(startWhisper).Seconds()*1000, time.Since(startWhisper).Seconds())
+	if err != nil {
+		log.Printf("ERROR_TRANSCRIBE: whisper call failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Errore trascrizione audio"})
+		return
+	}
+
+	log.Printf("TRANSCRIBE_SUCCESS: text_length=%d", len(transcription))
+
+	totalDuration := time.Since(startHandler)
+	log.Printf("PROFILE_HANDLER_TOTAL: %.2fms (%.2fs)", totalDuration.Seconds()*1000, totalDuration.Seconds())
+
+	c.JSON(http.StatusOK, TranscriptionResponse{
+		Text:     transcription,
+		Language: language,
+	})
+}
+
+func callWhisper(audioPath, whisperURL, language string) (string, error) {
+	startTotal := time.Now()
+
+	convertedPath := strings.TrimSuffix(audioPath, ".wav") + "-converted.wav"
+	startConvert := time.Now()
+
+	convertCmd := exec.Command("ffmpeg",
+		"-i", audioPath,
+		"-ar", "16000",
+		"-ac", "1",
+		"-c:a", "pcm_s16le",
+		convertedPath,
+		"-y",
+	)
+	var convertStderr bytes.Buffer
+	convertCmd.Stderr = &convertStderr
+
+	if err := convertCmd.Run(); err != nil {
+		log.Printf("FFMPEG_ERROR: %s", convertStderr.String())
+		return "", fmt.Errorf("ffmpeg conversion failed: %w", err)
+	}
+	defer os.Remove(convertedPath)
+	log.Printf("PROFILE_FFMPEG_CONVERT: %.2fms", time.Since(startConvert).Seconds()*1000)
+
+	whisperBin := os.Getenv("WHISPER_BIN")
+	if whisperBin == "" {
+		whisperBin = "/opt/lang-env/whisper.cpp/build/bin/whisper-cli"
+	}
+
+	modelPath := os.Getenv("WHISPER_MODEL_PATH")
+	if modelPath == "" {
+		modelPath = "/opt/lang-env/whisper.cpp/models/ggml-small.bin"
+	}
+
+	startCmd := time.Now()
+	cmd := exec.Command(whisperBin,
+		"-m", modelPath,
+		"-l", "it",
+		"-f", convertedPath,
+		"--output-txt",
+		"--output-file", convertedPath,
+		"-t", "4",
+		"-bs", "5",
+		"-bo", "5",
+		"--prompt", "Domanda in italiano su controlli, stabilimenti, piani sanitari.",
+	)
+
+	var stderr bytes.Buffer
+	var stdout bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
+
+	log.Printf("TRANSCRIBE_WHISPER_CMD: %s -m %s -l it -f %s", whisperBin, modelPath, convertedPath)
+	log.Printf("PROFILE_CMD_SETUP: %.2fms", time.Since(startCmd).Seconds()*1000)
+
+	startExec := time.Now()
+	if err := cmd.Run(); err != nil {
+		log.Printf("WHISPER_STDERR: %s", stderr.String())
+		log.Printf("WHISPER_STDOUT: %s", stdout.String())
+		return "", fmt.Errorf("whisper.cpp command failed: %w, stderr: %s", err, stderr.String())
+	}
+	execDuration := time.Since(startExec)
+	log.Printf("PROFILE_WHISPER_EXEC: %.2fms (%.2fs)", execDuration.Seconds()*1000, execDuration.Seconds())
+
+	stderrStr := stderr.String()
+	if len(stderrStr) > 0 {
+		stderrLines := strings.Split(stderrStr, "\n")
+		log.Printf("WHISPER_STDERR_LINES: %d", len(stderrLines))
+		for i, line := range stderrLines {
+			if strings.Contains(line, "output") || strings.Contains(line, "error") || strings.Contains(line, "fail") || i < 5 || i > len(stderrLines)-5 {
+				log.Printf("WHISPER_STDERR[%d]: %s", i, line)
+			}
+		}
+	}
+
+	startRead := time.Now()
+	outputFile := convertedPath + ".txt"
+
+	if _, err := os.Stat(outputFile); os.IsNotExist(err) {
+		log.Printf("ERROR_FILE_NOT_FOUND: %s does not exist", outputFile)
+		return "", fmt.Errorf("transcription file not created: %s", outputFile)
+	}
+	defer os.Remove(outputFile)
+
+	content, err := os.ReadFile(outputFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read transcription: %w", err)
+	}
+	log.Printf("PROFILE_FILE_READ: %.2fms", time.Since(startRead).Seconds()*1000)
+
+	totalDuration := time.Since(startTotal)
+	log.Printf("PROFILE_TOTAL: %.2fms (%.2fs)", totalDuration.Seconds()*1000, totalDuration.Seconds())
+
+	return strings.TrimSpace(string(content)), nil
+}
