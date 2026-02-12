@@ -34,7 +34,7 @@ class TestRouter:
 
     def test_valid_intents_list(self):
         """Verifica che la lista di intent validi sia definita correttamente"""
-        assert len(Router.VALID_INTENTS) == 19
+        assert len(Router.VALID_INTENTS) == 20
         assert "greet" in Router.VALID_INTENTS
         assert "ask_piano_description" in Router.VALID_INTENTS
         assert "ask_priority_establishment" in Router.VALID_INTENTS
@@ -148,6 +148,26 @@ class TestRouter:
         assert result["intent"] == "ask_top_risk_activities"
         mock_llm.query.assert_not_called()
 
+    def test_heuristic_analyze_nc_by_category(self):
+        """Test heuristic per analisi NC per categoria - NON chiama LLM"""
+        mock_llm = Mock()
+        router = Router(mock_llm)
+
+        test_cases = [
+            "NC per categoria HACCP",
+            "non conformità categoria igiene",
+            "analizza le non conformità",
+            "analizza NC",
+            "problemi di HACCP",
+            "problemi igiene",
+            "non conformità HACCP",
+            "NC di tipo struttura",
+        ]
+        for phrase in test_cases:
+            result = router.classify(phrase)
+            assert result["intent"] == "analyze_nc_by_category", f"Failed for: '{phrase}'"
+            mock_llm.query.assert_not_called()
+
     def test_heuristic_priority(self):
         """Test heuristic per priorità - NON chiama LLM"""
         mock_llm = Mock()
@@ -156,6 +176,61 @@ class TestRouter:
         for phrase in ["chi devo controllare", "cosa devo fare oggi"]:
             result = router.classify(phrase)
             assert result["intent"] == "ask_priority_establishment", f"Failed for: {phrase}"
+
+    def test_heuristic_piano_statistics(self):
+        """Test heuristic per statistiche piani - NON chiama LLM"""
+        mock_llm = Mock()
+        router = Router(mock_llm)
+
+        test_cases = [
+            "statistiche sui piani",
+            "statistiche dei piani",
+            "piani più usati",
+            "piani più frequenti",
+            "quanti piani",
+            "frequenza piani",
+            "quale piano è più frequente",
+        ]
+        for phrase in test_cases:
+            result = router.classify(phrase)
+            assert result["intent"] == "ask_piano_statistics", f"Failed for: '{phrase}'"
+            mock_llm.query.assert_not_called()
+
+    def test_heuristic_nearby_priority(self):
+        """Test heuristic per prossimità geografica - NON chiama LLM"""
+        mock_llm = Mock()
+        router = Router(mock_llm)
+
+        test_cases = [
+            "stabilimenti vicino a Napoli",
+            "vicino a Piazza Garibaldi",
+            "nei dintorni di Benevento",
+            "nei pressi di Avellino",
+            "zona di Caserta",
+            "entro 5 km da Salerno",
+            "intorno a Via Roma",
+        ]
+        for phrase in test_cases:
+            result = router.classify(phrase)
+            assert result["intent"] == "ask_nearby_priority", f"Failed for: '{phrase}'"
+            mock_llm.query.assert_not_called()
+
+    def test_slot_extraction_radius_km(self):
+        """Test estrazione radius_km da frasi con 'entro X km'"""
+        mock_llm = Mock()
+        router = Router(mock_llm)
+
+        test_cases = [
+            ("stabilimenti entro 5 km da Napoli", 5.0),
+            ("controlli entro 10 km dalla stazione", 10.0),
+            ("entro 3 km da Via Roma", 3.0),
+        ]
+        for phrase, expected_radius in test_cases:
+            result = router.classify(phrase)
+            assert result["intent"] == "ask_nearby_priority", f"Failed intent for: '{phrase}'"
+            if result["slots"].get("radius_km"):
+                assert result["slots"]["radius_km"] == expected_radius, \
+                    f"Failed radius for: '{phrase}', expected {expected_radius}, got {result['slots'].get('radius_km')}"
 
     # =========================================================================
     # TEST CONFIRM/DECLINE CON CONTESTO
@@ -418,7 +493,8 @@ class TestRouter:
     def test_valid_slot_keys_defined(self):
         """Test che VALID_SLOT_KEYS contenga tutte le chiavi previste"""
         expected_keys = {"piano_code", "asl", "topic", "num_registrazione",
-                        "partita_iva", "ragione_sociale", "categoria"}
+                        "partita_iva", "ragione_sociale", "categoria",
+                        "location", "radius_km"}
         assert Router.VALID_SLOT_KEYS == expected_keys
 
     # =========================================================================

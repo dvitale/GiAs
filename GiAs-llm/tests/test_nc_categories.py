@@ -139,6 +139,52 @@ class TestNCCategoryTrends:
                 assert abs(percentuale_calcolata - percentuale_effettiva) < 0.01
 
 
+class TestNCCategoryRouter:
+    """Test classificazione intent analyze_nc_by_category"""
+
+    def test_router_nc_category_heuristic(self):
+        """Test che il router classifichi correttamente le query NC per categoria"""
+        from unittest.mock import Mock
+        try:
+            from orchestrator.router import Router
+        except ImportError:
+            pytest.skip("Router non importabile")
+
+        mock_llm = Mock()
+        router = Router(mock_llm)
+
+        test_cases = [
+            "NC per categoria HACCP",
+            "non conformità categoria igiene",
+            "analizza le non conformità",
+            "problemi di HACCP",
+        ]
+
+        for phrase in test_cases:
+            result = router.classify(phrase)
+            assert result["intent"] == "analyze_nc_by_category", f"Failed for: '{phrase}'"
+            mock_llm.query.assert_not_called()
+
+    def test_intent_to_tool_mapping(self):
+        """Test che l'intent sia mappato al tool corretto"""
+        try:
+            from orchestrator.tool_nodes import INTENT_TO_TOOL
+        except ImportError:
+            pytest.skip("tool_nodes non importabile")
+
+        assert "analyze_nc_by_category" in INTENT_TO_TOOL
+
+    def test_required_slots_definition(self):
+        """Test che i slot richiesti siano definiti"""
+        try:
+            from orchestrator.router import Router
+        except ImportError:
+            pytest.skip("Router non importabile")
+
+        assert "analyze_nc_by_category" in Router.REQUIRED_SLOTS
+        assert "categoria" in Router.REQUIRED_SLOTS["analyze_nc_by_category"]
+
+
 class TestIntegrationCategorizedAnalysis:
     """Test di integrazione per funzionalità categorie NC"""
 
