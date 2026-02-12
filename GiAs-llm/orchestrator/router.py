@@ -93,6 +93,7 @@ ESEMPI:
 "attività più rischiose" → {"intent":"ask_top_risk_activities","slots":{},"needs_clarification":false}
 "piani in ritardo" → {"intent":"ask_delayed_plans","slots":{},"needs_clarification":false}
 "il piano B2 è in ritardo?" → {"intent":"check_if_plan_delayed","slots":{"piano_code":"B2"},"needs_clarification":false}
+"voglio verificare se un piano è in ritardo" → {"intent":"check_if_plan_delayed","slots":{},"needs_clarification":true}
 "dimmi del piano" → {"intent":"ask_piano_stabilimenti","slots":{},"needs_clarification":true}
 "di cosa si occupa il piano A1" → {"intent":"ask_piano_description","slots":{"piano_code":"A1"},"needs_clarification":false}
 "chi devo controllare per primo" → {"intent":"ask_priority_establishment","slots":{},"needs_clarification":false}
@@ -611,7 +612,7 @@ OUTPUT:"""
             ragione_ctx_match = re.search(
                 r'(?:storic[ao]|storia)\s+(?:dei\s+)?(?:controll[io]?|stabilimento)\s+'
                 r'(?:(?:per|di|del(?:lo|la)?)\s+)?'
-                r'(?!partita\s*iva\b|p\.?\s*iva\b|IT\s|UE\s)'
+                r'(?!partita\s*iva\b|p\.?\s*iva\b|IT\s|UE\s|stabilimento\b)'
                 r'([A-Za-z][A-Za-z0-9\s\.\']*)',
                 message, re.IGNORECASE
             )
@@ -800,6 +801,11 @@ OUTPUT:"""
         """
         intent = result.get("intent", "fallback")
         slots = result.get("slots", {})
+
+        # Filtra slot con valori nulli/invalidi (LLM a volte restituisce "NULL", "null", etc.)
+        invalid_values = {"NULL", "null", "undefined", "none", "None", "", "N/A", "n/a"}
+        slots = {k: v for k, v in slots.items() if v not in invalid_values}
+        result["slots"] = slots
 
         # Correzioni semantiche (deterministiche, no LLM cost)
         if message:

@@ -210,11 +210,13 @@ class ConversationGraph:
 
         # Gestione selezione da fallback suggestions (legacy)
         if state.get("fallback_suggestions"):
+            print(f"[DEBUG] Found {len(state['fallback_suggestions'])} fallback_suggestions, trying to parse: '{state['message']}'")
             selected = self._parse_user_selection(
                 state["message"],
                 state["fallback_suggestions"]
             )
             if selected:
+                print(f"[DEBUG] Selection parsed successfully: type={selected.get('type')}, label={selected.get('label','?')}")
                 if selected.get("type") == "intent":
                     state["intent"] = selected["intent"]
                     state["slots"] = {}
@@ -452,13 +454,21 @@ class ConversationGraph:
     def _build_clarification_message(self, intent: str, missing_slots: list) -> str:
         if not missing_slots:
             return "Non ho capito la tua richiesta. Puoi riformularla?"
+
+        # Caso speciale: ask_establishment_history richiede ALMENO UNO degli identificatori
+        if intent == "ask_establishment_history":
+            return (
+                "Per trovare lo storico dello stabilimento, fornisci **uno** dei seguenti identificatori:\n\n"
+                "- Numero di registrazione (es. IT 123456, UE IT 2287 M)\n"
+                "- Partita IVA (es. 01234567890)\n"
+                "- Ragione sociale (anche parziale, es. \"Rossi SRL\")"
+            )
+
         intent_labels = {
             "ask_piano_description": "la descrizione di un piano",
             "ask_piano_stabilimenti": "gli stabilimenti di un piano",
-            "ask_piano_generic": "informazioni su un piano",
             "check_if_plan_delayed": "il ritardo di un piano",
             "search_piani_by_topic": "la ricerca di piani per argomento",
-            "ask_establishment_history": "lo storico di uno stabilimento",
             "analyze_nc_by_category": "l'analisi NC per categoria",
         }
         label = intent_labels.get(intent, "questa richiesta")
@@ -563,8 +573,15 @@ class ConversationGraph:
         return "\n".join(lines)
 
     def _parse_user_selection(self, message, suggestions):
-        if not self._fallback_engine:
-            return None
+        # Lazy init fallback engine (stesso pattern di _fallback_tool)
+        if self._fallback_engine is None:
+            from .fallback_recovery import FallbackRecoveryEngine
+            try:
+                from configs.config import AppConfig
+                config = AppConfig.get_fallback_config()
+            except Exception:
+                config = None
+            self._fallback_engine = FallbackRecoveryEngine(self.llm_client, config)
         return self._fallback_engine.parse_user_selection(message, suggestions)
 
     # =========================================================================

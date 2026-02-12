@@ -925,17 +925,7 @@ body.dark-theme .suggestions-header {
     color: #a0a0a0;
 }
 
-body.dark-theme .suggestion-link {
-    background: #3a3a3a !important;
-    border: 1px solid #4a4a4a !important;
-    color: #ececec !important;
-}
-
-body.dark-theme .suggestion-link:hover {
-    background: #8b5cf6 !important;
-    color: #ffffff !important;
-    border-color: #8b5cf6 !important;
-}
+/* Stili suggestion-link gestiti in new-formatting.css */
 
 body.dark-theme .download-btn {
     background: #3a3a3a;

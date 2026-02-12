@@ -147,7 +147,7 @@ def log_chat(
                      session_id, asl, slots, response_time_ms, error)
                     VALUES
                     (:ask, :intent, :tool, :two_phase_resp, :dataretriever_class, :sql, :who, NOW(), :answer,
-                     :session_id, :asl, :slots::jsonb, :response_time_ms, :error)"""
+                     :session_id, :asl, CAST(:slots AS jsonb), :response_time_ms, :error)"""
                 ), {
                     "ask": ask,
                     "intent": intent,
@@ -385,6 +385,7 @@ async def webhook(message: RasaMessage) -> List[RasaResponse]:
             fallback_selected_category = sender_session.get("fallback_selected_category")
             if fallback_suggestions:
                 metadata["_fallback_suggestions"] = fallback_suggestions
+                logger.debug(f"[Webhook] Loaded {len(fallback_suggestions)} fallback_suggestions from session for {message.sender}")
             if fallback_phase:
                 metadata["_fallback_phase"] = fallback_phase
             if fallback_count is not None:
@@ -567,6 +568,7 @@ async def webhook(message: RasaMessage) -> List[RasaResponse]:
                 existing["fallback_count"] = result.get("fallback_count", 0)
                 if result.get("fallback_selected_category"):
                     existing["fallback_selected_category"] = result["fallback_selected_category"]
+                logger.debug(f"[Webhook] Saved {len(result['fallback_suggestions'])} fallback_suggestions to session for {message.sender}")
             elif result.get("intent") != "fallback":
                 # Reset fallback state se intent diverso da fallback
                 existing.pop("fallback_suggestions", None)
@@ -712,6 +714,21 @@ async def webhook_stream(message: RasaMessage):
                 if session_summary:
                     metadata["_session_summary"] = session_summary
 
+                # Inject fallback recovery state (come endpoint sincrono)
+                fallback_suggestions = sender_session.get("fallback_suggestions")
+                fallback_phase = sender_session.get("fallback_phase")
+                fallback_count = sender_session.get("fallback_count")
+                fallback_selected_category = sender_session.get("fallback_selected_category")
+                if fallback_suggestions:
+                    metadata["_fallback_suggestions"] = fallback_suggestions
+                    logger.debug(f"[WebhookStream] Loaded {len(fallback_suggestions)} fallback_suggestions from session for {message.sender}")
+                if fallback_phase:
+                    metadata["_fallback_phase"] = fallback_phase
+                if fallback_count is not None:
+                    metadata["_fallback_count"] = fallback_count
+                if fallback_selected_category:
+                    metadata["_fallback_selected_category"] = fallback_selected_category
+
             # NUOVO: Recupera e valida workflow_context da sessione
             workflow_context_raw = sender_session.get("workflow_context")
 
@@ -800,6 +817,14 @@ async def webhook_stream(message: RasaMessage):
                         "current_strategy_index": result.get("workflow_context", {}).get("current_strategy_index"),
                         "last_query_intent": result.get("workflow_context", {}).get("last_query", {}).get("intent"),
                     }
+                # Salva fallback recovery state
+                if result.get("fallback_suggestions"):
+                    session_data["fallback_suggestions"] = result["fallback_suggestions"]
+                    session_data["fallback_phase"] = result.get("fallback_phase", 1)
+                    session_data["fallback_count"] = result.get("fallback_count", 0)
+                    if result.get("fallback_selected_category"):
+                        session_data["fallback_selected_category"] = result["fallback_selected_category"]
+                    logger.debug(f"[WebhookStream] Saved {len(result['fallback_suggestions'])} fallback_suggestions to session for {message.sender}")
                 _session_store[message.sender] = session_data
                 logger.info(f"[WebhookStream] Stored detail_context + session for sender {message.sender}")
             elif result.get("intent") in ["confirm_show_details", "decline_show_details"]:
@@ -825,6 +850,14 @@ async def webhook_stream(message: RasaMessage):
                             "current_strategy_index": result.get("workflow_context", {}).get("current_strategy_index"),
                             "last_query_intent": result.get("workflow_context", {}).get("last_query", {}).get("intent"),
                         }
+                    # Gestisci fallback recovery state
+                    if result.get("fallback_suggestions"):
+                        session_data["fallback_suggestions"] = result["fallback_suggestions"]
+                        session_data["fallback_phase"] = result.get("fallback_phase", 1)
+                        session_data["fallback_count"] = result.get("fallback_count", 0)
+                        if result.get("fallback_selected_category"):
+                            session_data["fallback_selected_category"] = result["fallback_selected_category"]
+                        logger.debug(f"[WebhookStream] Saved {len(result['fallback_suggestions'])} fallback_suggestions to session for {message.sender}")
                     _session_store[message.sender] = session_data
                     logger.info(f"[WebhookStream] Cleared detail_context, kept session for sender {message.sender}")
             else:
@@ -853,6 +886,22 @@ async def webhook_stream(message: RasaMessage):
                 elif "workflow_context" in existing:
                     # Rimuovi workflow_context se workflow completato
                     del existing["workflow_context"]
+
+                # Aggiorna fallback recovery state
+                if result.get("fallback_suggestions"):
+                    existing["fallback_suggestions"] = result["fallback_suggestions"]
+                    existing["fallback_phase"] = result.get("fallback_phase", 1)
+                    existing["fallback_count"] = result.get("fallback_count", 0)
+                    if result.get("fallback_selected_category"):
+                        existing["fallback_selected_category"] = result["fallback_selected_category"]
+                    logger.debug(f"[WebhookStream] Saved {len(result['fallback_suggestions'])} fallback_suggestions to session for {message.sender}")
+                elif result.get("intent") != "fallback":
+                    # Reset fallback state se intent diverso da fallback
+                    existing.pop("fallback_suggestions", None)
+                    existing.pop("fallback_phase", None)
+                    existing.pop("fallback_count", None)
+                    existing.pop("fallback_selected_category", None)
+
                 _session_store[message.sender] = existing
 
             final_response = result.get("response", "")
@@ -1475,6 +1524,37 @@ async def chat_log_timeline(days: int = 7, granularity: str = "hour"):
             }
     except Exception as e:
         logger.error(f"[ChatLogAPI] Error in timeline: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat-log/quality")
+async def chat_log_quality(days: int = 7, asl: str = None, min_severity: str = None):
+    """
+    Analisi qualita' conversazioni.
+    Rileva problemi come fallback loop, domande ripetute, risposte brevi.
+
+    Query params:
+        days: numero di giorni da analizzare (default: 7)
+        asl: filtra per ASL specifica (opzionale)
+        min_severity: severita' minima da includere: low, medium, high, critical (opzionale)
+    """
+    try:
+        from tools.conversation_monitor import run_monitor
+
+        report = run_monitor(
+            days=days,
+            asl_filter=asl if asl else None,
+            use_llm=False,  # No LLM per endpoint API (troppo lento)
+            min_severity=min_severity
+        )
+
+        return report.to_dict()
+
+    except ImportError as e:
+        logger.error(f"[ChatLogAPI] Impossibile importare conversation_monitor: {e}")
+        raise HTTPException(status_code=500, detail="Modulo conversation_monitor non disponibile")
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in quality: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

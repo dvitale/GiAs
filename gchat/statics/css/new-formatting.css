@@ -260,35 +260,41 @@
 
 .suggestions-container {
     margin-top: 12px;
-    padding: 10px;
+    padding: 10px 0;
     border-top: 1px solid #e0e0e0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
 }
 
 .suggestions-header {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: #666;
-    margin-bottom: 8px;
     font-weight: 500;
+    width: 100%;
+    margin-bottom: 4px;
 }
 
 .suggestion-link {
-    display: block;
-    padding: 6px 10px;
-    margin: 4px 0;
-    background: #e8f4f8;
-    border: 1px solid #b8d4e6;
-    border-radius: 6px;
-    color: #003d6e;
+    display: inline-block;
+    padding: 6px 12px;
+    background: #f4f4f4;
+    border: 1px solid #e0e0e0;
+    border-radius: 16px;
+    color: #1a1a1a;
     text-decoration: none;
-    font-size: 0.85rem;
+    font-size: 13px;
+    cursor: pointer;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 .suggestion-link:hover {
-    background: #0066cc;
+    background: #d4a574;
     color: #ffffff;
-    border-color: #0066cc;
-    transform: translateX(4px);
+    border-color: #d4a574;
+    transform: translateY(-1px);
 }
 
 /* Dark theme support */
@@ -398,12 +404,13 @@
 
 .dark-theme .suggestion-link {
     background: #3a3a3a;
-    border-color: #4a4a4a;
-    color: #e5e7eb;
+    border: 1px solid #4a4a4a;
+    color: #ececec;
 }
 
 .dark-theme .suggestion-link:hover {
     background: #8b5cf6;
-    color: white;
+    color: #ffffff;
     border-color: #8b5cf6;
+    transform: translateY(-1px);
 }
