@@ -18,6 +18,17 @@ class ResponseFormatter:
     Template-based, nessuna logica di dominio.
     """
 
+    # Mappa sezioni a descrizioni (basata su nomenclatura PRISCAV)
+    SEZIONE_DESCRIZIONI = {
+        'A': 'Sicurezza Alimentare',
+        'B': 'Sanità Animale',
+        'C': 'Igiene Allevamenti e Produzioni Zootecniche',
+        'D': 'Alimentazione Animale',
+        'E': 'Farmacosorveglianza',
+        'F': 'Benessere Animale',
+        'G': 'Sottoprodotti di Origine Animale',
+    }
+
     @staticmethod
     def format_piano_description(
         piano_id: str,
@@ -26,19 +37,63 @@ class ResponseFormatter:
     ) -> str:
         """
         Formatta descrizione piano da dati strutturati.
+
+        Interpretazione campi:
+        - alias: nome del piano
+        - alias_indicatore: nome del sottopiano
+        - descrizione: descrizione del piano
+        - descrizione sottopiano: descrizione del sotto-piano
+        - campionamento: True = prelievo campioni, False = attività di controllo
+        - sezione: sezione del piano (importante per classificazione)
         """
-        response = f"**Descrizione Piano {piano_id.upper()}**\n\n"
+        response = f"**📋 Descrizione Piano {piano_id.upper()}**\n\n"
 
         for desc_main, info in unique_descriptions.items():
-            response += f"**{info['sezione']}** - Piano **{info['alias']}**\n\n"
-            response += f"**Descrizione principale:**\n{desc_main}\n\n"
+            sezione = info.get('sezione', '')
+            alias = info.get('alias', piano_id)
+            campionamento = info.get('campionamento')
 
-            if info['descrizione-2']:
-                response += f"**Dettagli specifici:**\n\n"
-                for idx, desc_detail in enumerate(info['descrizione-2'], 1):
-                    response += f"{idx}. [{desc_detail['alias_ind']}] {desc_detail['text']}\n\n"
+            # Descrizione sezione - estrae lettera da "SEZIONE A" o usa direttamente "A"
+            sezione_letter = sezione.replace('SEZIONE', '').strip().upper() if sezione else ''
+            sezione_desc = ResponseFormatter.SEZIONE_DESCRIZIONI.get(sezione_letter, '') if sezione_letter else ''
+            if sezione and sezione_desc:
+                response += f"**Sezione {sezione_letter}** - {sezione_desc}\n"
+            elif sezione:
+                response += f"**Sezione {sezione}**\n"
 
-        response += f"**Totale varianti:** {total_variants}\n\n"
+            response += f"**Piano:** {alias}\n"
+
+            # Tipo attività (campionamento)
+            if campionamento is True:
+                response += f"**Tipo attività:** 🧪 Prelievo campioni\n"
+            elif campionamento is False:
+                response += f"**Tipo attività:** 🔍 Controllo ufficiale\n"
+            # Se None, non mostriamo il campo
+
+            response += f"\n**Descrizione del piano:**\n{desc_main}\n\n"
+
+            # Sottopiani (usa nuova struttura, con fallback per retrocompatibilità)
+            sottopiani = info.get('sottopiani') or info.get('descrizione-2', [])
+            if sottopiani:
+                response += f"**Sottopiani ({len(sottopiani)}):**\n\n"
+                for idx, sottopiano in enumerate(sottopiani, 1):
+                    # Supporta sia nuova struttura che vecchia per retrocompatibilità
+                    alias_ind = sottopiano.get('alias_indicatore') or sottopiano.get('alias_ind', '')
+                    desc_sotto = sottopiano.get('descrizione_sottopiano') or sottopiano.get('text', '')
+                    camp_sotto = sottopiano.get('campionamento')
+
+                    response += f"{idx}. **Sottopiano {alias_ind}**\n"
+                    response += f"   {desc_sotto}\n"
+
+                    # Mostra tipo attività sottopiano se diverso o specificato
+                    if camp_sotto is True:
+                        response += f"   _Tipo: Prelievo campioni_\n"
+                    elif camp_sotto is False:
+                        response += f"   _Tipo: Controllo ufficiale_\n"
+
+                    response += "\n"
+
+        response += f"**Totale varianti:** {total_variants}\n"
 
         return response
 
@@ -71,7 +126,7 @@ class ResponseFormatter:
 
                 response += f"   - **Non conformità:** {nc_gravi} gravi, {nc_non_gravi} non gravi\n"
                 if punteggio > 0:
-                    response += f"   - **Punteggio rischio:** {punteggio} punti\n"
+                    response += f"   - **Punteggio rischio:** {punteggio}/100\n"
 
             response += "\n"
 
@@ -131,14 +186,13 @@ class ResponseFormatter:
         response += f"**Trovati {len(matches)} piani rilevanti:**\n\n"
 
         for idx, piano_info in enumerate(matches[:max_display], 1):
-            response += f"{idx}. **{piano_info['sezione']}** - Piano **{piano_info['alias']}**\n"
             # Handle NaN/None descriptions safely
             desc = piano_info.get('descrizione', '') or ''
             desc_truncated = desc[:150] if desc else 'Descrizione non disponibile'
             if len(desc) > 150:
                 desc_truncated += "..."
-            response += f"   {desc_truncated}\n"
-            response += f"   Rilevanza: {piano_info['similarity']:.0%}\n\n"
+            # Format on single line: "1. SEZIONE - Piano | descrizione | rilevanza"
+            response += f"{idx}. **{piano_info['sezione']}** - Piano **{piano_info['alias']}** | {desc_truncated} | Rilevanza: {piano_info['similarity']:.0%}\n\n"
 
         if len(matches) > max_display:
             response += f"... e altri {len(matches) - max_display} piani.\n\n"
@@ -211,10 +265,15 @@ class ResponseFormatter:
         for idx, row in enumerate(osa_df.head(limit).itertuples(index=False), 1):
             macroarea = getattr(row, 'macroarea', 'N/D')
             comune = str(getattr(row, 'comune', '')).upper() if pd.notna(getattr(row, 'comune', '')) else 'N/D'
-            punteggio = int(getattr(row, 'punteggio_rischio_totale', 0))
+            # Supporta entrambi i nomi campo per backwards compatibility
+            punteggio = getattr(row, 'punteggio_rischio', None) or getattr(row, 'punteggio_rischio_totale', 0)
+            try:
+                punteggio = int(punteggio) if punteggio else 0
+            except (ValueError, TypeError):
+                punteggio = 0
 
             response += f"{idx}. **{macroarea}** - {comune}\n"
-            response += f"   ⚠️ Risk Score: **{punteggio}**\n\n"
+            response += f"   ⚠️ Risk Score: **{punteggio}/100**\n\n"
 
         response += "**Raccomandazione:** Dare priorità assoluta ai primi 5 stabilimenti.\n"
 
@@ -268,7 +327,7 @@ class ResponseFormatter:
             response += f"   Comune: {comune}\n"
             response += f"   Indirizzo: {getattr(row, 'indirizzo', '')}\n"
             response += f"   ID: {numero_id}\n"
-            response += f"   Punteggio rischio attività: **{int(getattr(row, 'punteggio_rischio_totale', ''))}**\n"
+            response += f"   Punteggio rischio attività: **{int(getattr(row, 'punteggio_rischio_totale', ''))}/100**\n"
             response += f"   NC storiche attività: {int(getattr(row, 'tot_nc_gravi', ''))} gravi | {int(getattr(row, 'tot_nc_non_gravi', ''))} non gravi\n"
             response += f"   Controlli regionali su questa attività: {int(getattr(row, 'numero_controlli_totali', ''))}"
 
@@ -518,11 +577,20 @@ class ResponseFormatter:
     ) -> str:
         """
         Formatta risposta per verifica se un piano specifico è in ritardo.
+        Mostra sempre i dettagli numerici per motivare la risposta.
         """
-        if not is_delayed:
-            return f"**No**, il piano {piano_code} non è in ritardo per la struttura {uoc}."
+        percentuale_eseguita = (eseguiti / programmati * 100) if programmati > 0 else 100
 
-        percentuale_eseguita = (eseguiti / programmati * 100) if programmati > 0 else 0
+        if not is_delayed:
+            response = f"**No**, il piano {piano_code} non è in ritardo per la struttura {uoc}.\n\n"
+            if programmati > 0:
+                response += f"**Dettagli:**\n"
+                response += f"• Controlli programmati: {programmati}\n"
+                response += f"• Controlli eseguiti: {eseguiti}\n"
+                response += f"• Completamento: {percentuale_eseguita:.1f}%\n"
+            else:
+                response += f"Non ci sono controlli programmati per questo piano nella tua struttura."
+            return response
 
         response = f"**Sì**, il piano {piano_code} è in ritardo per la struttura {uoc}.\n\n"
 
@@ -905,8 +973,8 @@ class ResponseFormatter:
         response = f"🔍 **TOP {limit} ATTIVITÀ A MAGGIOR RISCHIO**\n\n"
         response += f"📊 **Panoramica generale:**\n"
         response += f"- Attività analizzate: {total_activities:,}\n"
-        response += f"- Alto rischio (>20): {high_risk_count} attività\n"
-        response += f"- Medio rischio (5-20): {medium_risk_count} attività\n"
+        response += f"- Alto rischio (>7): {high_risk_count} attività\n"
+        response += f"- Medio rischio (3-7): {medium_risk_count} attività\n"
         response += f"- Risk score medio: {avg_risk_score:.1f}\n\n"
 
         response += f"🎯 **Classifica per Risk Score:**\n\n"
@@ -920,13 +988,15 @@ class ResponseFormatter:
             nc_non_gravi = activity['nc_non_gravi']
             controlli = activity['controlli_totali']
 
-            # Determina livello di rischio
-            if risk_score > 20:
+            # Determina livello di rischio (soglie calibrate: P90=6.6, P75=3.0)
+            if risk_score > 7:
                 risk_level = "🔴 ALTO RISCHIO"
-            elif risk_score > 5:
+            elif risk_score > 3:
                 risk_level = "🟡 MEDIO RISCHIO"
-            else:
+            elif risk_score > 1:
                 risk_level = "🟢 BASSO RISCHIO"
+            else:
+                risk_level = "⚪ RISCHIO MINIMO"
 
             response += f"**{rank}. {macroarea}**\n"
             if aggregazione and aggregazione != 'nan':
@@ -945,7 +1015,7 @@ class ResponseFormatter:
 
         # Suggerimenti operativi
         response += f"⚡ **Raccomandazioni:**\n"
-        response += f"- Prioritizzare controlli per attività con risk score > 20\n"
+        response += f"- Prioritizzare controlli per attività con risk score > 7 (alto rischio)\n"
         response += f"- Pianificare ispezioni mirate per le prime {min(5, len(activities_data))} attività\n"
         response += f"- Monitorare evoluzione risk score dopo i controlli"
 
@@ -1078,7 +1148,7 @@ class ResponseFormatter:
             response += f"   N. Registrazione: {num_ric}"
 
             if risk_score > 0:
-                response += f" | Risk Score: {risk_score}"
+                response += f" | Risk Score: {risk_score}/100"
 
             response += "\n   Mai controllato\n\n"
 
@@ -1172,7 +1242,7 @@ class ResponseFormatter:
             except (ValueError, TypeError):
                 risk_score = 0
 
-            risk_indicator = f" | Risk: {risk_score}" if risk_score > 0 else ""
+            risk_indicator = f" | Risk: {risk_score}/100" if risk_score > 0 else ""
 
             response += f"{idx}. **{macroarea}** - {comune} ({distanza:.1f} km){risk_indicator}\n"
 

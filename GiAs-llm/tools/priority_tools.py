@@ -120,6 +120,58 @@ def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = N
         return {"error": f"Errore nell'analisi priorità: {str(e)}", "formatted_response": f"Si è verificato un errore durante l'analisi delle priorità: {str(e)}"}
 
 
+def _get_piano_data_from_df(diff_df: pd.DataFrame, piano_code: str) -> Dict[str, Any]:
+    """
+    Recupera dati programmati/eseguiti per un piano specifico dal DataFrame.
+    Usato per mostrare i dettagli anche quando il piano non è in ritardo.
+    """
+    if diff_df.empty or not piano_code:
+        return {'programmati': 0, 'eseguiti': 0, 'ritardo': 0, 'sottopiani': None}
+
+    # Applica stesso filtro anno di calculate_delayed_plans
+    try:
+        from configs.config_loader import get_config
+        target_year = get_config().get_current_year()
+    except ImportError:
+        target_year = 2025
+
+    if 'anno' in diff_df.columns:
+        diff_df = diff_df[diff_df['anno'] == target_year].copy()
+
+    if diff_df.empty:
+        return {'programmati': 0, 'eseguiti': 0, 'ritardo': 0, 'sottopiani': None}
+
+    # Calcola ritardo per tutti i piani (non solo quelli in ritardo)
+    diff_df['programmati'] = pd.to_numeric(diff_df['programmati'], errors='coerce').fillna(0)
+    diff_df['eseguiti'] = pd.to_numeric(diff_df['eseguiti'], errors='coerce').fillna(0)
+    diff_df['ritardo'] = diff_df['programmati'] - diff_df['eseguiti']
+
+    # Aggrega per piano
+    piano_summary = diff_df.groupby('indicatore').agg({
+        'ritardo': 'sum',
+        'programmati': 'sum',
+        'eseguiti': 'sum'
+    }).reset_index()
+
+    # Match esatto o sottopiani
+    piano_code_upper = piano_code.upper()
+    piano_match = piano_summary[
+        (piano_summary['indicatore'] == piano_code_upper) |
+        (piano_summary['indicatore'].str.startswith(piano_code_upper + '_'))
+    ]
+
+    if piano_match.empty:
+        return {'programmati': 0, 'eseguiti': 0, 'ritardo': 0, 'sottopiani': None}
+
+    matched_plans = piano_match['indicatore'].tolist()
+    return {
+        'programmati': int(piano_match['programmati'].sum()),
+        'eseguiti': int(piano_match['eseguiti'].sum()),
+        'ritardo': int(piano_match['ritardo'].sum()),
+        'sottopiani': matched_plans if matched_plans else None
+    }
+
+
 @tool("delayed_plans")
 def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -161,12 +213,26 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
 
         if delayed_df.empty:
             if piano_code:
+                # Recupera dati del piano anche se non in ritardo per mostrare i dettagli
+                piano_data = _get_piano_data_from_df(filtered_df, piano_code)
+                response = ResponseFormatter.format_check_plan_delayed(
+                    piano_code=piano_code,
+                    is_delayed=False,
+                    asl=asl,
+                    uoc=uoc,
+                    ritardo=piano_data.get('ritardo', 0),
+                    programmati=piano_data.get('programmati', 0),
+                    eseguiti=piano_data.get('eseguiti', 0),
+                    sottopiani=piano_data.get('sottopiani')
+                )
                 return {
                     "is_delayed": False,
                     "piano_code": piano_code,
                     "asl": asl,
                     "uoc": uoc,
-                    "formatted_response": f"Il piano {piano_code} non è in ritardo per la struttura {uoc}."
+                    "programmati": piano_data.get('programmati', 0),
+                    "eseguiti": piano_data.get('eseguiti', 0),
+                    "formatted_response": response
                 }
             return {
                 "info": "Nessun piano in ritardo",
@@ -193,12 +259,26 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
             ]
 
             if piano_match.empty:
+                # Piano non in ritardo - recupera comunque i dati per mostrare i dettagli
+                piano_data = _get_piano_data_from_df(filtered_df, piano_code)
+                response = ResponseFormatter.format_check_plan_delayed(
+                    piano_code=piano_code,
+                    is_delayed=False,
+                    asl=asl,
+                    uoc=uoc,
+                    ritardo=piano_data.get('ritardo', 0),
+                    programmati=piano_data.get('programmati', 0),
+                    eseguiti=piano_data.get('eseguiti', 0),
+                    sottopiani=piano_data.get('sottopiani')
+                )
                 return {
                     "is_delayed": False,
                     "piano_code": piano_code,
                     "asl": asl,
                     "uoc": uoc,
-                    "formatted_response": f"Il piano {piano_code} non è in ritardo per la struttura {uoc}."
+                    "programmati": piano_data.get('programmati', 0),
+                    "eseguiti": piano_data.get('eseguiti', 0),
+                    "formatted_response": response
                 }
 
             # Aggrega tutti i sottopiani matchati
