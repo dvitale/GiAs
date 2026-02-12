@@ -72,9 +72,9 @@ User Message
 - Fallback on parsing errors
 - Supports 3 LLM models with performance profiles
 
-**Valid Intents** (21):
+**Valid Intents** (20):
 - `greet`, `goodbye`, `ask_help`
-- `ask_piano_description`, `ask_piano_stabilimenti`, `ask_piano_generic`, `ask_piano_statistics`
+- `ask_piano_description`, `ask_piano_stabilimenti`, `ask_piano_statistics`
 - `search_piani_by_topic`
 - `ask_priority_establishment` (based on delayed schedules)
 - `ask_risk_based_priority` (based on historical NC data)
@@ -87,7 +87,7 @@ User Message
 - `fallback`
 
 **Required Slots**:
-- `ask_piano_description`, `ask_piano_stabilimenti`, `ask_piano_generic`, `check_if_plan_delayed`: `[piano_code]`
+- `ask_piano_description`, `ask_piano_stabilimenti`, `check_if_plan_delayed`: `[piano_code]`
 - `search_piani_by_topic`: `[topic]`
 - `ask_establishment_history`: almeno uno tra `[num_registrazione, partita_iva, ragione_sociale]`
 - `analyze_nc_by_category`: `[categoria]`
@@ -110,7 +110,7 @@ Uses `formatted_response` from `ResponseFormatter` when available, falls back to
 - `controlli_df`: 2025 executed controls (columns: `descrizione_piano`, `macroarea_cu`, `aggregazione_cu`, `attivita_cu`)
 - `osa_mai_controllati_df`: Never-controlled establishments (columns: `asl`, `comune`, `indirizzo`, `macroarea`, `aggregazione`, `attivita`, `num_riconoscimento`)
 - `ocse_df`: Historical non-conformities (columns: `macroarea_sottoposta_a_controllo`, `numero_nc_gravi`, `numero_nc_non_gravi`)
-- `diff_prog_eseg_df`: Scheduled vs executed (columns: `descrizione_uoc`, `piano`, `programmati`, `eseguiti`)
+- `diff_prog_eseg_df`: Scheduled vs executed (columns: `descrizione_uoc`, `indicatore`, `programmati`, `eseguiti`)
 - `personale.csv`: User organizational structure (columns: `user_id`, `asl`, `descrizione`, `descrizione_area_struttura_complessa`)
 
 **Data Loading**:
@@ -191,6 +191,8 @@ GiAs-llm/
 │   ├── establishment_tools.py  # @tool for establishment history
 │   ├── search_tools.py         # @tool for hybrid semantic search
 │   ├── procedure_tools.py      # @tool RAG per procedure operative (retrieve + LLM)
+│   ├── proximity_tools.py      # @tool per ricerca stabilimenti per prossimità
+│   ├── geo_utils.py            # Geocoding service (Nominatim + SimpleRequestsAdapter)
 │   ├── hybrid_search/          # Advanced search system (v1.0.0)
 │   │   ├── hybrid_engine.py    # Main search orchestrator
 │   │   ├── smart_router.py     # Strategy selection (vector/LLM/hybrid)
@@ -228,11 +230,12 @@ GiAs-llm/
 │   └── qdrant_storage/        # Vector database storage (3.3 MB)
 ├── runtime/                    # Runtime files
 │   └── logs/                  # Application logs
-├── tests/                      # Comprehensive pytest test suite
+├── tests/                      # Comprehensive pytest test suite (100% intent coverage)
 │   ├── test_graph.py          # LangGraph workflow testing
-│   ├── test_router.py         # Intent classification testing
+│   ├── test_router.py         # Intent classification + heuristics testing
 │   ├── test_tools.py          # Tool integration testing
-│   ├── test_nc_categories.py  # Risk analysis testing
+│   ├── test_nc_categories.py  # NC categories + analyze_nc_by_category testing
+│   ├── test_nearby_priority.py # Proximity search (ask_nearby_priority) testing
 │   ├── test_server.py         # API server testing
 │   ├── test_hybrid_search.py  # Hybrid search testing
 │   └── test_followup_suggestions.py # Follow-up suggestions testing
@@ -406,12 +409,25 @@ The system supports two risk prediction strategies for the `ask_risk_based_prior
 
 ## Testing Infrastructure
 
-**Comprehensive Test Suite** (1,598+ lines):
+**Comprehensive Test Suite** (22 file, 100% intent coverage):
 - `pytest` framework with proper project structure
+- **Intent coverage**: 20/20 intent testati (100%)
 - Integration tests for hybrid search system
 - Component tests for all tools and workflow
+- Heuristics tests per ogni intent con pattern regex
 - Performance benchmarking capabilities
 - 100% accuracy validation on veterinary domain
+
+**Test File per Intent**:
+| Intent Category | Test File |
+|----------------|-----------|
+| Router heuristics (all) | `test_router.py` |
+| `ask_nearby_priority` | `test_nearby_priority.py` |
+| `analyze_nc_by_category` | `test_nc_categories.py` |
+| `ask_top_risk_activities` | `test_top_risk_intent.py` |
+| `search_piani_by_topic` | `test_hybrid_search.py` |
+| `info_procedure` | `test_procedure_tools.py` |
+| API integration (all) | `test_server.py` |
 
 ## Production Deployment
 
@@ -420,6 +436,71 @@ The system supports two risk prediction strategies for the `ask_risk_based_prior
 - `start_server.sh` for production deployment
 - Health checks and monitoring endpoints
 - Graceful fallback mechanisms for system resilience
+
+## Geocoding Service
+
+**Implementation**: `tools/geo_utils.py`
+
+Il sistema usa Nominatim (OpenStreetMap) per geocodificare indirizzi in coordinate geografiche, utilizzato dall'intent `ask_nearby_priority`.
+
+### Configurazione
+
+- **Servizio**: Nominatim (gratuito, richiede rispetto ToS)
+- **Rate Limiter**: 1 richiesta/secondo (obbligatorio per ToS)
+- **Cache**: LRU con 500 entries
+- **Fallback**: Coordinate hardcoded per capoluoghi campani
+
+### Fix SSL Context (geopy 2.4+)
+
+**Problema**: geopy 2.4.x usa un `ssl_context` personalizzato che causa errore HTTP 509 con il CDN Varnish di Nominatim (TLS fingerprinting).
+
+**Soluzione**: `SimpleRequestsAdapter` - adapter custom che non usa ssl_context:
+
+```python
+class SimpleRequestsAdapter(BaseSyncAdapter):
+    """Adapter senza ssl_context custom per evitare 509."""
+    def __init__(self, *, proxies, ssl_context, **kwargs):
+        super().__init__(proxies=proxies, ssl_context=None)
+        self.session = requests.Session()
+        # Usa HTTPAdapter standard senza ssl_context
+        adapter = HTTPAdapter(max_retries=2)
+        self.session.mount('https://', adapter)
+```
+
+### Capoluoghi Campani (coordinate hardcoded)
+
+Se la geocodifica fallisce per un capoluogo, il sistema usa coordinate pre-definite:
+- Napoli: (40.8518, 14.2681)
+- Salerno: (40.6824, 14.7681)
+- Caserta: (41.0725, 14.3311)
+- Avellino: (40.9146, 14.7906)
+- Benevento: (41.1297, 14.7826)
+
+## Follow-up Suggestions
+
+**Implementation**: `orchestrator/followup_suggestions.py` + `orchestrator/response_node.py`
+
+I suggerimenti di follow-up vengono generati contestualmente e passati al frontend come **array strutturato** (non più come markdown nel testo).
+
+### Formato Suggerimenti
+
+```python
+# Backend genera:
+state["suggestions"] = [
+    {"text": "Tutti i piani in ritardo", "query": "piani in ritardo"},
+    {"text": "Stabilimenti prioritari", "query": "stabilimenti prioritari"}
+]
+
+# API passa nel custom payload:
+{"suggestions": [...]}
+
+# Frontend renderizza come link cliccabili
+```
+
+### Comportamento UI
+
+- **Click normale**: popola il campo input con la query
+- **Ctrl+Click**: invia direttamente la domanda
 
 ## Terminology
 
@@ -444,7 +525,7 @@ When writing prompts or responses, use correct Italian veterinary terms:
 - 323,146 veterinary records processed
 - **Configurable risk predictor** (ML or statistical) via `GIAS_RISK_PREDICTOR`
 
-**Last Updated**: February 2026
+**Last Updated**: February 2026 (test coverage 100%, geocoding fix, structured follow-up suggestions)
 
 ## Regole di manutenzione
 
