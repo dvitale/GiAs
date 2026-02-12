@@ -415,11 +415,21 @@ class ChatBot {
             suggestionLink.href = '#';
             suggestionLink.innerHTML = this.formatMessage(suggestion.text);
 
+            // Add tooltip with Ctrl+click hint
+            suggestionLink.title = `${suggestion.text}\n\n💡 Ctrl+Click per inviare direttamente`;
+
+            // Add click handler with Ctrl+click support (same as predefined questions)
             suggestionLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                this.messageInput.value = suggestion.query;
-                this.sendButton.disabled = false;
-                this.messageInput.focus();
+                if (e.ctrlKey || e.metaKey) {
+                    // Ctrl+click or Cmd+click: send directly
+                    this.sendQuestionDirectly(suggestion.query);
+                } else {
+                    // Normal click: populate input field
+                    this.messageInput.value = suggestion.query;
+                    this.sendButton.disabled = false;
+                    this.messageInput.focus();
+                }
             });
 
             container.appendChild(suggestionLink);
