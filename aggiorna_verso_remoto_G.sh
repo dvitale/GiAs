@@ -15,7 +15,7 @@ echo "Preparazione aggiornamento verso il server remoto:"
 echo "  Remote Host: $REMOTE_HOST (User: $REMOTE_USER)"
 echo "  Da:          $LOCAL_PATH"
 echo "  A:           $REMOTE_PATH"
-echo "  Include:     *.py *.sh *.json"
+echo "  Include:     *.py *.sh *.json *.pdf"
 echo "--------------------------------------------------"
 echo
 
@@ -34,6 +34,7 @@ RSYNC_BASE='rsync -avzu -e ssh \
     --include="*.py" \
     --include="*.sh" \
     --include="*.json" \
+    --include="*.pdf" \
     --exclude="*" \
     --exclude="__*"\
     "$LOCAL_PATH" \

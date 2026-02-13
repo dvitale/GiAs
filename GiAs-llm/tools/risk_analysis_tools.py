@@ -72,11 +72,12 @@ def get_top_risk_activities(limit: int = 10) -> Dict[str, Any]:
             activities_data.append(activity_data)
 
         # Calcola statistiche generali
+        # Soglie calibrate su distribuzione reale: P90=6.6, P75=3.0, P50=0.66
         total_activities = len(risk_scores_df)
-        high_risk_count = len(risk_scores_df[risk_scores_df['punteggio_rischio_totale'] > 20])
+        high_risk_count = len(risk_scores_df[risk_scores_df['punteggio_rischio_totale'] > 7])
         medium_risk_count = len(risk_scores_df[
-            (risk_scores_df['punteggio_rischio_totale'] > 5) &
-            (risk_scores_df['punteggio_rischio_totale'] <= 20)
+            (risk_scores_df['punteggio_rischio_totale'] > 3) &
+            (risk_scores_df['punteggio_rischio_totale'] <= 7)
         ])
         avg_risk_score = float(risk_scores_df['punteggio_rischio_totale'].mean())
 

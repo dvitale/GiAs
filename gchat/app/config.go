@@ -25,8 +25,9 @@ type ServerConfig struct {
 }
 
 type LLMServerConfig struct {
-	URL     string `json:"url"`
-	Timeout int    `json:"timeout"`
+	URL            string `json:"url"`
+	Timeout        int    `json:"timeout"`
+	StreamEndpoint string `json:"stream_endpoint"`
 }
 
 type LogConfig struct {
@@ -47,7 +48,8 @@ type PredefinedQuestion struct {
 }
 
 type UIConfig struct {
-	WelcomeMessage string `json:"welcome_message"`
+	WelcomeMessage  string `json:"welcome_message"`
+	EnableStreaming bool   `json:"enable_streaming"`
 }
 
 type TranscriptionConfig struct {
@@ -140,8 +142,9 @@ func getDefaultConfig() *Config {
 			Host: "localhost",
 		},
 		LLMServer: LLMServerConfig{
-			URL:     "http://localhost:5005",
-			Timeout: 30,
+			URL:            "http://localhost:5005",
+			Timeout:        30,
+			StreamEndpoint: "/webhooks/rest/webhook/stream",
 		},
 		Log: LogConfig{
 			Level:       "info",
@@ -184,7 +187,8 @@ func getDefaultConfig() *Config {
 			},
 		},
 		UI: UIConfig{
-			WelcomeMessage: "Sono Gi, il tuo assistente virtuale. Come posso aiutarti a utilizzare al meglio il sistema Gisa?",
+			WelcomeMessage:  "Sono Gi, il tuo assistente virtuale. Come posso aiutarti a utilizzare al meglio il sistema Gisa?",
+			EnableStreaming: true,
 		},
 		Transcription: TranscriptionConfig{
 			Enabled: false,

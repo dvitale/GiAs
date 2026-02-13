@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}} - Chat Analytics</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --border-color: #475569;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-green: #4ade80;
+            --accent-red: #f87171;
+            --accent-yellow: #fbbf24;
+            --accent-purple: #a78bfa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e293b 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 20px 24px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 12px;
+            font-size: 0.85rem;
+        }
+
+        .header-nav a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+
+        .header-nav a:hover {
+            text-decoration: underline;
+        }
+
+        .badge {
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            color: #0f172a;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+        }
+
+        .stat-value.error {
+            color: var(--accent-red);
+        }
+
+        .stat-value.success {
+            color: var(--accent-green);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        /* Panels */
+        .panels-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 1000px) {
+            .panels-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: var(--bg-tertiary);
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .panel-content {
+            padding: 16px 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Tables */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 10px 8px;
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .data-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        .data-table tr:hover td {
+            background: var(--bg-tertiary);
+        }
+
+        .data-table .intent-badge {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        .data-table .asl-badge {
+            background: rgba(74, 222, 128, 0.2);
+            color: #4ade80;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        .data-table .error-badge {
+            background: rgba(248, 113, 113, 0.2);
+            color: #f87171;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        /* Recent Messages */
+        .message-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--bg-tertiary);
+        }
+
+        .message-item:last-child {
+            border-bottom: none;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .message-meta {
+            display: flex;
+            gap: 12px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .message-ask {
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            margin-bottom: 4px;
+        }
+
+        .message-answer {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            max-height: 60px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .message-error {
+            color: var(--accent-red);
+            font-size: 0.8rem;
+            margin-top: 4px;
+        }
+
+        /* Timeline Chart Placeholder */
+        .chart-container {
+            height: 200px;
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            padding: 20px;
+        }
+
+        .chart-bar {
+            flex: 1;
+            background: linear-gradient(to top, var(--accent-blue), #818cf8);
+            border-radius: 4px 4px 0 0;
+            min-height: 4px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .chart-bar:hover {
+            background: linear-gradient(to top, #60a5fa, #a5b4fc);
+        }
+
+        .chart-bar .tooltip {
+            display: none;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-primary);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            white-space: nowrap;
+            margin-bottom: 4px;
+        }
+
+        .chart-bar:hover .tooltip {
+            display: block;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .control-select {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+
+        .control-btn {
+            background: var(--accent-blue);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: #2563eb;
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Error State */
+        .error-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--accent-red);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Full Width Panel */
+        .panel-full {
+            grid-column: 1 / -1;
+        }
+
+        /* Progress Bar */
+        .progress-bar {
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent-blue);
+            border-radius: 3px;
+        }
+
+        .progress-fill.error {
+            background: var(--accent-red);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <div>
+                    <div class="header-nav">
+                        <a href="{{.basePath}}/{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}">Chat</a>
+                        <span style="color: #6b7280;">|</span>
+                        <span style="color: #60a5fa; font-weight: 600;">Analytics</span>
+                        <span style="color: #6b7280;">|</span>
+                        <a href="{{.basePath}}/monitor{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}">Monitor</a>
+                        <span style="color: #6b7280;">|</span>
+                        <a href="{{.basePath}}/debug{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}">Debug</a>
+                        <span style="color: #6b7280;">|</span>
+                        <a href="{{.basePath}}/debug/langgraph{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}">LangGraph</a>
+                    </div>
+                    <h1>
+                        Chat Analytics Dashboard
+                        <span class="badge">Live</span>
+                    </h1>
+                </div>
+                <div class="controls">
+                    <select id="periodSelect" class="control-select">
+                        <option value="1">Ultimo giorno</option>
+                        <option value="7" selected>Ultimi 7 giorni</option>
+                        <option value="30">Ultimi 30 giorni</option>
+                        <option value="90">Ultimi 90 giorni</option>
+                    </select>
+                    <button id="refreshBtn" class="control-btn">Aggiorna</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid" id="statsCards">
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">-</div>
+                <div class="stat-label">Messaggi Totali</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value error" id="statErrors">-</div>
+                <div class="stat-label">Errori</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value success" id="statAvgTime">-</div>
+                <div class="stat-label">Tempo Medio (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statSessions">-</div>
+                <div class="stat-label">Sessioni</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statASL">-</div>
+                <div class="stat-label">ASL Attive</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statP95">-</div>
+                <div class="stat-label">P95 (ms)</div>
+            </div>
+        </div>
+
+        <!-- Timeline Chart -->
+        <div class="panel panel-full" style="margin-bottom: 24px;">
+            <div class="panel-header">
+                <span class="panel-title">Timeline Messaggi</span>
+            </div>
+            <div class="chart-container" id="timelineChart">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    Caricamento timeline...
+                </div>
+            </div>
+        </div>
+
+        <!-- Panels Grid -->
+        <div class="panels-grid">
+            <!-- Top Intent -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Top Intent</span>
+                </div>
+                <div class="panel-content" id="topIntentPanel">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        Caricamento...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top ASL -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Utilizzo per ASL</span>
+                </div>
+                <div class="panel-content" id="topASLPanel">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        Caricamento...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Messages -->
+        <div class="panel" style="margin-bottom: 24px;">
+            <div class="panel-header">
+                <span class="panel-title">Messaggi Recenti</span>
+                <select id="aslFilter" class="control-select" style="font-size: 0.8rem; padding: 4px 8px;">
+                    <option value="">Tutte le ASL</option>
+                </select>
+            </div>
+            <div class="panel-content" id="recentMessages" style="max-height: 500px;">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    Caricamento...
+                </div>
+            </div>
+        </div>
+
+        <!-- Errors Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Errori Recenti</span>
+            </div>
+            <div class="panel-content" id="errorsPanel">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    Caricamento...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '{{.backendUrl}}';
+        let currentPeriod = 7;
+
+        // Format timestamp
+        function formatTime(ts) {
+            if (!ts) return '-';
+            const d = new Date(ts);
+            return d.toLocaleString('it-IT', {
+                day: '2-digit', month: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+            });
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API_BASE}/api/chat-log/stats?days=${currentPeriod}`);
+                const data = await res.json();
+
+                document.getElementById('statTotal').textContent = data.totale_messaggi.toLocaleString();
+                document.getElementById('statErrors').textContent = data.totale_errori.toLocaleString();
+                document.getElementById('statAvgTime').textContent = data.tempo_medio_ms || 0;
+                document.getElementById('statSessions').textContent = data.sessioni_uniche.toLocaleString();
+                document.getElementById('statASL').textContent = data.asl_attive;
+                document.getElementById('statP95').textContent = data.p95_ms || 0;
+
+                // Populate ASL filter
+                const aslSelect = document.getElementById('aslFilter');
+                aslSelect.innerHTML = '<option value="">Tutte le ASL</option>';
+                data.top_asl.forEach(a => {
+                    aslSelect.innerHTML += `<option value="${a.asl}">${a.asl} (${a.count})</option>`;
+                });
+
+                // Update top intent panel
+                updateTopIntent(data.top_intents);
+
+                // Update top ASL panel
+                updateTopASL(data.top_asl);
+            } catch (e) {
+                console.error('Error loading stats:', e);
+            }
+        }
+
+        // Update top intent table
+        function updateTopIntent(intents) {
+            const panel = document.getElementById('topIntentPanel');
+            if (!intents || intents.length === 0) {
+                panel.innerHTML = '<p style="color: var(--text-muted);">Nessun dato</p>';
+                return;
+            }
+            const maxCount = Math.max(...intents.map(i => i.count));
+            panel.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Intent</th>
+                            <th style="text-align:right">Count</th>
+                            <th style="width:100px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${intents.map(i => `
+                            <tr>
+                                <td><span class="intent-badge">${i.intent}</span></td>
+                                <td style="text-align:right">${i.count}</td>
+                                <td>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width:${(i.count/maxCount*100)}%"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // Update top ASL table
+        function updateTopASL(asls) {
+            const panel = document.getElementById('topASLPanel');
+            if (!asls || asls.length === 0) {
+                panel.innerHTML = '<p style="color: var(--text-muted);">Nessun dato</p>';
+                return;
+            }
+            const maxCount = Math.max(...asls.map(a => a.count));
+            panel.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ASL</th>
+                            <th style="text-align:right">Count</th>
+                            <th style="width:100px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${asls.map(a => `
+                            <tr>
+                                <td><span class="asl-badge">${a.asl}</span></td>
+                                <td style="text-align:right">${a.count}</td>
+                                <td>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width:${(a.count/maxCount*100)}%;background:var(--accent-green)"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // Load timeline
+        async function loadTimeline() {
+            const container = document.getElementById('timelineChart');
+            try {
+                const granularity = currentPeriod <= 1 ? 'hour' : (currentPeriod <= 7 ? 'hour' : 'day');
+                const res = await fetch(`${API_BASE}/api/chat-log/timeline?days=${currentPeriod}&granularity=${granularity}`);
+                const data = await res.json();
+
+                if (!data.data || data.data.length === 0) {
+                    container.innerHTML = '<p style="color: var(--text-muted); text-align: center; width: 100%;">Nessun dato per il periodo selezionato</p>';
+                    return;
+                }
+
+                const maxCount = Math.max(...data.data.map(d => d.count), 1);
+                container.innerHTML = data.data.map(d => `
+                    <div class="chart-bar" style="height:${Math.max((d.count/maxCount*180), 4)}px">
+                        <div class="tooltip">${formatTime(d.timestamp)}<br>${d.count} msg${d.errors > 0 ? `, ${d.errors} err` : ''}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Error loading timeline:', e);
+                container.innerHTML = '<p class="error-state">Errore caricamento timeline</p>';
+            }
+        }
+
+        // Load recent messages
+        async function loadRecent(asl = '') {
+            const panel = document.getElementById('recentMessages');
+            panel.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Caricamento...</div>';
+
+            try {
+                const url = `${API_BASE}/api/chat-log/recent?limit=30${asl ? '&asl=' + encodeURIComponent(asl) : ''}`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (!data.records || data.records.length === 0) {
+                    panel.innerHTML = '<p style="color: var(--text-muted);">Nessun messaggio</p>';
+                    return;
+                }
+
+                panel.innerHTML = data.records.map(r => `
+                    <div class="message-item">
+                        <div class="message-header">
+                            <span class="intent-badge">${r.intent || 'unknown'}</span>
+                            <div class="message-meta">
+                                ${r.asl ? `<span class="asl-badge">${r.asl}</span>` : ''}
+                                <span>${formatTime(r.timestamp)}</span>
+                                ${r.response_time_ms ? `<span>${r.response_time_ms}ms</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="message-ask">${escapeHtml(r.ask || '')}</div>
+                        <div class="message-answer">${escapeHtml(r.answer_preview || '')}</div>
+                        ${r.error ? `<div class="message-error">Errore: ${escapeHtml(r.error)}</div>` : ''}
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Error loading recent:', e);
+                panel.innerHTML = '<p class="error-state">Errore caricamento messaggi</p>';
+            }
+        }
+
+        // Load errors
+        async function loadErrors() {
+            const panel = document.getElementById('errorsPanel');
+            try {
+                const res = await fetch(`${API_BASE}/api/chat-log/errors?days=${currentPeriod}&limit=20`);
+                const data = await res.json();
+
+                if (!data.records || data.records.length === 0) {
+                    panel.innerHTML = '<p style="color: var(--accent-green);">Nessun errore nel periodo selezionato</p>';
+                    return;
+                }
+
+                // Error types summary
+                let typesHtml = data.error_types.map(t =>
+                    `<span class="error-badge">${t.type}: ${t.count}</span>`
+                ).join(' ');
+
+                panel.innerHTML = `
+                    <div style="margin-bottom: 16px;">${typesHtml}</div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>ASL</th>
+                                <th>Domanda</th>
+                                <th>Errore</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.records.slice(0, 10).map(r => `
+                                <tr>
+                                    <td>${formatTime(r.timestamp)}</td>
+                                    <td>${r.asl || '-'}</td>
+                                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.ask || '')}</td>
+                                    <td style="color:var(--accent-red)">${escapeHtml((r.error || '').substring(0, 100))}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (e) {
+                console.error('Error loading errors:', e);
+                panel.innerHTML = '<p class="error-state">Errore caricamento</p>';
+            }
+        }
+
+        // Escape HTML
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')
+                      .replace(/"/g, '&quot;');
+        }
+
+        // Load all data
+        async function loadAll() {
+            await Promise.all([
+                loadStats(),
+                loadTimeline(),
+                loadRecent(),
+                loadErrors()
+            ]);
+        }
+
+        // Event listeners
+        document.getElementById('periodSelect').addEventListener('change', (e) => {
+            currentPeriod = parseInt(e.target.value);
+            loadAll();
+        });
+
+        document.getElementById('refreshBtn').addEventListener('click', loadAll);
+
+        document.getElementById('aslFilter').addEventListener('change', (e) => {
+            loadRecent(e.target.value);
+        });
+
+        // Initial load
+        loadAll();
+
+        // Auto-refresh every 60 seconds
+        setInterval(loadAll, 60000);
+    </script>
+</body>
+
+</html>

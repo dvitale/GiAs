@@ -97,7 +97,7 @@ class LLMClient:
                 })
 
             return json.dumps({
-                "intent": "ask_piano_generic",
+                "intent": "ask_piano_stabilimenti",
                 "slots": {"piano_code": piano_code},
                 "needs_clarification": False
             })

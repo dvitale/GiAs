@@ -369,22 +369,32 @@ LIMIT 50;
   - `ResponseFormatter.format_top_risk_activities`.
 - **Risposta**: `formatted_response`.
 - **Domande tipo**: "attivita rischiose", "top 10 attivita", "classifica attivita per rischio".
-- **Pseudo-SQL**:
+- **Soglie rischio** (calibrate su distribuzione reale P90=6.6, P75=3.0):
+  - ALTO: > 7 (top 10%)
+  - MEDIO: 3-7 (top 25%)
+  - BASSO: 1-3 (25-50%)
+  - MINIMO: < 1 (bottom 50%)
+- **Pseudo-SQL** (con fix NULL e ordinamento):
 ```sql
 SELECT
   macroarea_sottoposta_a_controllo AS macroarea,
   aggregazione_sottoposta_a_controllo AS aggregazione,
   linea_attivita_sottoposta_a_controllo AS linea_attivita,
-  SUM(numero_nc_gravi) AS tot_nc_gravi,
-  SUM(numero_nc_non_gravi) AS tot_nc_non_gravi,
+  COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) AS tot_nc_gravi,
+  COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0) AS tot_nc_non_gravi,
   COUNT(*) AS numero_controlli_totali,
-  ((SUM(numero_nc_gravi) + SUM(numero_nc_non_gravi))::float / NULLIF(COUNT(*), 0)) *
-  (SUM(numero_nc_gravi)::float / NULLIF(COUNT(*), 0)) * 100 AS risk_score
-FROM ocse
+  ROUND(
+    ((COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) +
+      COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0))::float / NULLIF(COUNT(*), 0)) *
+    (COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0)::float / NULLIF(COUNT(*), 0)) * 100
+  , 3) AS risk_score
+FROM ocse_isp_semp
 GROUP BY 1, 2, 3
-ORDER BY risk_score DESC
+HAVING risk_score > 0
+ORDER BY risk_score DESC NULLS LAST
 LIMIT :limit;
 ```
+- **VIEW SQL**: Vedi `sql/risk_score_view.sql` per VIEW completa con categoria rischio.
 
 ### analyze_nc_by_category
 - **Tool**: `analyze_nc_by_category`.

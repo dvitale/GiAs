@@ -240,6 +240,7 @@ if ps -p "$API_PID" > /dev/null 2>&1; then
     echo ""
     echo "📋 Endpoints disponibili:"
     echo "   - Webhook:    http://localhost:5005/webhooks/rest/webhook"
+    echo "   - Stream:     http://localhost:5005/webhooks/rest/webhook/stream"
     echo "   - Parse NLU:  http://localhost:5005/model/parse"
     echo "   - Status:     http://localhost:5005/status"
     echo "   - Health:     http://localhost:5005/"

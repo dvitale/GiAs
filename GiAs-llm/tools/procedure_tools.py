@@ -226,6 +226,7 @@ def get_procedure_info(query: str) -> Dict[str, Any]:
             "title": c.get("title", ""),
             "section": c.get("section", ""),
             "source_file": c.get("source_file", ""),
+            "page_num": c.get("page_num"),
             "score": round(c.get("score", 0), 3)
         }
         for c in chunks
@@ -253,6 +254,8 @@ def _build_rag_context(chunks: List[Dict]) -> str:
         header = f"[Fonte {i}: {chunk['title']}"
         if chunk.get("section"):
             header += f" - {chunk['section']}"
+        if chunk.get("page_num"):
+            header += f" (pag. {chunk['page_num']})"
         header += "]"
         parts.append(f"{header}\n{chunk['content']}")
     return "\n\n".join(parts)
@@ -290,15 +293,22 @@ def _format_chunks_fallback(chunks: List[Dict]) -> str:
 
 
 def _format_sources(chunks: List[Dict]) -> str:
-    """Formatta le fonti per attribution (deduplicate)."""
+    """Formatta le fonti per attribution con numero pagina (deduplicate per file+pagina)."""
     seen = set()
     sources = []
     for c in chunks:
-        key = c.get("source_file", "")
-        if key and key not in seen:
-            seen.add(key)
-            title = c.get("title", key)
-            sources.append(f"- {title} ({key})")
+        source_file = c.get("source_file", "")
+        page_num = c.get("page_num")
+        if source_file:
+            # Chiave univoca: file + pagina (se presente)
+            key = f"{source_file}:{page_num}" if page_num else source_file
+            if key not in seen:
+                seen.add(key)
+                title = c.get("title", source_file)
+                if page_num:
+                    sources.append(f"- {title} ({source_file}, pag. {page_num})")
+                else:
+                    sources.append(f"- {title} ({source_file})")
     return "\n".join(sources)
 
 

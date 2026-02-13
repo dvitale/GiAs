@@ -353,13 +353,13 @@ Prova a cercare piani simili o chiedi informazioni sui piani disponibili.
   piani=730
   attivita=538
   controlli=61247
-  osa=154406
+  osa=118729
   ocse=101343
   diff_prog_eseg=3002
   personale=1880
 ```
 
-**Totale**: 323,153 record
+**Totale**: 287,476 record
 
 ---
 

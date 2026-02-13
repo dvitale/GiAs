@@ -78,11 +78,11 @@ SELF_SUFFICIENT_INTENTS = {
 REQUIRED_SLOTS = {
     "ask_piano_description": ["piano_code"],
     "ask_piano_stabilimenti": ["piano_code"],
-    "ask_piano_generic": ["piano_code"],
     "check_if_plan_delayed": ["piano_code"],
     "search_piani_by_topic": ["topic"],
-    "ask_establishment_history": ["num_registrazione", "partita_iva", "ragione_sociale"],
+    "ask_establishment_history": ["num_registrazione", "numero_riconoscimento", "partita_iva", "ragione_sociale"],
     "analyze_nc_by_category": ["categoria"],
+    "ask_nearby_priority": ["location"],
 }
 
 # Prompt per slot mancanti
@@ -90,9 +90,11 @@ SLOT_PROMPTS = {
     "piano_code": "Quale piano? (es. A1, B2, C3)",
     "topic": "Su quale argomento? (es. latte, bovini, benessere animale)",
     "num_registrazione": "Qual è il numero di registrazione dello stabilimento? (es. IT 123456)",
+    "numero_riconoscimento": "Qual è il numero di riconoscimento UE dello stabilimento? (es. UE IT 15 273)",
     "partita_iva": "Qual è la partita IVA dello stabilimento?",
     "ragione_sociale": "Qual è la ragione sociale dello stabilimento?",
     "categoria": "Quale categoria di non conformità? (es. HACCP, IGIENE, STRUTTURE)",
+    "location": "Dove ti trovi? (es. Via Roma 15, Napoli)",
 }
 
 # Pattern per rilevare richieste vaghe
@@ -215,6 +217,15 @@ def _build_slot_question(intent: str, missing: List[str]) -> str:
     metadata = get_intent_metadata(intent)
     label = metadata.label if metadata else "questa richiesta"
 
+    # Caso speciale: ask_establishment_history richiede ALMENO UNO degli identificatori
+    if intent == "ask_establishment_history":
+        return (
+            f"Per trovare lo storico dello stabilimento, fornisci **uno** dei seguenti identificatori:\n\n"
+            f"- Numero di registrazione (es. IT 123456, UE IT 2287 M)\n"
+            f"- Partita IVA (es. 01234567890)\n"
+            f"- Ragione sociale (anche parziale, es. \"Rossi SRL\")"
+        )
+
     prompts = [f"- {SLOT_PROMPTS.get(s, f'Specifica: {s}')}" for s in missing]
 
     return f"Per completare la richiesta su *{label}*, ho bisogno di:\n\n" + "\n".join(prompts)
@@ -287,6 +298,41 @@ def evaluate(
     new_filters = _extract_filters(message)
     if new_filters:
         ds["filters"] = merge_slots(ds.get("filters", {}), new_filters)
+
+    # =========================================================================
+    # REGOLA 0: Continuazione dopo richiesta slot mancanti
+    # Se c'è un confirmed_intent con missing_slots e l'utente ha fornito slot,
+    # continua con l'intent salvato invece di riclassificare da zero.
+    # =========================================================================
+    if ds.get("confirmed_intent") and ds.get("missing_slots") and extracted_slots:
+        pending_intent = ds["confirmed_intent"]
+        pending_missing = ds["missing_slots"]
+
+        # Verifica se almeno uno degli slot mancanti è stato fornito
+        filled = [s for s in pending_missing if current_slots.get(s)]
+
+        if filled:
+            # Slot forniti - verifica se ora abbiamo tutto il necessario
+            still_missing = _get_missing_slots(pending_intent, current_slots)
+
+            if not still_missing:
+                # Tutti gli slot necessari presenti - esegui!
+                from .tool_nodes import INTENT_TO_TOOL
+                tool_name = INTENT_TO_TOOL.get(pending_intent, "fallback_tool")
+
+                ds["last_tool_intent"] = pending_intent
+                ds["last_tool_slots"] = current_slots
+                ds["missing_slots"] = None  # Reset
+
+                logger.info(f"[DM] Slot continuation: {pending_intent} con slot {filled}")
+
+                return DialogueManagerResult(
+                    action="execute",
+                    target_tool=tool_name,
+                    updated_state=ds,
+                    intent=pending_intent,
+                    slots=current_slots,
+                )
 
     # =========================================================================
     # REGOLA 7: "Oppure?"

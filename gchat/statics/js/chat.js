@@ -349,10 +349,15 @@ class ChatBot {
         if (className === 'bot-message') {
             const questionLinks = contentDiv.querySelectorAll('.question-link');
             questionLinks.forEach(link => {
+                const question = link.getAttribute('data-question');
+                link.title = `${question}\n\n💡 Ctrl+Click per inviare direttamente`;
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
-                    const question = link.getAttribute('data-question');
-                    this.handleQuestionClick(question);
+                    if (e.ctrlKey || e.metaKey) {
+                        this.sendQuestionDirectly(question);
+                    } else {
+                        this.handleQuestionClick(question);
+                    }
                 });
             });
         }
@@ -518,6 +523,15 @@ ${cleanAnswer}
         return tmp.textContent || tmp.innerText || '';
     }
 
+    convertMarkdown(text) {
+        // Convert markdown to HTML: bold (**text**), italic (*text*), and question links ([[text]])
+        // Order matters: bold first, then italic, then question links
+        return text
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            .replace(/\[\[([^\]]+)\]\]/g, '<a href="#" class="question-link" data-question="$1">$1</a>');
+    }
+
     formatMessage(message) {
         if (!message || typeof message !== 'string') return '';
 
@@ -599,9 +613,10 @@ ${cleanAnswer}
                     if (match) {
                         const [, number, content] = match;
                         const processedContent = this.processListItemContent(content);
-                        return `<div class="list-item-compact" data-number="${number}">${processedContent}</div>`;
+                        return `<div class="list-item-compact"><span class="list-number">${number}.</span> ${processedContent}</div>`;
                     }
-                    return `<div class="list-item-compact">${item}</div>`;
+                    // Fallback: convert markdown to HTML
+                    return `<div class="list-item-compact">${this.convertMarkdown(item)}</div>`;
                 }).join('');
                 return `<div class="list-container">${listItems}</div>`;
 
@@ -614,22 +629,27 @@ ${cleanAnswer}
 
             case 'bullet-item':
                 const bulletContent = block.content.replace(/^[•-]\s+/, '');
-                return `<div class="bullet-item-compact">${bulletContent}</div>`;
+                return `<div class="bullet-item-compact">${this.convertMarkdown(bulletContent)}</div>`;
 
             case 'text':
-                // Convert markdown bold **text** to HTML <strong>text</strong>
-                const boldConverted = block.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                return `<div class="text-content">${boldConverted}</div>`;
+                return `<div class="text-content">${this.convertMarkdown(block.content)}</div>`;
 
             default:
-                return `<div class="default-content">${block.content}</div>`;
+                return `<div class="default-content">${this.convertMarkdown(block.content)}</div>`;
         }
     }
 
     processListItemContent(content) {
+        // Handle pipe-separated format: "SEZIONE - Piano | descrizione | rilevanza"
+        const pipeMatch = content.match(/^(.+?)\s*\|\s*(.+?)\s*\|\s*(.+)$/);
+        if (pipeMatch) {
+            const [, header, desc, relevance] = pipeMatch;
+            return `<span class="plan-header">${this.convertMarkdown(header)}</span><span class="plan-desc">${this.convertMarkdown(desc)}</span><span class="plan-relevance">${this.convertMarkdown(relevance)}</span>`;
+        }
+
         // Extract establishment info using more specific patterns
         const patterns = [
-            { regex: /^([^-]+)\s-\s(.+)$/, format: '<div class="establishment-header"><strong>$1</strong> - $2</div>' },
+            { regex: /^([^-]+)\s-\s(.+)$/, format: '<span class="establishment-header"><strong>$1</strong> - $2</span>' },
             { regex: /Comune:\s*(.+)/i, format: '<div class="detail-line"><span class="label">Comune:</span> <span class="value">$1</span></div>' },
             { regex: /Indirizzo:\s*(.+)/i, format: '<div class="detail-line"><span class="label">Indirizzo:</span> <span class="value">$1</span></div>' },
             { regex: /ID:\s*(.+)/i, format: '<div class="detail-line"><span class="label">ID:</span> <span class="value">$1</span></div>' },
@@ -644,23 +664,25 @@ ${cleanAnswer}
             processed = processed.replace(pattern.regex, pattern.format);
         }
 
-        return processed;
+        // Convert remaining markdown (bold and italic) to HTML
+        return this.convertMarkdown(processed);
     }
 
     formatField(fieldText) {
         // Handle markdown bold fields
         const boldMatch = fieldText.match(/^\*\*([^*]+):\*\*\s+(.+)$/);
         if (boldMatch) {
-            return `<div class="field-line"><strong class="field-label">${boldMatch[1]}:</strong> <span class="field-value">${boldMatch[2]}</span></div>`;
+            return `<div class="field-line"><strong class="field-label">${boldMatch[1]}:</strong> <span class="field-value">${this.convertMarkdown(boldMatch[2])}</span></div>`;
         }
 
         // Handle simple colon fields
         const colonMatch = fieldText.match(/^([^:]+):\s*(.+)$/);
         if (colonMatch) {
-            return `<div class="field-line"><span class="field-label">${colonMatch[1]}:</span> <span class="field-value">${colonMatch[2]}</span></div>`;
+            return `<div class="field-line"><span class="field-label">${colonMatch[1]}:</span> <span class="field-value">${this.convertMarkdown(colonMatch[2])}</span></div>`;
         }
 
-        return `<div class="field-line">${fieldText}</div>`;
+        // Fallback: convert any markdown
+        return `<div class="field-line">${this.convertMarkdown(fieldText)}</div>`;
     }
 
     showTypingIndicator() {

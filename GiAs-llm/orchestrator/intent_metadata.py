@@ -93,19 +93,6 @@ INTENT_REGISTRY: Dict[str, IntentMetadata] = {
         emoji="🏭"
     ),
 
-    "ask_piano_generic": IntentMetadata(
-        intent_id="ask_piano_generic",
-        label="Info Generiche Piano",
-        description="Informazioni generiche su un piano (periodo, stato, ecc.)",
-        category="Piano di Controllo",
-        keywords=["quando", "periodo", "scadenza", "stato", "informazioni"],
-        context_keywords=["piano"],
-        negative_keywords=["stabilimenti", "descrizione", "statistiche"],
-        examples=["Quando inizia piano A1?", "Periodo piano B2", "Stato del piano C3"],
-        requires_slots=["piano_code"],
-        emoji="ℹ️"
-    ),
-
     "ask_piano_statistics": IntentMetadata(
         intent_id="ask_piano_statistics",
         label="Statistiche Piano",
@@ -184,6 +171,19 @@ INTENT_REGISTRY: Dict[str, IntentMetadata] = {
         examples=["Attività più rischiose", "Top tipologie a rischio", "Classifica attività pericolose"],
         requires_slots=[],
         emoji="📊"
+    ),
+
+    "ask_nearby_priority": IntentMetadata(
+        intent_id="ask_nearby_priority",
+        label="Stabilimenti nelle Vicinanze",
+        description="Stabilimenti prioritari vicino alla tua posizione",
+        category="Priorità e Rischio",
+        keywords=["vicinanze", "vicino", "dintorni", "pressi", "zona", "entro km"],
+        context_keywords=["stabilimenti", "controlli", "posizione"],
+        negative_keywords=["ritardo", "statistiche"],
+        examples=["Stabilimenti vicino a me", "Controlli nelle vicinanze", "OSA nei dintorni di Via Roma"],
+        requires_slots=["location"],
+        emoji="📍"
     ),
 
     # ===== CATEGORIA: Ritardi =====
@@ -307,14 +307,14 @@ CATEGORY_HIERARCHY: Dict[str, List[str]] = {
     "Piano di Controllo": [
         "ask_piano_description",
         "ask_piano_stabilimenti",
-        "ask_piano_generic",
         "ask_piano_statistics"
     ],
     "Priorità e Rischio": [
         "ask_priority_establishment",
         "ask_risk_based_priority",
         "ask_suggest_controls",
-        "ask_top_risk_activities"
+        "ask_top_risk_activities",
+        "ask_nearby_priority"
     ],
     "Ricerca": [
         "search_piani_by_topic"

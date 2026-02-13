@@ -15,21 +15,22 @@ PROJECT_ROOT = TEST_DIR.parent
 
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Mock dei moduli che richiedono dipendenze esterne
-# (solo per test unitari, non per test di integrazione RAG)
-sys.modules['langgraph'] = Mock()
-sys.modules['langgraph.graph'] = Mock()
-sys.modules['langchain_core'] = Mock()
-sys.modules['langchain_core.tools'] = Mock()
+# NOTA: I mock globali sono stati rimossi perché interferivano con i test.
+# Ogni test che necessita di mock deve usare @patch localmente.
+# I moduli reali vengono importati normalmente.
 
-sys.modules['llm'] = Mock()
-sys.modules['llm.client'] = Mock()
+# Mock minimale solo per langgraph/langchain se non installati
+try:
+    import langgraph
+except ImportError:
+    sys.modules['langgraph'] = Mock()
+    sys.modules['langgraph.graph'] = Mock()
 
-sys.modules['agents'] = Mock()
-sys.modules['agents.data'] = Mock()
-sys.modules['agents.utils'] = Mock()
-sys.modules['agents.data_agent'] = Mock()
-sys.modules['agents.response_agent'] = Mock()
+try:
+    import langchain_core
+except ImportError:
+    sys.modules['langchain_core'] = Mock()
+    sys.modules['langchain_core.tools'] = Mock()
 
 
 # ============================================================
@@ -45,7 +46,7 @@ def pytest_configure(config):
         "markers", "rag: marks tests that require RAG server running"
     )
     config.addinivalue_line(
-        "markers", "integration: marks integration tests"
+        "markers", "integration: marks integration tests (require database connection)"
     )
 
 
@@ -162,6 +163,52 @@ def rag_config(rag_test_cases_path):
         data = yaml.safe_load(f)
 
     return data.get("config", {})
+
+
+# ============================================================
+# Fixture per test_server.py (TestContext)
+# ============================================================
+
+@pytest.fixture
+def ctx():
+    """
+    Fixture per test_server.py che richiede TestContext.
+    Importa dinamicamente da test_server per evitare dipendenze circolari.
+    """
+    try:
+        from tests.test_server import TestContext
+        return TestContext(
+            quick_mode=True,
+            verbose=False,
+            json_output=False,
+            auto_start=False
+        )
+    except ImportError:
+        # Se non riesce a importare, skip il test
+        pytest.skip("TestContext non disponibile")
+
+
+# ============================================================
+# Helpers per tool invocation
+# ============================================================
+
+def call_tool(tool, *args, **kwargs):
+    """
+    Helper per chiamare un tool LangChain sia che sia decorato con @tool
+    sia che sia una funzione normale.
+
+    Usage:
+        from conftest import call_tool
+        result = call_tool(get_piano_description, "A1")
+    """
+    func = tool.func if hasattr(tool, 'func') else tool
+    return func(*args, **kwargs)
+
+
+@pytest.fixture
+def tool_caller():
+    """Fixture per chiamare tool LangChain nei test."""
+    return call_tool
 
 
 # ============================================================

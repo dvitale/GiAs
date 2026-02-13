@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """
 Test tutte le 10 domande predefinite di GChat con semantic search.
+
+Eseguire come script:
+    python tests/test_all_predefined_questions.py
+
+O con pytest:
+    python -m pytest tests/test_all_predefined_questions.py -v
 """
 
+import pytest
 import requests
 import json
 import time
@@ -23,12 +30,9 @@ PREDEFINED_QUESTIONS = [
     ("d10", "suggeriscimi stabilimenti mai controllati ad alto rischio"),
 ]
 
-def test_question(question_id, question_text):
-    """Test singola domanda"""
-    print(f"\n{'='*70}")
-    print(f"TEST {question_id}: {question_text}")
-    print('='*70)
 
+def _run_question(question_id, question_text):
+    """Esegue una domanda e ritorna (success, answer, elapsed)."""
     payload = {
         "sender": f"test_{question_id}",
         "message": question_text,
@@ -37,40 +41,51 @@ def test_question(question_id, question_text):
 
     try:
         start_time = time.time()
-        response = requests.post(API_URL, json=payload, timeout=30)
+        response = requests.post(API_URL, json=payload, timeout=60)
         elapsed = time.time() - start_time
 
         if response.status_code == 200:
             data = response.json()
             if data and len(data) > 0:
                 answer = data[0].get('text', '')
+                has_error = "error" in answer.lower() or "non ho capito" in answer.lower()
+                return (not has_error, answer, elapsed)
+            return (False, "", elapsed)
+        return (False, f"HTTP {response.status_code}", elapsed)
 
-                print(f"✅ SUCCESS ({elapsed:.2f}s)")
-                print(f"📊 Response length: {len(answer)} chars")
-
-                if len(answer) < 100:
-                    print(f"📝 Full response:\n{answer}")
-                else:
-                    print(f"📝 First 300 chars:\n{answer[:300]}...")
-
-                if "error" in answer.lower() or "non ho capito" in answer.lower():
-                    print("⚠️  WARNING: Possibile errore nella risposta")
-                    return False
-
-                return True
-            else:
-                print(f"❌ FAILED: Empty response")
-                return False
-        else:
-            print(f"❌ FAILED: HTTP {response.status_code}")
-            return False
-
+    except requests.exceptions.ConnectionError:
+        return (None, "Server non disponibile", 0)  # None = skip
     except Exception as e:
-        print(f"❌ EXCEPTION: {e}")
-        return False
+        return (False, str(e), 0)
 
+
+# ==================================================
+# Pytest test parametrizzato
+# ==================================================
+
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.parametrize("question_id,question_text", PREDEFINED_QUESTIONS)
+def test_predefined_question(question_id, question_text):
+    """Test parametrizzato per ogni domanda predefinita."""
+    success, answer, elapsed = _run_question(question_id, question_text)
+
+    # Skip se server non disponibile
+    if success is None:
+        pytest.skip("Server non disponibile - avviare con: scripts/server.sh start")
+
+    print(f"\n[{question_id}] {question_text}")
+    print(f"Response ({elapsed:.2f}s, {len(answer)} chars): {answer[:200]}...")
+
+    assert success, f"Risposta non valida o errore: {answer[:500]}"
+
+
+# ==================================================
+# Standalone script mode
+# ==================================================
 
 def main():
+    """Esecuzione standalone (senza pytest)."""
     print("\n" + "="*70)
     print("TEST SUITE: Tutte le domande predefinite GChat")
     print("Con semantic search Qdrant + LLM")
@@ -79,7 +94,18 @@ def main():
     results = []
 
     for question_id, question_text in PREDEFINED_QUESTIONS:
-        success = test_question(question_id, question_text)
+        print(f"\n[{question_id}] {question_text}")
+        success, answer, elapsed = _run_question(question_id, question_text)
+
+        if success is None:
+            print("SKIP: Server non disponibile")
+            continue
+
+        if success:
+            print(f"PASS ({elapsed:.2f}s, {len(answer)} chars)")
+        else:
+            print(f"FAIL: {answer[:200]}")
+
         results.append((question_id, success))
         time.sleep(1)  # Rate limiting
 
@@ -87,19 +113,15 @@ def main():
     print("SUMMARY")
     print("="*70)
 
-    passed = sum(1 for _, success in results if success)
+    passed = sum(1 for _, s in results if s)
     total = len(results)
 
-    print(f"\nRisultati: {passed}/{total} domande completate con successo\n")
-
-    for question_id, success in results:
-        status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status}  {question_id}")
+    print(f"\nRisultati: {passed}/{total} domande completate con successo")
 
     if passed == total:
-        print(f"\n🎉 Tutti i test superati ({passed}/{total})!")
+        print(f"\nTutti i test superati!")
     else:
-        print(f"\n⚠️  {total - passed} test falliti")
+        print(f"\n{total - passed} test falliti")
 
     print("="*70)
 

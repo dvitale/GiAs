@@ -34,7 +34,7 @@ class ModelBenchmark:
             # Piani specifici
             ("Descrivi il piano A1", "ask_piano_description"),
             ("Cos'è il piano B2?", "ask_piano_description"),
-            ("Che attività fa il piano A32", "ask_piano_generic"),
+            ("Che attività fa il piano A32", "ask_piano_stabilimenti"),
             ("Dove si applica il piano C1", "ask_piano_stabilimenti"),
 
             # Priorità e ritardi
@@ -61,7 +61,7 @@ class ModelBenchmark:
             ("Bye", "goodbye"),
 
             # Casi edge
-            ("Piano Z999", "ask_piano_generic"),  # Piano inesistente
+            ("Piano Z999", "ask_piano_stabilimenti"),  # Piano inesistente
             ("Controlli su dinosauri", "search_piani_by_topic"),  # Topic irreale
             ("blablabla", "fallback")  # Testo casuale
         ]
@@ -76,14 +76,13 @@ Il tuo compito è classificare i messaggi degli operatori ASL e identificare le 
 2. goodbye - saluti finali
 3. ask_help - richieste di aiuto o spiegazione funzionalità
 4. ask_piano_description - richieste descrizione piano specifico
-5. ask_piano_stabilimenti - richieste su dove si applica un piano
-6. ask_piano_generic - domande generiche o sulle attività di un piano
-8. search_piani_by_topic - ricerca piani per argomento/settore
-9. ask_priority_establishment - richieste priorità stabilimenti da controllare
-10. ask_risk_based_priority - priorità basate su analisi rischio storico
-11. ask_suggest_controls - suggerimenti per controlli
-12. ask_delayed_plans - piani in ritardo nella programmazione
-13. fallback - tutto il resto
+5. ask_piano_stabilimenti - richieste su dove si applica un piano (include query generiche/attività)
+6. search_piani_by_topic - ricerca piani per argomento/settore
+7. ask_priority_establishment - richieste priorità stabilimenti da controllare
+8. ask_risk_based_priority - priorità basate su analisi rischio storico
+9. ask_suggest_controls - suggerimenti per controlli
+10. ask_delayed_plans - piani in ritardo nella programmazione
+11. fallback - tutto il resto
 
 **ENTITÀ DA ESTRARRE:**
 - piano_code: codice piano (es. A1, B2, C12)

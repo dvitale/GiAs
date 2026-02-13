@@ -90,10 +90,10 @@ TEST_CASES = [
     TestCase("ask_piano_stabilimenti", "quali OSA per il piano B2?", {"piano_code": "B2"}, "medium"),
     TestCase("ask_piano_stabilimenti", "dove è stato applicato il piano A1?", {"piano_code": "A1"}, "complex"),
 
-    # ========== PIANI - GENERIC ==========
-    TestCase("ask_piano_generic", "piano A1", {"piano_code": "A1"}, "medium"),
-    TestCase("ask_piano_generic", "dimmi del piano B2", {"piano_code": "B2"}, "medium"),
-    TestCase("ask_piano_generic", "attività del piano C3", {"piano_code": "C3"}, "medium"),
+    # ========== PIANI - GENERIC (mappati a ask_piano_stabilimenti) ==========
+    TestCase("ask_piano_stabilimenti", "piano A1", {"piano_code": "A1"}, "medium"),
+    TestCase("ask_piano_stabilimenti", "dimmi del piano B2", {"piano_code": "B2"}, "medium"),
+    TestCase("ask_piano_stabilimenti", "attività del piano C3", {"piano_code": "C3"}, "medium"),
 
     # ========== PIANI - STATISTICHE ==========
     TestCase("ask_piano_statistics", "quale piano è più frequente?", {}, "medium"),

@@ -197,17 +197,55 @@ class TestRAGContextAssembly:
         assert "Chunk 1" in context
         assert "Chunk 2" in context
 
-    def test_format_sources_deduplication(self):
-        """Verifica che le fonti vengano deduplicate."""
+    def test_build_rag_context_with_page_num(self):
+        """Verifica formato contesto con numero pagina."""
         chunks = [
-            {"source_file": "manuale.pdf", "title": "Manuale", "content": "", "section": "", "score": 0.9},
-            {"source_file": "manuale.pdf", "title": "Manuale", "content": "", "section": "", "score": 0.7},
-            {"source_file": "guida.txt", "title": "Guida", "content": "", "section": "", "score": 0.6},
+            {"content": "Contenuto pag 5.", "title": "Manuale", "section": "Ispezione", "source_file": "manuale.pdf", "page_num": 5, "score": 0.9},
+            {"content": "Contenuto no page.", "title": "Guida", "section": "", "source_file": "guida.txt", "page_num": None, "score": 0.7},
+        ]
+        context = _build_rag_context(chunks)
+
+        assert "[Fonte 1: Manuale - Ispezione (pag. 5)]" in context
+        assert "[Fonte 2: Guida]" in context
+        assert "(pag." not in context.split("[Fonte 2")[1] or "pag. 5" in context
+
+    def test_format_sources_deduplication(self):
+        """Verifica che le fonti vengano deduplicate per file."""
+        chunks = [
+            {"source_file": "manuale.pdf", "title": "Manuale", "content": "", "section": "", "page_num": None, "score": 0.9},
+            {"source_file": "manuale.pdf", "title": "Manuale", "content": "", "section": "", "page_num": None, "score": 0.7},
+            {"source_file": "guida.txt", "title": "Guida", "content": "", "section": "", "page_num": None, "score": 0.6},
         ]
         sources = _format_sources(chunks)
 
         assert sources.count("manuale.pdf") == 1
         assert "guida.txt" in sources
+
+    def test_format_sources_with_page_numbers(self):
+        """Verifica formattazione fonti con numeri pagina."""
+        chunks = [
+            {"source_file": "manuale.pdf", "title": "Manuale", "content": "", "section": "", "page_num": 5, "score": 0.9},
+            {"source_file": "manuale.pdf", "title": "Manuale", "content": "", "section": "", "page_num": 12, "score": 0.7},
+            {"source_file": "guida.txt", "title": "Guida", "content": "", "section": "", "page_num": None, "score": 0.6},
+        ]
+        sources = _format_sources(chunks)
+
+        # Pagine diverse dello stesso file devono apparire come fonti separate
+        assert "pag. 5" in sources
+        assert "pag. 12" in sources
+        # File senza pagina non deve avere "pag."
+        assert "guida.txt)" in sources
+
+    def test_format_sources_deduplication_same_page(self):
+        """Verifica deduplicazione per stessa pagina dello stesso file."""
+        chunks = [
+            {"source_file": "manuale.pdf", "title": "Manuale", "content": "", "section": "", "page_num": 5, "score": 0.9},
+            {"source_file": "manuale.pdf", "title": "Manuale", "content": "", "section": "", "page_num": 5, "score": 0.7},
+        ]
+        sources = _format_sources(chunks)
+
+        # Stessa pagina deve apparire una sola volta
+        assert sources.count("pag. 5") == 1
 
     def test_format_sources_empty(self):
         """Verifica fonti vuote."""
@@ -220,13 +258,13 @@ class TestIntentClassification:
 
     def test_procedure_in_valid_intents(self):
         """Verifica che info_procedure sia in VALID_INTENTS."""
-        from orchestrator.router import IntentRouter
-        assert "info_procedure" in IntentRouter.VALID_INTENTS
+        from orchestrator.router import Router
+        assert "info_procedure" in Router.VALID_INTENTS
 
     def test_procedure_pattern_match(self):
         """Verifica che i pattern regex matchino le query procedurali."""
-        from orchestrator.router import IntentRouter
-        pattern = IntentRouter.PROCEDURE_PATTERNS
+        from orchestrator.router import Router
+        pattern = Router.PROCEDURE_PATTERNS
 
         assert pattern.search("qual e' la procedura per ispezione semplice")
         assert pattern.search("come si esegue un controllo")

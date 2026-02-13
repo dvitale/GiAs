@@ -35,12 +35,12 @@ GiAs-llm sostituisce il backend Rasa con un'architettura moderna basata su:
 piani_monitoraggio.csv         →     730 record
 Master list rev 11_filtered.csv →     538 record
 vw_2025_eseguiti_filtered.csv  →  61,247 record
-osa_mai_controllati...csv      → 154,406 record
+osa_mai_controllati...csv      → 118,729 record
 OCSE_ISP_SEMP_2025...csv       → 101,343 record
 vw_diff_programm...csv         →   3,002 record
 personale_filtered.csv         →   1,880 record
 ────────────────────────────────────────────────
-TOTALE                         → 323,146 record
+TOTALE                         → 287,469 record
 ```
 
 ### Qdrant Vector Database

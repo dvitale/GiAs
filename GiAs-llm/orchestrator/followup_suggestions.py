@@ -81,7 +81,6 @@ class FollowUpSuggestionEngine:
         dispatch = {
             "ask_piano_description": self._suggest_piano_description,
             "ask_piano_stabilimenti": self._suggest_piano_stabilimenti,
-            "ask_piano_generic": self._suggest_piano_generic,
             "ask_piano_statistics": self._suggest_piano_statistics,
             "search_piani_by_topic": self._suggest_search_piani,
             "ask_priority_establishment": self._suggest_priority,
@@ -156,23 +155,6 @@ class FollowUpSuggestionEngine:
             {
                 "text": f"Statistiche piano {piano}",
                 "query": f"statistiche piano {piano}"
-            },
-        ]
-
-    def _suggest_piano_generic(
-        self, slots: Dict, data: Dict
-    ) -> List[Dict[str, str]]:
-        piano = _get_piano_code(slots)
-        if not piano:
-            return []
-        return [
-            {
-                "text": f"Descrizione del piano {piano}",
-                "query": f"di cosa tratta il piano {piano}"
-            },
-            {
-                "text": f"Stabilimenti del piano {piano}",
-                "query": f"quali stabilimenti per piano {piano}"
             },
         ]
 

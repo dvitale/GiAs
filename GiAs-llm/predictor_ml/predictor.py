@@ -7,6 +7,7 @@ alla logica rule-based esistente.
 
 import os
 import json
+import re
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional, List
@@ -317,10 +318,11 @@ class RiskPredictor:
         try:
             from agents.data import controlli_df
 
-            # Estrai attività correlate al piano usando descrizione_indicatore (case-insensitive)
+            # Estrai attività correlate al piano con matching esatto o sottopiani (A1, A1_A, ma non A10)
             piano_upper = piano_code.upper()
+            pattern = rf'^{re.escape(piano_upper)}(?:[_ ]|$)'
             controlli_piano = controlli_df[
-                controlli_df['descrizione_indicatore'].str.upper().str.startswith(piano_upper, na=False)
+                controlli_df['descrizione_indicatore'].str.upper().str.match(pattern, na=False)
             ].copy()
 
             if controlli_piano.empty:

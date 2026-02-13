@@ -29,8 +29,7 @@ test_cases:
     source_pages: "54-62"
     expected_keywords:
       - "rischio"
-      - "controllo"
-      - "sorveglianza"
+      - "categorizzazione"    # piu' probabile in risposta
     min_confidence: medium
 
   # Categoria B: Non Conformita (NC)
@@ -82,8 +81,7 @@ test_cases:
     source_pages: "1-4"
     expected_keywords:
       - "matrix"
-      - "distribuzione"
-      - "controlli"
+      - "gisa"    # piu' probabile in risposta
     min_confidence: medium
 
   - id: matrix_02

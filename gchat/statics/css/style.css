@@ -650,19 +650,19 @@ body.dark-theme .chat-messages::-webkit-scrollbar-track {
 }
 
 .message-content p {
-    margin: 8px 0;
-    line-height: 1.6;
+    margin: 4px 0;
+    line-height: 1.4;
 }
 
 .message-content ul,
 .message-content ol {
-    margin: 8px 0;
+    margin: 4px 0;
     padding-left: 20px;
 }
 
 .message-content li {
-    margin: 4px 0;
-    line-height: 1.5;
+    margin: 2px 0;
+    line-height: 1.4;
 }
 
 .message-content code {

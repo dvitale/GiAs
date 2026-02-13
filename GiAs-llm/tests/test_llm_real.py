@@ -36,14 +36,13 @@ def test_intent_classification():
 2. goodbye: Saluti finali
 3. ask_help: Richieste aiuto
 4. ask_piano_description: Descrizione piano (es. "di cosa tratta A1?")
-5. ask_piano_stabilimenti: Stabilimenti per piano
-6. ask_piano_generic: Query generica o attività per piano
-8. search_piani_by_topic: Ricerca per argomento (es. "piani su allevamenti")
-9. ask_priority_establishment: Priorità programmazione
-10. ask_risk_based_priority: Priorità rischio storico
-11. ask_suggest_controls: Suggerimenti controlli
-12. ask_delayed_plans: Piani in ritardo
-13. fallback: Non classificabile
+5. ask_piano_stabilimenti: Stabilimenti per piano (include query generiche o attività per piano)
+6. search_piani_by_topic: Ricerca per argomento (es. "piani su allevamenti")
+7. ask_priority_establishment: Priorità programmazione
+8. ask_risk_based_priority: Priorità rischio storico
+9. ask_suggest_controls: Suggerimenti controlli
+10. ask_delayed_plans: Piani in ritardo
+11. fallback: Non classificabile
 
 **EXTRACTION RULES**:
 - Se presente codice piano (A1, B2, C3_F, etc.): estrarre come piano_code

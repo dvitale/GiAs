@@ -160,7 +160,7 @@ def get_ml_risk_prediction(
 
 Il modulo predittore ha accesso ai seguenti dataset caricati in `agents/data.py`:
 
-#### 1. `osa_mai_controllati_df` (154,406 record)
+#### 1. `osa_mai_controllati_df` (118,729 record)
 **Stabilimenti mai controllati - Target della predizione**
 
 | Colonna | Tipo | Descrizione | Esempio |

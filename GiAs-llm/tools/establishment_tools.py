@@ -31,6 +31,7 @@ except ImportError:
 @tool("get_establishment_history")
 def get_establishment_history(
     num_registrazione: Optional[str] = None,
+    numero_riconoscimento: Optional[str] = None,
     partita_iva: Optional[str] = None,
     ragione_sociale: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -39,10 +40,14 @@ def get_establishment_history(
 
     Lo stabilimento può essere identificato tramite:
     - num_registrazione: numero di registrazione (es. "IT 123", "UE IT 2287 M")
+    - numero_riconoscimento: numero riconoscimento UE (es. "UE IT 15 273")
     - partita_iva: partita IVA (solo numeri)
     - ragione_sociale: parte della ragione sociale (ricerca parziale)
 
     Almeno uno dei parametri deve essere specificato.
+
+    Cerca in entrambe le tabelle (controlli_df e ocse_df) per trovare
+    lo stabilimento e le relative non conformità.
 
     Restituisce:
     - Storico controlli ordinati per data (più recenti primi)
@@ -51,6 +56,7 @@ def get_establishment_history(
 
     Args:
         num_registrazione: Numero registrazione stabilimento
+        numero_riconoscimento: Numero riconoscimento UE stabilimento
         partita_iva: Partita IVA stabilimento
         ragione_sociale: Parte ragione sociale stabilimento
 
@@ -62,19 +68,21 @@ def get_establishment_history(
     """
     try:
         # Validazione: almeno un parametro
-        if not any([num_registrazione, partita_iva, ragione_sociale]):
+        if not any([num_registrazione, numero_riconoscimento, partita_iva, ragione_sociale]):
             return {
                 "formatted_response": "❌ **Errore**: Specifica almeno uno dei seguenti parametri:\n"
                                      "- Numero di registrazione (es. 'IT 123')\n"
+                                     "- Numero di riconoscimento UE (es. 'UE IT 15 273')\n"
                                      "- Partita IVA\n"
                                      "- Ragione sociale (anche parziale)\n\n"
-                                     "Esempio: 'storico controlli stabilimento IT 2287'",
+                                     "Esempio: 'storico stabilimento UE IT 15 273'",
                 "error": "missing_parameters"
             }
 
         # Recupera storico da DataRetriever
         history_df = DataRetriever.get_establishment_history(
             num_registrazione=num_registrazione,
+            numero_riconoscimento=numero_riconoscimento,
             partita_iva=partita_iva,
             ragione_sociale=ragione_sociale,
             limit=50  # Limita a 50 controlli più recenti
@@ -88,6 +96,7 @@ def get_establishment_history(
             formatted_response = ResponseFormatter.format_establishment_history(
                 history_df if history_df is not None else __import__('pandas').DataFrame(),
                 num_registrazione=num_registrazione,
+                numero_riconoscimento=numero_riconoscimento,
                 partita_iva=partita_iva,
                 ragione_sociale=ragione_sociale
             )
@@ -103,6 +112,7 @@ def get_establishment_history(
         establishment_info = {
             "ragione_sociale": first_row.get('ragione_sociale', 'N.D.'),
             "num_registrazione": first_row.get('num_registrazione', 'N.D.'),
+            "numero_riconoscimento": first_row.get('numero_riconoscimento', numero_riconoscimento or 'N.D.'),
             "partita_iva": first_row.get('partita_iva', 'N.D.'),
             "asl": first_row.get('descrizione_asl', 'N.D.')
         }
@@ -111,6 +121,7 @@ def get_establishment_history(
         formatted_response = ResponseFormatter.format_establishment_history(
             history_df,
             num_registrazione=num_registrazione,
+            numero_riconoscimento=numero_riconoscimento,
             partita_iva=partita_iva,
             ragione_sociale=ragione_sociale
         )

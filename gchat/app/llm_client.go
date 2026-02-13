@@ -264,8 +264,12 @@ func SendToLLM(message, sender, llmServerURL string, timeout int, context map[st
 }
 
 // SendToLLMStream sends a message to LLM server and streams events via SSE
-func SendToLLMStream(message, sender, llmServerURL string, timeout int, context map[string]interface{}, eventChan chan<- SSEEvent) error {
-	fullURL := llmServerURL + "/webhooks/rest/webhook/stream"
+func SendToLLMStream(message, sender, llmServerURL string, timeout int, context map[string]interface{}, eventChan chan<- SSEEvent, streamEndpoint string) error {
+	// Use configured stream endpoint, fallback to default if empty
+	if streamEndpoint == "" {
+		streamEndpoint = "/webhooks/rest/webhook/stream"
+	}
+	fullURL := llmServerURL + streamEndpoint
 	log.Printf("LLM_STREAM_REQUEST: sender=%s, message=%s, url=%s, timeout=%ds", sender, message, fullURL, timeout)
 
 	llmMessage := LLMMessage{
@@ -663,7 +667,7 @@ func HandleChatStream(c *gin.Context) {
 	// Start streaming in goroutine
 	go func() {
 		start := time.Now()
-		err := SendToLLMStream(req.Message, req.Sender, config.LLMServer.URL, config.LLMServer.Timeout, context, eventChan)
+		err := SendToLLMStream(req.Message, req.Sender, config.LLMServer.URL, config.LLMServer.Timeout, context, eventChan, config.LLMServer.StreamEndpoint)
 		totalDuration := time.Since(start)
 
 		if err != nil {

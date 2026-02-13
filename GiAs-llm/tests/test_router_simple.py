@@ -15,7 +15,7 @@ def test_router_initialization():
     router = Router(mock_llm)
 
     assert router.llm_client == mock_llm
-    assert len(Router.VALID_INTENTS) == 19
+    assert len(Router.VALID_INTENTS) == 20
 
 
 def test_router_empty_message():

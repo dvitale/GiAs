@@ -167,7 +167,6 @@ def extract_response_context(intent: str, slots: Dict[str, Any], tool_output: Di
     intent_context = {
         "ask_piano_description": "descrizione piano",
         "ask_piano_stabilimenti": "stabilimenti piano",
-        "ask_piano_generic": "info piano",
         "ask_piano_statistics": "statistiche piani",
         "search_piani_by_topic": "ricerca piani",
         "ask_delayed_plans": "piani in ritardo",
@@ -266,7 +265,8 @@ def response_generator_node(state: Dict[str, Any], llm_client, event_callback=No
             tool_output=tool_output
         )
         if suggestions:
-            state["final_response"] += _followup_engine.format_suggestions(suggestions)
+            # Salva suggerimenti strutturati per il frontend (link cliccabili)
+            state["suggestions"] = suggestions
 
     # Estrai contesto per risoluzione anaforica nel turno successivo
     response_context = extract_response_context(

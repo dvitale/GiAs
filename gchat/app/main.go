@@ -149,11 +149,12 @@ func main() {
 
 		// Default template data
 		templateData := gin.H{
-			"title":          "Assistente Gisa",
-			"user":           nil,
-			"welcomeMessage": welcomeMessage,
-			"basePath":       basePath,
+			"title":                "Assistente Gisa",
+			"user":                 nil,
+			"welcomeMessage":       welcomeMessage,
+			"basePath":             basePath,
 			"transcriptionEnabled": config.Transcription.Enabled,
+			"streamingEnabled":     config.UI.EnableStreaming,
 			"queryParams": gin.H{
 				"asl_id":         aslID,
 				"asl_name":       aslName,
@@ -229,6 +230,44 @@ func main() {
 	})
 
 	api.POST("/debug/chat", HandleDebugChat)
+
+	// Chat Analytics Dashboard
+	api.GET("/analytics", func(c *gin.Context) {
+		userIDStr, aslID, aslName, codiceFiscale, username := MergeSessionParams(c)
+		log.Printf("ANALYTICS_PAGE_REQUEST: user_id=%s, asl_id=%s, asl_name=%s, client_ip=%s",
+			userIDStr, aslID, aslName, c.ClientIP())
+
+		templateData := gin.H{
+			"title":      "GIAS Chat Analytics",
+			"user":       loadUserData(userIDStr, aslName, "ANALYTICS"),
+			"basePath":   basePath,
+			"backendUrl": config.LLMServer.URL,
+			"queryParams": gin.H{
+				"asl_id": aslID, "asl_name": aslName, "user_id": userIDStr,
+				"codice_fiscale": codiceFiscale, "username": username,
+			},
+		}
+		c.HTML(http.StatusOK, "analytics.html", templateData)
+	})
+
+	// Conversation Quality Monitor Dashboard
+	api.GET("/monitor", func(c *gin.Context) {
+		userIDStr, aslID, aslName, codiceFiscale, username := MergeSessionParams(c)
+		log.Printf("MONITOR_PAGE_REQUEST: user_id=%s, asl_id=%s, asl_name=%s, client_ip=%s",
+			userIDStr, aslID, aslName, c.ClientIP())
+
+		templateData := gin.H{
+			"title":      "GIAS Problems Monitor",
+			"user":       loadUserData(userIDStr, aslName, "MONITOR"),
+			"basePath":   basePath,
+			"backendUrl": config.LLMServer.URL,
+			"queryParams": gin.H{
+				"asl_id": aslID, "asl_name": aslName, "user_id": userIDStr,
+				"codice_fiscale": codiceFiscale, "username": username,
+			},
+		}
+		c.HTML(http.StatusOK, "monitor.html", templateData)
+	})
 
 	port := config.Server.Port
 	if port == "" {

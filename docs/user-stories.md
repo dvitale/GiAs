@@ -1,13 +1,12 @@
-# User Stories - GISA-AI Assistente Veterinario
-
-Documento delle user story per ogni intent non banale del sistema GISA-AI.
+# User Stories - GISA-AI 
+Documento delle user story per ogni intent risocnosciuto dal sistema GISA-AI.
 Sono esclusi gli intent di servizio: `greet`, `goodbye`, `ask_help`, `confirm_show_details`, `decline_show_details`, `fallback`.
 
 ---
 
 # Contesto informativo: i dataset del sistema
 
-Questa sezione descrive le banche dati da cui GISA-AI attinge le informazioni per rispondere alle domande degli operatori. Ogni dataset rappresenta un aspetto specifico delle attivita' di controllo veterinario e, insieme agli altri, compone il quadro informativo completo su cui si basano le risposte dell'assistente.
+Questa sezione descrive i dataset da cui GISA-AI attinge le informazioni per rispondere alle domande degli operatori. Ogni dataset rappresenta un aspetto specifico delle attivita' di controllo veterinario e, insieme agli altri, compone il quadro informativo completo su cui si basano le risposte dell'assistente.
 
 ---
 
@@ -15,11 +14,22 @@ Questa sezione descrive le banche dati da cui GISA-AI attinge le informazioni pe
 
 Il dataset dei **piani di monitoraggio** contiene l'elenco ufficiale dei piani di controllo sanitario previsti dalla normativa regionale e nazionale. Per ogni piano sono disponibili:
 
-- Il **codice identificativo** (ad esempio A1, B2, C3) che permette di citare il piano in modo univoco
-- La **descrizione** che spiega gli obiettivi e l'ambito del piano (ad esempio "Controllo della Trichinella nei suini macellati")
-- La **sezione di appartenenza** che raggruppa i piani per area tematica (sicurezza alimentare, benessere animale, etc.)
+- Il **codice piano** : codice alfanumerico univoco (es. A1, B2, C3, A11_F, AO24_B) che permette di citare il piano in modo univoco
+- La **descrizione** principale che spiega gli obiettivi e l'ambito del piano (es. "Controllo della Trichinella nei suini macellati")
+- La **sezione di appartenenza** che raggruppa i piani  
+- L'**codice sottopiano** : codice aggiuntivo che identifica l'indicatore di performance associato al piano
+- La **descrizione sottopiano** (`descrizione_2`): dettagli aggiuntivi o note operative sul piano
+- Il **flag campionamento** (`campionamento`): booleano che indica se il piano prevede attivita' di prelievo campioni per analisi di laboratorio (true/false)
 
-Questo dataset viene consultato quando l'utente chiede informazioni su un piano specifico, cerca piani per argomento, o vuole capire a quale piano afferisce una determinata attivita' ispettiva.
+**Struttura tabella PostgreSQL:**
+```
+piani_monitoraggio (
+    id, sezione, alias, descrizione,
+    alias_indicatore, descrizione_2, campionamento
+)
+```
+
+Questo dataset viene consultato quando l'utente chiede informazioni su un piano specifico, cerca piani per argomento, o vuole capire a quale piano afferisce una determinata attivita' ispettiva. Il flag campionamento e' particolarmente utile per distinguere i piani che richiedono CU senza campione da quelli che prevedono prelievi per campioni.
 
 ---
 
@@ -48,9 +58,9 @@ Questo dataset viene utilizzato per identificare gli stabilimenti da ispezionare
 
 ---
 
-## Esiti e non conformita' (OCSE)
+## Esiti e non conformita' 
 
-Il dataset **OCSE** (Osservatorio Controlli Sicurezza Alimentare) contiene il registro storico delle non conformita' rilevate durante i controlli. Per ogni rilievo sono documentati:
+Il dataset **ispezioni** contiene il registro storico delle non conformita' rilevate durante i controlli. Per ogni rilievo sono documentati:
 
 - Il **tipo di non conformita'** (grave o non grave)
 - La **categoria** del problema riscontrato (HACCP, igiene degli alimenti, condizioni delle strutture, etichettatura, etc.)
@@ -65,7 +75,7 @@ Questo dataset alimenta tutti i calcoli di rischio: dalla classifica delle attiv
 
 Il dataset del **confronto programmati/eseguiti** mette a confronto, per ogni Unita' Operativa (UOC), il numero di controlli pianificati per l'anno con quelli effettivamente eseguiti. I dati includono:
 
-- Il **piano di controllo** con il relativo codice
+- Il **piano** con il relativo codice
 - I **controlli programmati** secondo la pianificazione annuale
 - I **controlli eseguiti** alla data di estrazione
 - La **struttura organizzativa** (UOC) responsabile
@@ -74,7 +84,7 @@ Questo dataset permette di identificare i "piani in ritardo", cioe' quei piani p
 
 ---
 
-## Personale veterinario
+## Organigramma del Personale
 
 Il dataset del **personale** contiene l'anagrafica degli operatori veterinari delle ASL. Per ogni utente sono registrati:
 
@@ -160,7 +170,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 - **Slot:** `piano_code`
 - **Fonte dati:** tabella `cu_eseguiti` (controlli ufficiali eseguiti 2025)
 - **Output:** lista top 10 stabilimenti per numero controlli, con macroarea, aggregazione e attivita'
-- **Two-phase:** se il numero di stabilimenti supera la soglia (2), viene prima mostrato un riepilogo sintetico. L'utente puo' chiedere i dettagli completi.
+- **Two-phase:** se il numero di stabilimenti supera la soglia (3), viene prima mostrato un riepilogo sintetico. L'utente puo' chiedere i dettagli completi.
 
 ### Esempi di interazione
 
@@ -174,44 +184,12 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 - [ ] Vengono mostrati i top 10 stabilimenti ordinati per numero di controlli
 - [ ] Il riepilogo include: totale controlli, stabilimenti unici, descrizione piano
-- [ ] Se ci sono piu' di 2 stabilimenti, scatta il two-phase (riepilogo + conferma dettagli)
+- [ ] Se ci sono piu' di 3 stabilimenti, scatta il two-phase (riepilogo + conferma dettagli)
 - [ ] Se nessun controllo e' registrato nel 2025, il sistema lo comunica chiaramente
 
 ---
 
-## US-03: Informazioni generiche su un piano
-
-**Intent:** `ask_piano_generic`
-
-**Come** veterinario ASL,
-**voglio** ottenere informazioni generali su un piano di controllo (periodo, stato, attivita' associate),
-**in modo da** avere un quadro rapido del piano senza entrare nei dettagli dei singoli stabilimenti.
-
-### Dettagli funzionali
-
-- **Input richiesto:** codice piano
-- **Slot:** `piano_code`
-- **Fonte dati:** `cu_eseguiti`
-- **Output:** informazioni aggregate sul piano (stabilimenti, controlli, attivita')
-- **Nota:** questo intent e' il catch-all per domande generiche su un piano che non rientrano in descrizione, stabilimenti o statistiche
-
-### Esempi di interazione
-
-| Domanda utente | Risposta attesa |
-|---|---|
-| "Piano A1" | Panoramica generale del piano A1 |
-| "Attivita' del piano A1" | Attivita' associate al piano |
-| "Parlami del piano B47" | Informazioni generali sul piano B47 |
-
-### Criteri di accettazione
-
-- [ ] Il sistema interpreta correttamente le domande generiche come richieste di info base
-- [ ] La risposta include totale controlli, stabilimenti unici, descrizione piano
-- [ ] Risposta single-phase (nessuna conferma richiesta)
-
----
-
-## US-04: Statistiche sui piani di controllo
+## US-03: Statistiche sui piani di controllo
 
 **Intent:** `ask_piano_statistics`
 
@@ -262,7 +240,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
   - Vector search su Qdrant (embeddings sentence-transformers)
   - LLM re-ranking per pertinenza semantica
   - Fallback a keyword search se la ricerca semantica non produce risultati
-- **Two-phase:** se i risultati superano la soglia (5), viene mostrato un riepilogo; l'utente puo' chiedere i dettagli
+- **Two-phase:** se i risultati superano la soglia (3), viene mostrato un riepilogo; l'utente puo' chiedere i dettagli
 - **Output:** lista piani con codice, descrizione e punteggio di similarita'
 
 ### Esempi di interazione
@@ -278,7 +256,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 - [ ] La ricerca semantica trova piani rilevanti anche con terminologia non esatta
 - [ ] Se la ricerca vettoriale fallisce, scatta il fallback a keyword
 - [ ] I risultati sono ordinati per rilevanza (similarity score)
-- [ ] Con piu' di 5 risultati scatta il two-phase
+- [ ] Con piu' di 3 risultati scatta il two-phase
 - [ ] Se nessun risultato trovato, vengono suggeriti termini alternativi
 
 ---
@@ -300,7 +278,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
   2. Recupera gli stabilimenti mai controllati per l'ASL dell'utente
   3. Incrocia: stabilimenti mai controllati le cui attivita' ricadono nei piani in ritardo
   4. Ordina per priorita' (stabilimenti in settori con maggiore ritardo)
-- **Two-phase:** se i risultati superano 5, riepilogo + conferma
+- **Two-phase:** se i risultati superano 3, riepilogo + conferma
 - **Output:** lista stabilimenti prioritari con piano di riferimento, macroarea, comune
 
 ### Esempi di interazione
@@ -317,7 +295,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 - [ ] La priorita' si basa sull'incrocio piani in ritardo + stabilimenti mai controllati
 - [ ] Se nessun piano e' in ritardo: messaggio positivo ("programmazione in linea")
 - [ ] Se nessuno stabilimento mai controllato: segnala il numero di piani in ritardo comunque
-- [ ] Con piu' di 5 risultati scatta il two-phase
+- [ ] Con piu' di 3 risultati scatta il two-phase
 
 ---
 
@@ -342,7 +320,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
   2. Recupera stabilimenti mai controllati dell'ASL
   3. Associa ogni stabilimento al risk score della sua tipologia
   4. Ordina per punteggio di rischio decrescente
-- **Two-phase:** se i risultati superano 5, riepilogo + conferma
+- **Two-phase:** se i risultati superano 3, riepilogo + conferma
 - **Output:** lista stabilimenti con punteggio rischio, NC gravi/non gravi storiche, comune, indirizzo
 
 ### Esempi di interazione
@@ -359,7 +337,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 - [ ] Se il modello ML fallisce, il fallback rule-based si attiva trasparentemente
 - [ ] Il punteggio di rischio e' basato su dati aggregati regionali per tipologia attivita'
 - [ ] La risposta include una legenda per interpretare i punteggi
-- [ ] Con piu' di 5 risultati scatta il two-phase
+- [ ] Con piu' di 3 risultati scatta il two-phase
 
 ---
 
@@ -392,7 +370,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 - [ ] La lista e' filtrata per ASL dell'utente
 - [ ] Vengono mostrati fino a 20 stabilimenti (con indicazione del totale)
 - [ ] Se nessuno stabilimento risulta mai controllato: messaggio positivo
-- [ ] Con piu' di 5 risultati scatta il two-phase
+- [ ] Con piu' di 3 risultati scatta il two-phase
 
 ---
 
@@ -523,7 +501,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
   - `ragione_sociale` (ricerca parziale)
 - **Slot:** `num_registrazione`, `partita_iva`, `ragione_sociale`
 - **Fonte dati:** `cu_eseguiti` (join con anagrafica stabilimenti)
-- **Two-phase:** se i controlli superano 5, riepilogo + conferma dettagli
+- **Two-phase:** se i controlli superano 3, riepilogo + conferma dettagli
 - **Output:** storico controlli ordinato dal piu' recente, con: data, piano, esito, NC trovate, informazioni stabilimento (ragione sociale, ASL, registrazione)
 
 ### Esempi di interazione
@@ -539,7 +517,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 - [ ] Lo stabilimento e' identificabile per registrazione, P.IVA o ragione sociale
 - [ ] I controlli sono ordinati dal piu' recente al piu' vecchio
 - [ ] Il riepilogo include: info stabilimento, totale controlli, statistiche NC
-- [ ] Con piu' di 5 controlli scatta il two-phase
+- [ ] Con piu' di 3 controlli scatta il two-phase
 - [ ] Se lo stabilimento non e' trovato: messaggio di errore con suggerimenti
 
 ---
@@ -708,17 +686,16 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 | # | Intent | Slot richiesti | Metadata richiesti | Two-phase | Predittore |
 |---|--------|---------------|-------------------|-----------|------------|
 | 01 | `ask_piano_description` | `piano_code` | - | No | - |
-| 02 | `ask_piano_stabilimenti` | `piano_code` | - | Si (>2) | - |
-| 03 | `ask_piano_generic` | `piano_code` | - | No | - |
-| 04 | `ask_piano_statistics` | `piano_code` (opz.) | `asl` | No | - |
-| 05 | `search_piani_by_topic` | `topic` | - | Si (>5) | Hybrid search |
-| 06 | `ask_priority_establishment` | - | `asl`, `uoc` | Si (>5) | - |
-| 07 | `ask_risk_based_priority` | - | `asl` | Si (>5) | ML / Rule-based |
-| 08 | `ask_suggest_controls` | - | `asl` | Si (>5) | - |
-| 09 | `ask_top_risk_activities` | - | - | No | Risk scores |
-| 10 | `ask_delayed_plans` | - | `asl`, `uoc` | No | - |
-| 11 | `check_if_plan_delayed` | `piano_code` | `asl`, `uoc` | No | - |
-| 12 | `ask_establishment_history` | almeno 1 tra: `num_registrazione`, `partita_iva`, `ragione_sociale` | - | Si (>5) | - |
-| 13 | `analyze_nc_by_category` | `categoria` | `asl` (opz.) | No | - |
-| 14 | `info_procedure` | - | - | No | RAG (Qdrant + LLM) |
-| 15 | `ask_nearby_priority` | `location`, `radius_km` (opz.) | `asl` | Si (>10) | Geocoding + Risk scores |
+| 02 | `ask_piano_stabilimenti` | `piano_code` | - | Si (>3) | - |
+| 03 | `ask_piano_statistics` | `piano_code` (opz.) | `asl` | No | - |
+| 04 | `search_piani_by_topic` | `topic` | - | Si (>3) | Hybrid search |
+| 05 | `ask_priority_establishment` | - | `asl`, `uoc` | Si (>3) | - |
+| 06 | `ask_risk_based_priority` | - | `asl` | Si (>3) | ML / Rule-based |
+| 07 | `ask_suggest_controls` | - | `asl` | Si (>3) | - |
+| 08 | `ask_top_risk_activities` | - | - | No | Risk scores |
+| 09 | `ask_delayed_plans` | - | `asl`, `uoc` | No | - |
+| 10 | `check_if_plan_delayed` | `piano_code` | `asl`, `uoc` | No | - |
+| 11 | `ask_establishment_history` | almeno 1 tra: `num_registrazione`, `partita_iva`, `ragione_sociale` | - | Si (>3) | - |
+| 12 | `analyze_nc_by_category` | `categoria` | `asl` (opz.) | No | - |
+| 13 | `info_procedure` | - | - | No | RAG (Qdrant + LLM) |
+| 14 | `ask_nearby_priority` | `location`, `radius_km` (opz.) | `asl` | Si (>10) | Geocoding + Risk scores |

@@ -156,7 +156,6 @@ class ConversationGraph:
                 "ask_help": "help_tool",
                 "ask_piano_description": "piano_description_tool",
                 "ask_piano_stabilimenti": "piano_stabilimenti_tool",
-                "ask_piano_generic": "piano_generic_tool",
                 "ask_piano_statistics": "piano_statistics_tool",
                 "search_piani_by_topic": "search_piani_tool",
                 "ask_priority_establishment": "priority_establishment_tool",
@@ -805,7 +804,6 @@ class ConversationGraph:
         intent_labels = {
             "ask_piano_description": "la descrizione di un piano",
             "ask_piano_stabilimenti": "gli stabilimenti di un piano",
-            "ask_piano_generic": "informazioni su un piano",
             "check_if_plan_delayed": "il ritardo di un piano",
             "search_piani_by_topic": "la ricerca di piani per argomento",
             "ask_establishment_history": "lo storico di uno stabilimento",

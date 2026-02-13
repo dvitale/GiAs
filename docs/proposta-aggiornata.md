@@ -82,7 +82,7 @@ Il Router e' stato implementato con un'architettura **ibrida a 4 livelli** che m
 
 Questo approccio ibrido riduce drasticamente le chiamate al modello linguistico: la maggior parte delle query viene risolta nei primi 2 livelli senza alcun intervento LLM.
 
-**Intent supportati (21 totali)**
+**Intent supportati (20 totali)**
 
 | # | Intent | Descrizione | Slot richiesti |
 |---|--------|-------------|----------------|
@@ -91,22 +91,21 @@ Questo approccio ibrido riduce drasticamente le chiamate al modello linguistico:
 | 3 | `ask_help` | Richieste aiuto | - |
 | 4 | `ask_piano_description` | Descrizione piano | `piano_code` |
 | 5 | `ask_piano_stabilimenti` | Stabilimenti per piano | `piano_code` |
-| 6 | `ask_piano_generic` | Query generica su piano | `piano_code` |
-| 7 | `ask_piano_statistics` | Statistiche frequenze piano | `piano_code` |
-| 8 | `search_piani_by_topic` | Ricerca semantica piani per argomento | `topic` |
-| 9 | `ask_priority_establishment` | Priorita' programmazione (ritardi) | `asl`, `uoc` |
-| 10 | `ask_risk_based_priority` | Priorita' basata su rischio (ML/statistico) | `asl` |
-| 11 | `ask_suggest_controls` | Stabilimenti mai controllati ad alto rischio | `asl` |
-| 12 | `ask_delayed_plans` | Piani in ritardo | `asl`, `uoc` |
-| 13 | `check_if_plan_delayed` | Verifica ritardo singolo piano | `piano_code` |
-| 14 | `ask_establishment_history` | Storico controlli stabilimento | `num_registrazione` o `partita_iva` |
-| 15 | `ask_top_risk_activities` | Attivita' a piu' alto rischio NC | `asl` |
-| 16 | `analyze_nc_by_category` | Analisi non conformita' per categoria | `categoria` |
-| 17 | `info_procedure` | Informazioni su procedure operative (RAG) | `topic` |
-| 18 | `ask_nearby_priority` | Stabilimenti vicini per prossimita' geografica | `location`, `radius_km` (opt, default 5) |
-| 19 | `confirm_show_details` | Conferma visualizzazione dettagli | - |
-| 20 | `decline_show_details` | Rifiuto visualizzazione dettagli | - |
-| 21 | `fallback` | Non classificabile | - |
+| 6 | `ask_piano_statistics` | Statistiche frequenze piano | `piano_code` |
+| 7 | `search_piani_by_topic` | Ricerca semantica piani per argomento | `topic` |
+| 8 | `ask_priority_establishment` | Priorita' programmazione (ritardi) | `asl`, `uoc` |
+| 9 | `ask_risk_based_priority` | Priorita' basata su rischio (ML/statistico) | `asl` |
+| 10 | `ask_suggest_controls` | Stabilimenti mai controllati ad alto rischio | `asl` |
+| 11 | `ask_delayed_plans` | Piani in ritardo | `asl`, `uoc` |
+| 12 | `check_if_plan_delayed` | Verifica ritardo singolo piano | `piano_code` |
+| 13 | `ask_establishment_history` | Storico controlli stabilimento | `num_registrazione` o `partita_iva` |
+| 14 | `ask_top_risk_activities` | Attivita' a piu' alto rischio NC | `asl` |
+| 15 | `analyze_nc_by_category` | Analisi non conformita' per categoria | `categoria` |
+| 16 | `info_procedure` | Informazioni su procedure operative (RAG) | `topic` |
+| 17 | `ask_nearby_priority` | Stabilimenti vicini per prossimita' geografica | `location`, `radius_km` (opt, default 5) |
+| 18 | `confirm_show_details` | Conferma visualizzazione dettagli | - |
+| 19 | `decline_show_details` | Rifiuto visualizzazione dettagli | - |
+| 20 | `fallback` | Non classificabile | - |
 
 **Slot Extraction**
 
@@ -129,7 +128,7 @@ L'estrazione degli slot avviene in modo deterministico tramite regex nel pre-par
 
 **Layer 2: Tool Layer**
 
-Il Tool Layer e' il braccio operativo del sistema. Sono stati implementati **18 tool**organizzati in moduli specializzati, registrati nel `TOOL_REGISTRY` e invocabili dall'orchestratore.
+Il Tool Layer e' il braccio operativo del sistema. Sono stati implementati **19 tool** organizzati in moduli specializzati, registrati nel `TOOL_REGISTRY` e invocabili dall'orchestratore.
 
 **Piano Tools (`tools/piano_tools.py`)**
 
@@ -137,7 +136,6 @@ Il Tool Layer e' il braccio operativo del sistema. Sono stati implementati **18 
 |------|-------------|-------|
 | `piano_description_tool` | Descrizione completa piano | `piano_code` |
 | `piano_stabilimenti_tool` | Stabilimenti controllati per piano | `piano_code` |
-| `piano_generic_tool` | Informazioni generali piano | `piano_code` |
 | `piano_statistics_tool` | Statistiche frequenze di controllo | `piano_code` |
 
 **Priority Tools (`tools/priority_tools.py`)**
@@ -468,7 +466,7 @@ Il sistema supporta **6 modelli LLM** selezionabili, serviti tramite **Ollama** 
 
 | Aspetto | Proposta iniziale | Stato attuale |
 |---------|-------------------|---------------|
-| **Intent** | 13 proposti | **21 implementati** (+62%) |
+| **Intent** | 13 proposti | **20 implementati** (+54%) |
 | **Tool** | ~7 ipotizzati | **19 implementati** (+171%) |
 | **Router** | LLM-only | **Ibrido 4 livelli** (heuristics + cache + LLM) |
 | **Risk model** | Formula semplificata | **XGBoost V4 + statistico** (selezionabile) |

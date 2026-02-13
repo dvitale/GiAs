@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}} - Problems Monitor</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --border-color: #475569;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-green: #4ade80;
+            --accent-red: #f87171;
+            --accent-yellow: #fbbf24;
+            --accent-purple: #a78bfa;
+            --accent-orange: #fb923c;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e293b 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 20px 24px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 16px;
+            font-size: 0.85rem;
+        }
+
+        .header-nav a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+
+        .header-nav a:hover {
+            text-decoration: underline;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .controls select, .controls input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+
+        .controls button {
+            background: linear-gradient(135deg, var(--accent-blue), #2563eb);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .controls button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+        }
+
+        .stat-value.critical { color: var(--accent-red); }
+        .stat-value.high { color: var(--accent-orange); }
+        .stat-value.medium { color: var(--accent-yellow); }
+        .stat-value.low { color: var(--accent-blue); }
+        .stat-value.success { color: var(--accent-green); }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        /* Severity Summary */
+        .severity-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 768px) {
+            .severity-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .severity-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            border-left: 4px solid;
+        }
+
+        .severity-card.critical { border-left-color: var(--accent-red); }
+        .severity-card.high { border-left-color: var(--accent-orange); }
+        .severity-card.medium { border-left-color: var(--accent-yellow); }
+        .severity-card.low { border-left-color: var(--accent-blue); }
+
+        .severity-count {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        .severity-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Panels */
+        .panels-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 1000px) {
+            .panels-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .panel.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .panel-header {
+            background: var(--bg-tertiary);
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .panel-content {
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Data Table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+        }
+
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+
+        .data-table tr:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.critical {
+            background: rgba(248, 113, 113, 0.2);
+            color: var(--accent-red);
+        }
+
+        .badge.high {
+            background: rgba(251, 146, 60, 0.2);
+            color: var(--accent-orange);
+        }
+
+        .badge.medium {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--accent-yellow);
+        }
+
+        .badge.low {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .badge.type {
+            background: rgba(167, 139, 250, 0.2);
+            color: var(--accent-purple);
+        }
+
+        /* Problem Card */
+        .problem-card {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-left: 4px solid;
+        }
+
+        .problem-card.critical { border-left-color: var(--accent-red); }
+        .problem-card.high { border-left-color: var(--accent-orange); }
+        .problem-card.medium { border-left-color: var(--accent-yellow); }
+        .problem-card.low { border-left-color: var(--accent-blue); }
+
+        .problem-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .problem-type {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .problem-description {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+        }
+
+        .problem-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .problem-meta span {
+            margin-right: 16px;
+        }
+
+        /* Recommendations */
+        .recommendations {
+            list-style: none;
+            padding: 0;
+        }
+
+        .recommendations li {
+            padding: 12px 16px;
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 3px solid var(--accent-blue);
+            margin-bottom: 8px;
+            border-radius: 0 8px 8px 0;
+            font-size: 0.85rem;
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Type Icons */
+        .type-icon {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .type-icon::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-purple);
+        }
+
+        /* Expand/Collapse */
+        .expandable {
+            cursor: pointer;
+        }
+
+        .expandable-content {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .expandable.expanded .expandable-content {
+            display: block;
+        }
+
+        .expand-icon {
+            transition: transform 0.2s;
+        }
+
+        .expandable.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Summary Section */
+        .summary-section {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .summary-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .summary-stats {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .summary-stat {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .summary-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+        }
+
+        .summary-stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <h1>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Problems Monitor
+                </h1>
+                <div class="header-nav">
+                    <a href="{{.basePath}}/{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}">Chat</a>
+                    <span style="color: var(--text-muted);">|</span>
+                    <a href="{{.basePath}}/analytics{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}">Analytics</a>
+                    <span style="color: var(--text-muted);">|</span>
+                    <span style="color: var(--accent-blue); font-weight: 600;">Monitor</span>
+                    <span style="color: var(--text-muted);">|</span>
+                    <a href="{{.basePath}}/debug{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}">Debug</a>
+                    <span style="color: var(--text-muted);">|</span>
+                    <a href="{{.basePath}}/debug/langgraph{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}">LangGraph</a>
+                </div>
+            </div>
+            <div class="controls" style="margin-top: 16px;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">Periodo:</label>
+                <select id="periodSelect">
+                    <option value="1">Ultimo giorno</option>
+                    <option value="7" selected>Ultimi 7 giorni</option>
+                    <option value="30">Ultimi 30 giorni</option>
+                    <option value="90">Ultimi 90 giorni</option>
+                </select>
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">ASL:</label>
+                <select id="aslFilter">
+                    <option value="">Tutte</option>
+                </select>
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">Severita min:</label>
+                <select id="severityFilter">
+                    <option value="">Tutti</option>
+                    <option value="low">Low+</option>
+                    <option value="medium">Medium+</option>
+                    <option value="high">High+</option>
+                    <option value="critical">Solo Critical</option>
+                </select>
+                <button id="refreshBtn">Aggiorna</button>
+            </div>
+        </div>
+
+        <!-- Summary Section -->
+        <div class="summary-section" id="summarySection">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                Caricamento riepilogo...
+            </div>
+        </div>
+
+        <!-- Severity Cards -->
+        <div class="severity-grid" id="severityGrid">
+            <div class="severity-card critical">
+                <div class="severity-count" id="countCritical">-</div>
+                <div class="severity-label">Critici</div>
+            </div>
+            <div class="severity-card high">
+                <div class="severity-count" id="countHigh">-</div>
+                <div class="severity-label">Alti</div>
+            </div>
+            <div class="severity-card medium">
+                <div class="severity-count" id="countMedium">-</div>
+                <div class="severity-label">Medi</div>
+            </div>
+            <div class="severity-card low">
+                <div class="severity-count" id="countLow">-</div>
+                <div class="severity-label">Bassi</div>
+            </div>
+        </div>
+
+        <!-- Panels Grid -->
+        <div class="panels-grid">
+            <!-- Critical & High Problems -->
+            <div class="panel full-width">
+                <div class="panel-header">
+                    <span class="panel-title">Problemi Critici e Alti</span>
+                    <span id="problemsCount" style="font-size: 0.8rem; color: var(--text-muted);"></span>
+                </div>
+                <div class="panel-content" id="problemsPanel" style="max-height: 500px;">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        Caricamento problemi...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Problem Types Distribution -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Distribuzione Tipi Problema</span>
+                </div>
+                <div class="panel-content" id="typesPanel">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        Caricamento...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommendations -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Raccomandazioni</span>
+                </div>
+                <div class="panel-content" id="recommendationsPanel">
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        Caricamento...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- All Problems Table -->
+        <div class="panel full-width">
+            <div class="panel-header">
+                <span class="panel-title">Tutti i Problemi</span>
+                <span id="allProblemsCount" style="font-size: 0.8rem; color: var(--text-muted);"></span>
+            </div>
+            <div class="panel-content" id="allProblemsPanel" style="max-height: 600px;">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    Caricamento...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '{{.backendUrl}}';
+        let currentPeriod = 7;
+        let currentAsl = '';
+        let currentSeverity = '';
+        let reportData = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAslOptions();
+            loadAll();
+
+            document.getElementById('periodSelect').addEventListener('change', (e) => {
+                currentPeriod = parseInt(e.target.value);
+                loadAll();
+            });
+
+            document.getElementById('aslFilter').addEventListener('change', (e) => {
+                currentAsl = e.target.value;
+                loadAll();
+            });
+
+            document.getElementById('severityFilter').addEventListener('change', (e) => {
+                currentSeverity = e.target.value;
+                loadAll();
+            });
+
+            document.getElementById('refreshBtn').addEventListener('click', loadAll);
+
+            // Auto-refresh ogni 2 minuti
+            setInterval(loadAll, 120000);
+        });
+
+        async function loadAslOptions() {
+            try {
+                const res = await fetch(`${API_BASE}/api/chat-log/by-asl?days=30`);
+                const data = await res.json();
+                const select = document.getElementById('aslFilter');
+
+                if (data.data && data.data.length > 0) {
+                    data.data.forEach(item => {
+                        if (item.asl) {
+                            const option = document.createElement('option');
+                            option.value = item.asl;
+                            option.textContent = item.asl;
+                            select.appendChild(option);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('Error loading ASL options:', e);
+            }
+        }
+
+        async function loadAll() {
+            await loadQuality();
+        }
+
+        async function loadQuality() {
+            try {
+                let url = `${API_BASE}/api/chat-log/quality?days=${currentPeriod}`;
+                if (currentAsl) url += `&asl=${encodeURIComponent(currentAsl)}`;
+                if (currentSeverity) url += `&min_severity=${currentSeverity}`;
+
+                const res = await fetch(url);
+                const data = await res.json();
+                reportData = data;
+
+                renderSummary(data);
+                renderSeverityCounts(data);
+                renderProblems(data);
+                renderTypes(data);
+                renderRecommendations(data);
+                renderAllProblems(data);
+            } catch (e) {
+                console.error('Error loading quality data:', e);
+                showError('Errore caricamento dati qualita\'');
+            }
+        }
+
+        function renderSummary(data) {
+            const section = document.getElementById('summarySection');
+            section.innerHTML = `
+                <div class="summary-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 20V10"/>
+                        <path d="M18 20V4"/>
+                        <path d="M6 20v-4"/>
+                    </svg>
+                    Riepilogo Periodo: ${currentPeriod} giorni
+                </div>
+                <div class="summary-stats">
+                    <div class="summary-stat">
+                        <div class="summary-stat-value">${data.total_sessions || 0}</div>
+                        <div class="summary-stat-label">Sessioni</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="summary-stat-value">${data.total_messages || 0}</div>
+                        <div class="summary-stat-label">Messaggi</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="summary-stat-value" style="color: ${data.fallback_rate > 20 ? 'var(--accent-red)' : 'var(--accent-green)'}">
+                            ${(data.fallback_rate || 0).toFixed(1)}%
+                        </div>
+                        <div class="summary-stat-label">Tasso Fallback</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="summary-stat-value">${(data.avg_session_length || 0).toFixed(1)}</div>
+                        <div class="summary-stat-label">Media msg/sessione</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="summary-stat-value" style="color: var(--accent-red)">
+                            ${(data.problem_counts?.critical || 0) + (data.problem_counts?.high || 0)}
+                        </div>
+                        <div class="summary-stat-label">Problemi Gravi</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderSeverityCounts(data) {
+            const counts = data.problem_counts || {};
+            document.getElementById('countCritical').textContent = counts.critical || 0;
+            document.getElementById('countHigh').textContent = counts.high || 0;
+            document.getElementById('countMedium').textContent = counts.medium || 0;
+            document.getElementById('countLow').textContent = counts.low || 0;
+        }
+
+        function renderProblems(data) {
+            const panel = document.getElementById('problemsPanel');
+            const problems = [
+                ...(data.problems?.critical || []),
+                ...(data.problems?.high || [])
+            ];
+
+            document.getElementById('problemsCount').textContent = `${problems.length} problemi`;
+
+            if (problems.length === 0) {
+                panel.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                            <line x1="9" y1="9" x2="9.01" y2="9"/>
+                            <line x1="15" y1="9" x2="15.01" y2="9"/>
+                        </svg>
+                        <p>Nessun problema critico o alto rilevato</p>
+                    </div>
+                `;
+                return;
+            }
+
+            panel.innerHTML = problems.slice(0, 50).map(p => `
+                <div class="problem-card ${p.severity} expandable" onclick="this.classList.toggle('expanded')">
+                    <div class="problem-header">
+                        <span class="problem-type">
+                            <span class="badge ${p.severity}">${p.severity}</span>
+                            <span class="badge type">${formatType(p.type)}</span>
+                        </span>
+                        <span class="expand-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="problem-description">${escapeHtml(p.description)}</div>
+                    <div class="problem-meta">
+                        <span>Sessione: ${p.session_id || 'N/A'}</span>
+                        <span>ASL: ${p.asl || 'N/A'}</span>
+                        ${p.timestamp ? `<span>Data: ${formatDate(p.timestamp)}</span>` : ''}
+                    </div>
+                    <div class="expandable-content">
+                        <strong>Dettagli:</strong>
+                        <pre style="margin-top: 8px; white-space: pre-wrap; word-break: break-word;">${JSON.stringify(p.details || {}, null, 2)}</pre>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderTypes(data) {
+            const panel = document.getElementById('typesPanel');
+            const types = data.summary?.problem_types || {};
+
+            if (Object.keys(types).length === 0) {
+                panel.innerHTML = `<div class="empty-state"><p>Nessun tipo di problema</p></div>`;
+                return;
+            }
+
+            const sorted = Object.entries(types).sort((a, b) => b[1] - a[1]);
+            const maxCount = Math.max(...Object.values(types));
+
+            panel.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th style="text-align: right;">Count</th>
+                            <th>Distribuzione</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sorted.map(([type, count]) => `
+                            <tr>
+                                <td><span class="type-icon">${formatType(type)}</span></td>
+                                <td style="text-align: right; font-weight: 600;">${count}</td>
+                                <td>
+                                    <div style="background: var(--bg-tertiary); border-radius: 4px; height: 8px; width: 100%;">
+                                        <div style="background: var(--accent-purple); border-radius: 4px; height: 100%; width: ${(count/maxCount*100).toFixed(0)}%;"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function renderRecommendations(data) {
+            const panel = document.getElementById('recommendationsPanel');
+            const recs = data.summary?.recommendations || [];
+
+            if (recs.length === 0) {
+                panel.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                        <p>Nessuna raccomandazione - tutto sembra a posto!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            panel.innerHTML = `
+                <ul class="recommendations">
+                    ${recs.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                </ul>
+            `;
+        }
+
+        function renderAllProblems(data) {
+            const panel = document.getElementById('allProblemsPanel');
+            const allProblems = [
+                ...(data.problems?.critical || []).map(p => ({...p, severity: 'critical'})),
+                ...(data.problems?.high || []).map(p => ({...p, severity: 'high'})),
+                ...(data.problems?.medium || []).map(p => ({...p, severity: 'medium'})),
+                ...(data.problems?.low || []).map(p => ({...p, severity: 'low'}))
+            ];
+
+            document.getElementById('allProblemsCount').textContent = `${allProblems.length} totali`;
+
+            if (allProblems.length === 0) {
+                panel.innerHTML = `<div class="empty-state"><p>Nessun problema rilevato nel periodo selezionato</p></div>`;
+                return;
+            }
+
+            panel.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Severita</th>
+                            <th>Tipo</th>
+                            <th>Descrizione</th>
+                            <th>Sessione</th>
+                            <th>ASL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${allProblems.slice(0, 100).map(p => `
+                            <tr>
+                                <td><span class="badge ${p.severity}">${p.severity}</span></td>
+                                <td><span class="badge type">${formatType(p.type)}</span></td>
+                                <td style="max-width: 400px;">${escapeHtml(p.description)}</td>
+                                <td style="font-family: monospace; font-size: 0.75rem;">${p.session_id || 'N/A'}</td>
+                                <td>${p.asl || 'N/A'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function formatType(type) {
+            const typeMap = {
+                'fallback_loop': 'Fallback Loop',
+                'repeated_question': 'Domanda Ripetuta',
+                'post_intent_fallback': 'Post-Intent Fallback',
+                'ignored_slots': 'Slot Ignorati',
+                'timeout': 'Timeout',
+                'intent_pingpong': 'Intent Ping-Pong',
+                'short_response': 'Risposta Breve',
+                'twophase_abandoned': 'Two-Phase Abband.',
+                'long_session': 'Sessione Lunga',
+                'llm_incoherence': 'Incoerenza LLM'
+            };
+            return typeMap[type] || type;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return 'N/A';
+            try {
+                const d = new Date(dateStr);
+                return d.toLocaleString('it-IT', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch {
+                return dateStr;
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.toString()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function showError(message) {
+            const panels = ['summarySection', 'problemsPanel', 'typesPanel', 'recommendationsPanel', 'allProblemsPanel'];
+            panels.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.innerHTML = `<div class="empty-state" style="color: var(--accent-red);"><p>${message}</p></div>`;
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

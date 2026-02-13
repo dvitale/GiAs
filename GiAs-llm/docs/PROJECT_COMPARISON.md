@@ -90,7 +90,7 @@ Entrambi i progetti implementano un sistema di assistenza per piani di monitorag
 | Priorità basate su programmazione | ✅ Con dati reali | ✅ Con dati reali (758 piani in ritardo) |
 | Priorità basate su rischio | ✅ Con OCSE data | ✅ Con dati reali (106 attività rischiose) |
 | Piani in ritardo | ✅ Con dati reali | ✅ Con dati reali (3002 record) |
-| Suggerimenti controlli | ✅ Con OSA data | ✅ Con dati reali (154,406 OSA) |
+| Suggerimenti controlli | ✅ Con OSA data | ✅ Con dati reali (118,729 OSA) |
 | Metadata utente (ASL, UOC) | ✅ Via Rasa tracker | ✅ Via state metadata |
 
 ## Dataset e Interrogazioni
@@ -136,7 +136,7 @@ osa_mai_controllati_df = pd.read_csv("dataset/osa_mai_controllati_con_linea_852-
 # GiAs-llm carica dati automaticamente da ./dataset
 piani_df = pd.read_csv("dataset/piani_monitoraggio.csv")  # ✅ 730 righe
 controlli_df = pd.read_csv("dataset/vw_2025_eseguiti_filtered.csv")  # ✅ 61,247 righe
-osa_mai_controllati_df = pd.read_csv("dataset/osa_mai_controllati_con_linea_852-3_filtered.csv")  # ✅ 154,406 righe
+osa_mai_controllati_df = pd.read_csv("dataset/osa_mai_controllati_con_linea_852-3_filtered.csv")  # ✅ 118,729 righe
 ocse_df = pd.read_csv("dataset/OCSE_ISP_SEMP_2025_filtered_v2.csv")  # ✅ 101,343 righe
 diff_prog_eseg_df = pd.read_csv("dataset/vw_diff_programmmati_eseguiti.csv")  # ✅ 3,002 righe
 attivita_df = pd.read_csv("dataset/Master list rev 11_filtered.csv")  # ✅ 538 righe
@@ -145,7 +145,7 @@ attivita_df = pd.read_csv("dataset/Master list rev 11_filtered.csv")  # ✅ 538 
 **Interrogazioni possibili**:
 1. ✅ "Quali attività ha il piano A1?" → 730 piani disponibili, 24 varianti A1
 2. ✅ "Dove si applica il piano A32?" → 194 controlli reali, top 10 stabilimenti
-3. ✅ "Chi dovrei controllare per primo?" → 154,406 stabilimenti mai controllati
+3. ✅ "Chi dovrei controllare per primo?" → 118,729 stabilimenti mai controllati
 4. ✅ "Stabilimenti ad alto rischio" → 106 attività con score di rischio calcolato
 5. ✅ "Piani in ritardo" → 758 piani in ritardo identificati
 6. ✅ "Ricerca 'bovini'" → 42 piani correlati trovati

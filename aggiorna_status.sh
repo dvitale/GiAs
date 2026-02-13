@@ -85,6 +85,7 @@ run_case "GiAs-llm: locale -> remoto" "aggiorna_verso_remoto_G.sh" \
   --include="*.py" \
   --include="*.sh" \
   --include="*.json" \
+  --include="*.pdf" \
   --exclude="*" \
   --exclude="__*" \
   "$GIAS_LOCAL_PATH" \
@@ -103,6 +104,7 @@ run_case "GiAs-llm: remoto -> locale" "aggiorna_da_remoto_G.sh" \
   --include="*.sh" \
   --include="*.json" \
   --include="*.md" \
+  --include="*.pdf" \
   --exclude="*" \
   --exclude="__*" \
   "$REMOTE_USER@$REMOTE_HOST:$GIAS_REMOTE_PATH" \

@@ -6,6 +6,7 @@ Include cache LRU per ottimizzare le chiamate ripetute.
 """
 
 import logging
+import time
 from functools import lru_cache
 from typing import Tuple, Optional, List
 import pandas as pd
@@ -13,16 +14,87 @@ import pandas as pd
 try:
     from geopy.geocoders import Nominatim
     from geopy.distance import geodesic
-    from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+    from geopy.exc import GeocoderTimedOut, GeocoderServiceError, GeocoderUnavailable
     from geopy.point import Point
+    from geopy.extra.rate_limiter import RateLimiter
+    from geopy.adapters import BaseSyncAdapter, AdapterHTTPError
+    import requests
+    from requests.adapters import HTTPAdapter
     GEOPY_AVAILABLE = True
 except ImportError:
     GEOPY_AVAILABLE = False
     Nominatim = None
     geodesic = None
     Point = None
+    RateLimiter = None
+    BaseSyncAdapter = None
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Adapter custom per evitare bug ssl_context con Nominatim/Varnish CDN
+# Il default ssl_context di geopy causa HTTP 509 con Nominatim
+# =============================================================================
+
+class SimpleRequestsAdapter(BaseSyncAdapter if BaseSyncAdapter else object):
+    """
+    Adapter requests senza ssl_context custom.
+
+    Nominatim (tramite Varnish CDN) fa TLS fingerprinting e rifiuta
+    connessioni con ssl_context personalizzato (errore 509).
+    Questo adapter usa il comportamento default di requests.
+    """
+
+    is_available = GEOPY_AVAILABLE
+
+    def __init__(self, *, proxies, ssl_context, **kwargs):
+        if not GEOPY_AVAILABLE:
+            raise ImportError("geopy non disponibile")
+        # Ignora ssl_context - causa 509 con Nominatim
+        super().__init__(proxies=proxies, ssl_context=None)
+
+        self.session = requests.Session()
+        self.session.trust_env = False
+
+        # HTTPAdapter standard senza ssl_context custom
+        adapter = HTTPAdapter(max_retries=2)
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
+
+    def get_text(self, url, *, timeout, headers):
+        resp = self._request(url, timeout=timeout, headers=headers)
+        return resp.text
+
+    def get_json(self, url, *, timeout, headers):
+        resp = self._request(url, timeout=timeout, headers=headers)
+        return resp.json()
+
+    def _request(self, url, *, timeout, headers):
+        try:
+            resp = self.session.get(url, timeout=timeout, headers=headers)
+        except requests.Timeout:
+            raise GeocoderTimedOut('Service timed out')
+        except requests.ConnectionError as e:
+            raise GeocoderUnavailable(str(e))
+        except Exception as e:
+            raise GeocoderServiceError(str(e))
+
+        if resp.status_code >= 400:
+            raise AdapterHTTPError(
+                f'Non-successful status code {resp.status_code}',
+                status_code=resp.status_code,
+                headers=resp.headers,
+                text=resp.text,
+            )
+        return resp
+
+    def __del__(self):
+        if hasattr(self, 'session'):
+            try:
+                self.session.close()
+            except Exception:
+                pass
 
 
 # Eccezioni custom
@@ -67,12 +139,27 @@ class GeocodingService:
         if not GEOPY_AVAILABLE:
             logger.warning("geopy non disponibile - geocodifica disabilitata")
             self._geolocator = None
+            self._geocode_fn = None
         else:
-            self._geolocator = Nominatim(
-                user_agent="gias-veterinary-assistant",
-                timeout=10
+            # Usa adapter custom per evitare bug ssl_context (HTTP 509)
+            base_geolocator = Nominatim(
+                user_agent="GIAS-VeterinaryAssistant/1.0 (gisa@regione.campania.it)",
+                timeout=10,
+                adapter_factory=SimpleRequestsAdapter
             )
-            logger.info("GeocodingService inizializzato con Nominatim")
+            self._geolocator = base_geolocator
+            # Rate limiter: max 1 richiesta al secondo (richiesto da Nominatim ToS)
+            if RateLimiter:
+                self._geocode_fn = RateLimiter(
+                    base_geolocator.geocode,
+                    min_delay_seconds=1.0,
+                    max_retries=2,
+                    error_wait_seconds=5.0
+                )
+                logger.info("GeocodingService inizializzato con Nominatim + SimpleAdapter + RateLimiter")
+            else:
+                self._geocode_fn = base_geolocator.geocode
+                logger.info("GeocodingService inizializzato con Nominatim + SimpleAdapter")
 
         self._initialized = True
 
@@ -110,7 +197,7 @@ class GeocodingService:
         Returns:
             Tuple (latitudine, longitudine, indirizzo_risolto)
         """
-        if not self._geolocator:
+        if not self._geocode_fn:
             raise GeocodingError("Servizio geocodifica non disponibile")
 
         if not address or not address.strip():
@@ -171,9 +258,9 @@ class GeocodingService:
                     for variant in search_variants:
                         if city_viewbox:
                             # Prima prova bounded
-                            location = self._geolocator.geocode(variant, viewbox=city_viewbox, bounded=True)
+                            location = self._geocode_fn(variant, viewbox=city_viewbox, bounded=True)
                         if location is None:
-                            location = self._geolocator.geocode(variant)
+                            location = self._geocode_fn(variant)
 
                         if location:
                             # Verifica che il risultato sia vicino al centro città
@@ -207,7 +294,7 @@ class GeocodingService:
             if "italia" not in addr_lower and "italy" not in addr_lower:
                 address_normalized = f"{address_normalized}, Campania, Italia"
 
-            location = self._geolocator.geocode(address_normalized)
+            location = self._geocode_fn(address_normalized)
 
             if location is None:
                 raise AddressNotFoundError(f"Indirizzo non trovato: {address}")

@@ -42,7 +42,7 @@ diff_prog_eseg_df = pd.read_csv(os.path.join(DATASET_DIR, "vw_diff_programmmati_
 | `piani_monitoraggio.csv` | 730 | Definizioni piani di monitoraggio veterinario |
 | `Master list rev 11_filtered.csv` | 538 | Attività controllabili per categoria |
 | `vw_2025_eseguiti_filtered.csv` | 61,247 | Controlli eseguiti nel 2025 |
-| `osa_mai_controllati_con_linea_852-3_filtered.csv` | 154,406 | Stabilimenti mai controllati |
+| `osa_mai_controllati_con_linea_852-3_filtered.csv` | 118,729 | Stabilimenti mai controllati |
 | `OCSE_ISP_SEMP_2025_filtered_v2.csv` | 101,343 | Non conformità storiche |
 | `vw_diff_programmmati_eseguiti.csv` | 3,002 | Programmati vs eseguiti |
 | **TOTALE** | **323,153** | |
@@ -50,7 +50,7 @@ diff_prog_eseg_df = pd.read_csv(os.path.join(DATASET_DIR, "vw_diff_programmmati_
 **Output caricamento**:
 ```
 [Data] Caricati: piani=730, attivita=538, controlli=61247,
-                 osa=154406, ocse=101343, diff_prog_eseg=3002
+                 osa=118729, ocse=101343, diff_prog_eseg=3002
 ```
 
 ## Verifiche Eseguite
@@ -124,7 +124,7 @@ Il sistema GiAs-llm ora supporta le **stesse interrogazioni** di GiAs.ag (Rasa):
 |-------|---------|----------|
 | "Quali attività ha il piano A1?" | ✅ 24 varianti | ✅ 24 varianti |
 | "Dove si applica il piano A32?" | ✅ 194 controlli | ✅ 194 controlli |
-| "Chi dovrei controllare per primo?" | ✅ 154,407 OSA | ✅ 154,406 OSA |
+| "Chi dovrei controllare per primo?" | ✅ 118,729 OSA | ✅ 118,729 OSA |
 | "Stabilimenti ad alto rischio" | ✅ 101,344 NC | ✅ 101,343 NC |
 | "Piani in ritardo" | ✅ 3,003 record | ✅ 3,002 record |
 | "Ricerca 'bovini'" | ✅ 42 piani | ✅ 42 piani |

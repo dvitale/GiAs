@@ -102,16 +102,15 @@ Il tuo compito è classificare messaggi degli operatori ASL (Aziende Sanitarie L
 2. goodbye - saluti finali
 3. ask_help - richieste aiuto
 4. ask_piano_description - descrizione piano specifico
-5. ask_piano_stabilimenti - stabilimenti controllati per piano
-6. ask_piano_generic - domande generiche o sulle attività di un piano
-8. search_piani_by_topic - ricerca piani per settore (bovini, suini, latte, etc.)
-9. ask_priority_establishment - priorità controlli per programmazione
-10. ask_risk_based_priority - priorità basate su rischio/NC storiche
-11. ask_suggest_controls - suggerimenti controlli
-12. ask_delayed_plans - piani in ritardo
-13. check_if_plan_delayed - verifica ritardo piano specifico
-14. ask_establishment_history - storico controlli stabilimento
-15. fallback - altro
+5. ask_piano_stabilimenti - stabilimenti controllati per piano (include query generiche/attività)
+6. search_piani_by_topic - ricerca piani per settore (bovini, suini, latte, etc.)
+7. ask_priority_establishment - priorità controlli per programmazione
+8. ask_risk_based_priority - priorità basate su rischio/NC storiche
+9. ask_suggest_controls - suggerimenti controlli
+10. ask_delayed_plans - piani in ritardo
+11. check_if_plan_delayed - verifica ritardo piano specifico
+12. ask_establishment_history - storico controlli stabilimento
+13. fallback - altro
 
 **MESSAGGIO:** "{user_message}"
 

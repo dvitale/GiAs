@@ -1164,11 +1164,15 @@
             <div class="header-content">
                 <div class="header-left">
                     <div style="display: flex; gap: 8px; margin-bottom: 4px; font-size: 0.75rem;">
-                        <a href="{{.basePath}}/{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}" style="color: #60a5fa; text-decoration: none;">Home</a>
+                        <a href="{{.basePath}}/{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}" style="color: #60a5fa; text-decoration: none;">Chat</a>
+                        <span style="color: #6b7280;">|</span>
+                        <a href="{{.basePath}}/analytics{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}" style="color: #60a5fa; text-decoration: none;">Analytics</a>
+                        <span style="color: #6b7280;">|</span>
+                        <a href="{{.basePath}}/monitor{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}" style="color: #60a5fa; text-decoration: none;">Monitor</a>
                         <span style="color: #6b7280;">|</span>
                         <a href="{{.basePath}}/debug{{if .queryParams.user_id}}?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}{{end}}" style="color: #60a5fa; text-decoration: none;">Debug</a>
                         <span style="color: #6b7280;">|</span>
-                        <span style="color: #e5e7eb;">LangGraph Visualizer</span>
+                        <span style="color: #e5e7eb; font-weight: 600;">LangGraph</span>
                     </div>
                     <div class="header-title">
                         <h1>GIAS LangGraph + {{if .llmModel}}{{.llmModel}}{{else}}LLM{{end}}</h1>

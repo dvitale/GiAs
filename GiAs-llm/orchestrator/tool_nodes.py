@@ -14,7 +14,7 @@ from typing import Dict, Any
 try:
     from tools.piano_tools import piano_tool, get_piano_statistics
     from tools.priority_tools import priority_tool, suggest_controls
-    from tools.risk_tools import risk_tool, analyze_nc_by_category
+    from tools.risk_tools import risk_tool, analyze_nc_by_category, get_establishments_with_sanctions
     from tools.search_tools import search_tool
     from tools.establishment_tools import get_establishment_history
     from tools.risk_analysis_tools import get_top_risk_activities
@@ -28,7 +28,7 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from tools.piano_tools import piano_tool, get_piano_statistics
     from tools.priority_tools import priority_tool, suggest_controls
-    from tools.risk_tools import risk_tool, analyze_nc_by_category
+    from tools.risk_tools import risk_tool, analyze_nc_by_category, get_establishments_with_sanctions
     from tools.search_tools import search_tool
     from tools.establishment_tools import get_establishment_history
     from tools.risk_analysis_tools import get_top_risk_activities
@@ -123,12 +123,19 @@ def confirm_details_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
             }
         }
     else:
+        # Sessione scaduta o contesto perso: guida l'utente a ripetere la domanda
         state["tool_output"] = {
             "type": "confirm_details",
             "data": {
-                "confirmed": True,
+                "confirmed": False,
                 "detail_context": None,
-                "formatted_response": "Non ho dettagli da mostrare al momento. Fai una domanda sui piani di controllo e potrò fornirti i dettagli."
+                "formatted_response": (
+                    "La sessione è scaduta e non ho più il contesto della richiesta precedente.\n\n"
+                    "Per favore, ripeti la domanda originale. Ecco alcuni esempi:\n"
+                    "- [[Stabilimenti a rischio]]\n"
+                    "- [[Stabilimenti prioritari]]\n"
+                    "- [[Piani che trattano di sicurezza alimentare]]"
+                )
             }
         }
     return state
@@ -187,13 +194,6 @@ def piano_stabilimenti_tool(state: Dict[str, Any], event_callback=None, **_) -> 
             )
 
     state["tool_output"] = {"type": "piano_stabilimenti", "data": result}
-    return state
-
-
-def piano_generic_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
-    piano_code = state["slots"].get("piano_code")
-    result = piano_tool(action="generic", piano_code=piano_code)
-    state["tool_output"] = {"type": "piano_generic", "data": result}
     return state
 
 
@@ -323,7 +323,12 @@ def priority_establishment_tool(state: Dict[str, Any], event_callback=None, **_)
 
 
 def risk_predictor_tool(state: Dict[str, Any], event_callback=None, **_) -> Dict[str, Any]:
-    """Nodo risk predictor configurabile (ML o statistico)."""
+    """Nodo risk predictor configurabile (ML o statistico).
+
+    Gestisce disambiguazione tra:
+    - mai_controllati: stabilimenti mai controllati (default)
+    - con_sanzioni: stabilimenti con più NC storiche
+    """
     if event_callback:
         event_callback({
             "type": "reasoning",
@@ -333,7 +338,62 @@ def risk_predictor_tool(state: Dict[str, Any], event_callback=None, **_) -> Dict
 
     asl = state["metadata"].get("asl")
     piano_code = state["slots"].get("piano_code")
+    tipo_analisi = state["slots"].get("tipo_analisi_rischio")
 
+    # Se tipo_analisi non specificato, chiedi disambiguazione
+    if not tipo_analisi:
+        disambiguation_response = (
+            "**🎯 Stabilimenti a Rischio**\n\n"
+            "Quale tipo di analisi preferisci?\n\n"
+            "**1. Mai controllati** 🔍\n"
+            "   Stabilimenti che non hanno mai ricevuto controlli,\n"
+            "   ordinati per rischio dell'attività svolta\n\n"
+            "**2. Con più sanzioni** ⚠️\n"
+            "   Stabilimenti con più non conformità (NC) storiche\n"
+            "   riportate nei controlli effettuati\n\n"
+            "*Rispondi con 1, 2, oppure \"mai controllati\" / \"con sanzioni\"*"
+        )
+        state["tool_output"] = {
+            "type": "disambiguation",
+            "data": {
+                "formatted_response": disambiguation_response,
+                "pending_intent": "ask_risk_based_priority",
+                "options": ["mai_controllati", "con_sanzioni"]
+            }
+        }
+        state["pending_question"] = True
+        state["needs_clarification"] = True
+        return state
+
+    # Tipo analisi: con_sanzioni
+    if tipo_analisi == "con_sanzioni":
+        if event_callback:
+            event_callback({
+                "type": "reasoning",
+                "node": "risk_predictor_tool",
+                "message": "Cercando stabilimenti con più sanzioni..."
+            })
+
+        sanctions_func = _unwrap_tool(get_establishments_with_sanctions)
+        result = sanctions_func(asl=asl, limit=20)
+        output_type = "sanctions_analysis"
+
+        if isinstance(result, dict):
+            total = result.get("total", 0)
+            if total > TWO_PHASE_THRESHOLDS.get("ask_risk_based_priority", 5):
+                summary_text = (
+                    f"Ho trovato **{total} stabilimenti** con non conformità "
+                    f"per l'ASL **{asl or 'Regione'}**.\n\n"
+                    "Vuoi vedere i dettagli dei top 10?"
+                )
+                result = apply_two_phase_check(
+                    state, "ask_risk_based_priority", result, total, summary_text
+                )
+
+        state["tool_output"] = {"type": output_type, "data": result}
+        return state
+
+    # Tipo analisi: mai_controllati (default)
     predictor_type = RiskPredictorConfig.get_predictor_type()
 
     if predictor_type == "ml":
@@ -423,12 +483,14 @@ def check_plan_delayed_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
 
 def establishment_history_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     num_registrazione = state["slots"].get("num_registrazione")
+    numero_riconoscimento = state["slots"].get("numero_riconoscimento")
     partita_iva = state["slots"].get("partita_iva")
     ragione_sociale = state["slots"].get("ragione_sociale")
 
     history_func = _unwrap_tool(get_establishment_history)
     result = history_func(
         num_registrazione=num_registrazione,
+        numero_riconoscimento=numero_riconoscimento,
         partita_iva=partita_iva,
         ragione_sociale=ragione_sociale
     )
@@ -517,7 +579,6 @@ TOOL_REGISTRY = {
     "help_tool": help_tool,
     "piano_description_tool": piano_description_tool,
     "piano_stabilimenti_tool": piano_stabilimenti_tool,
-    "piano_generic_tool": piano_generic_tool,
     "piano_statistics_tool": piano_statistics_tool,
     "search_piani_tool": search_piani_tool,
     "priority_establishment_tool": priority_establishment_tool,
@@ -541,7 +602,6 @@ INTENT_TO_TOOL = {
     "ask_help": "help_tool",
     "ask_piano_description": "piano_description_tool",
     "ask_piano_stabilimenti": "piano_stabilimenti_tool",
-    "ask_piano_generic": "piano_generic_tool",
     "ask_piano_statistics": "piano_statistics_tool",
     "search_piani_by_topic": "search_piani_tool",
     "ask_priority_establishment": "priority_establishment_tool",

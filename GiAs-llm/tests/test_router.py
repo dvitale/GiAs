@@ -492,7 +492,7 @@ class TestRouter:
 
     def test_valid_slot_keys_defined(self):
         """Test che VALID_SLOT_KEYS contenga tutte le chiavi previste"""
-        expected_keys = {"piano_code", "asl", "topic", "num_registrazione",
+        expected_keys = {"piano_code", "asl", "topic", "num_registrazione", "numero_riconoscimento",
                         "partita_iva", "ragione_sociale", "categoria",
                         "location", "radius_km"}
         assert Router.VALID_SLOT_KEYS == expected_keys

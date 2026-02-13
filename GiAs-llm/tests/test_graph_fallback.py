@@ -4,7 +4,6 @@ Integration tests per Intelligent Fallback System
 Test dell'integrazione tra ConversationGraph e FallbackRecoveryEngine:
 - Flusso fallback con suggerimenti
 - Selezione intent da suggerimenti
-- Menu categorizzato a 2 livelli
 - Loop prevention
 - Session state management
 """
@@ -160,64 +159,6 @@ class TestUserSelection:
             mock_classify.assert_called_once()
 
 
-class TestCategoryMenu:
-    """Test menu categorizzato a 2 livelli"""
-
-    def setup_method(self):
-        """Setup per ogni test"""
-        self.mock_llm = Mock()
-        self.graph = ConversationGraph(llm_client=self.mock_llm)
-
-    def test_category_menu_level_1(self):
-        """Test menu categorie livello 1"""
-        # Simula fallback senza keyword match
-        with patch.object(self.graph.router, 'classify') as mock_classify:
-            mock_classify.return_value = {
-                "intent": "fallback",
-                "slots": {},
-                "needs_clarification": False
-            }
-
-            # Mock keyword matching per ritornare vuoto
-            with patch.object(
-                self.graph._fallback_engine,
-                '_keyword_matching',
-                return_value=[]
-            ) if hasattr(self.graph, '_fallback_engine') else patch.object(
-                self.graph,
-                '_fallback_engine',
-                None
-            ):
-                result = self.graph.run(
-                    message="xyz123",  # Messaggio off-topic
-                    metadata={}
-                )
-
-                response = result["response"]
-
-                # Dovrebbe mostrare categorie
-                assert "Piano di Controllo" in response or "categoria" in response.lower()
-
-    def test_category_menu_level_2_shows_intents(self):
-        """Test menu livello 2 mostra intent di categoria"""
-        # Simula stato con categoria selezionata
-        state = {
-            "message": "",
-            "metadata": {},
-            "fallback_phase": 3,
-            "fallback_selected_category": "Priorità e Rischio"
-        }
-
-        # Esegui fallback_tool
-        result_state = self.graph._fallback_tool(state)
-
-        # Verifica che tool_output contenga intent della categoria
-        data = result_state["tool_output"]["data"]
-
-        # Dovrebbe menzionare intent della categoria
-        assert "Stabilimenti a Rischio" in data or "priorità" in data.lower()
-
-
 class TestLoopPrevention:
     """Test prevenzione loop infiniti"""
 
@@ -225,24 +166,6 @@ class TestLoopPrevention:
         """Setup per ogni test"""
         self.mock_llm = Mock()
         self.graph = ConversationGraph(llm_client=self.mock_llm)
-
-    def test_max_3_fallbacks_escalates_to_help(self):
-        """Test che dopo 3 fallback mostri help completo"""
-        # Simula stato con 3 fallback consecutivi
-        state = {
-            "message": "xyz",
-            "metadata": {},
-            "fallback_count": 3,
-            "needs_clarification": False
-        }
-
-        result_state = self.graph._fallback_tool(state)
-
-        # Dovrebbe aver fatto escalation a help
-        data = result_state["tool_output"]["data"]
-
-        assert "difficoltà" in data.lower() or "cosa posso fare" in data.lower()
-        assert result_state["fallback_count"] == 0  # Reset counter
 
     def test_fallback_count_increments(self):
         """Test che fallback_count si incrementi"""
@@ -309,33 +232,6 @@ class TestSlotCollectionAfterSelection:
         assert result_state["needs_clarification"] is True
 
 
-class TestNeedsClarificationFallback:
-    """Test fallback per slot mancanti (comportamento esistente)"""
-
-    def setup_method(self):
-        """Setup per ogni test"""
-        self.mock_llm = Mock()
-        self.graph = ConversationGraph(llm_client=self.mock_llm)
-
-    def test_needs_clarification_shows_slot_message(self):
-        """Test che needs_clarification mostri messaggio slot"""
-        state = {
-            "message": "descrizione piano",
-            "metadata": {},
-            "intent": "ask_piano_description",
-            "slots": {},
-            "needs_clarification": True
-        }
-
-        result_state = self.graph._fallback_tool(state)
-
-        data = result_state["tool_output"]["data"]
-
-        # Dovrebbe chiedere quale piano
-        assert "piano" in data.lower()
-        assert "quale" in data.lower() or "informazioni" in data.lower()
-
-
 class TestMessageFormatting:
     """Test formattazione messaggio fallback"""
 
@@ -394,7 +290,7 @@ class TestEndToEndScenarios:
 
     def test_scenario_1_fallback_to_selection_to_execution(self):
         """
-        Scenario 1: Fallback → Selezione → Esecuzione
+        Scenario 1: Fallback -> Selezione -> Esecuzione
         User: "dammi stabilimenti pericolosi"
         Bot: Suggerimenti...
         User: "1"

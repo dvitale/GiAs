@@ -93,7 +93,7 @@ class TestShouldAppend:
     def test_all_non_excluded_intents_pass(self, engine):
         """Tutti gli intent non esclusi devono passare should_append."""
         non_excluded = [
-            "ask_piano_description", "ask_piano_stabilimenti", "ask_piano_generic",
+            "ask_piano_description", "ask_piano_stabilimenti",
             "ask_piano_statistics", "search_piani_by_topic",
             "ask_priority_establishment", "ask_risk_based_priority",
             "ask_suggest_controls", "ask_delayed_plans", "check_if_plan_delayed",
@@ -203,7 +203,7 @@ class TestGetSuggestions:
     def test_max_3_suggestions(self, engine):
         """Nessun intent genera piu' di 3 suggerimenti."""
         all_intents = [
-            "ask_piano_description", "ask_piano_stabilimenti", "ask_piano_generic",
+            "ask_piano_description", "ask_piano_stabilimenti",
             "ask_piano_statistics", "search_piani_by_topic",
             "ask_priority_establishment", "ask_risk_based_priority",
             "ask_suggest_controls", "ask_delayed_plans", "check_if_plan_delayed",

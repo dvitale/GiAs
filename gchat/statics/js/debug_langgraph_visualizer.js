@@ -93,7 +93,7 @@ class LangGraphDebugVisualizer {
             piano_tools: {
                 id: 'piano_tools', type: 'agent', label: 'Piano Tools',
                 x: 250, y: 270, radius: 38,
-                description: 'Piano description, stabilimenti, generic, statistics (4 tool)',
+                description: 'Piano description, stabilimenti, statistics (3 tool)',
                 icon: '\u{1F4CB}'
             },
             search_tool: {
@@ -146,7 +146,6 @@ class LangGraphDebugVisualizer {
         this.toolToVisualNode = {
             'piano_description_tool': 'piano_tools',
             'piano_stabilimenti_tool': 'piano_tools',
-            'piano_generic_tool': 'piano_tools',
             'piano_statistics_tool': 'piano_tools',
             'search_piani_tool': 'search_tool',
             'priority_establishment_tool': 'priority_tools',
@@ -154,9 +153,11 @@ class LangGraphDebugVisualizer {
             'delayed_plans_tool': 'priority_tools',
             'check_plan_delayed_tool': 'priority_tools',
             'establishment_history_tool': 'priority_tools',
+            'nearby_priority_tool': 'priority_tools',
             'risk_predictor_tool': 'ml_risk_manager',
             'top_risk_activities_tool': 'ml_risk_manager',
             'analyze_nc_tool': 'ml_risk_manager',
+            'info_procedure_tool': 'search_tool',
             'greet_tool': null,
             'goodbye_tool': null,
             'help_tool': null,
@@ -168,12 +169,12 @@ class LangGraphDebugVisualizer {
         this.intentToTool = {
             'ask_piano_description': 'piano_description_tool',
             'ask_piano_stabilimenti': 'piano_stabilimenti_tool',
-            'ask_piano_generic': 'piano_generic_tool',
             'ask_piano_statistics': 'piano_statistics_tool',
             'search_piani_by_topic': 'search_piani_tool',
             'ask_priority_establishment': 'priority_establishment_tool',
             'ask_risk_based_priority': 'risk_predictor_tool',
             'ask_suggest_controls': 'suggest_controls_tool',
+            'ask_nearby_priority': 'nearby_priority_tool',
             'ask_delayed_plans': 'delayed_plans_tool',
             'check_if_plan_delayed': 'check_plan_delayed_tool',
             'ask_establishment_history': 'establishment_history_tool',
@@ -1435,7 +1436,7 @@ class LangGraphDebugVisualizer {
                 <ul style="margin: 8px 0; padding-left: 20px; font-size: 0.85rem; color: #4b5563;">
                     <li><strong>Classify</strong> - Router ibrido a 4 livelli</li>
                     <li><strong>Dialogue Manager</strong> - Decision engine rule-based</li>
-                    <li><strong>Tool Nodes</strong> - 18 tool specializzati (piano, priority, search, ML)</li>
+                    <li><strong>Tool Nodes</strong> - 19 tool specializzati (piano, priority, search, ML, proximity)</li>
                     <li><strong>Response Generator</strong> - LLM response con two-phase</li>
                 </ul>
             </div>

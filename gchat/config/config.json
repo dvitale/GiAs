@@ -5,7 +5,8 @@
   },
   "llm_server": {
     "url": "http://localhost:5005",
-    "timeout": 60
+    "timeout": 60,
+    "stream_endpoint": "/webhooks/rest/webhook/stream"
   },
   "log": {
     "level": "info",
@@ -65,11 +66,20 @@
       "category": "multiturn",
       "color": "#ea580c",
       "order": 6
+    },
+    {
+      "id": "q7",
+      "text": "📍 Stabilimenti nelle vicinanze",
+      "title": "Conversazione: ti chiederò la posizione per trovare stabilimenti da controllare vicino a te",
+      "question": "Quali stabilimenti dovrei controllare nelle mie vicinanze?",
+      "category": "multiturn",
+      "color": "#f97316",
+      "order": 7
     }
   ],
   "ui": {
     "welcome_message": "Sono il tuo assistente per i **Controlli Ufficiali GISA** (**Anno 2025**).\n\n**Clicca su una domanda** per provarla, oppure scrivimi liberamente!\n\n💡 **Tip:** Le domande sono organizzate per tipo di flusso:\n• **Verde** = Risposta immediata\n• **Blu** = Sintesi + dettagli su richiesta\n• **Arancio** = Conversazione interattiva",
-    "enable_streaming": true,
+    "enable_streaming": false,
     "auto_fallback_on_error": true,
     "show_thinking_animation": true
   },

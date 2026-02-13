@@ -94,7 +94,10 @@
         window.basePath = "{{.basePath}}";
 
         // Transcription feature flag
-        window.transcriptionEnabled = {{.transcriptionEnabled }};
+        window.transcriptionEnabled = {{.transcriptionEnabled}};
+
+        // Streaming feature flag
+        window.streamingEnabled = {{.streamingEnabled}};
 
         // Welcome message and user data
         window.welcomeData = {
@@ -111,7 +114,7 @@
             username: {{if .queryParams.username}}{{.queryParams.username | json}}{{else}}null{{end}}
         };
     </script>
-    <script src="{{.basePath}}/static/js/chat.js"></script>
+    <script src="{{.basePath}}/static/js/chat.js?v=3"></script>
 </body>
 
 </html>

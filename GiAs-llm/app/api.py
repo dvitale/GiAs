@@ -611,6 +611,7 @@ async def webhook(message: RasaMessage) -> List[RasaResponse]:
             "total_execution_ms": result.get("total_execution_ms"),
             "intent": result.get("intent", ""),
             "slots": result.get("slots", {}),
+            "suggestions": result.get("suggestions", []),
         }
 
         return [
@@ -1555,6 +1556,156 @@ async def chat_log_quality(days: int = 7, asl: str = None, min_severity: str = N
         raise HTTPException(status_code=500, detail="Modulo conversation_monitor non disponibile")
     except Exception as e:
         logger.error(f"[ChatLogAPI] Error in quality: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# INTELLIGENT MONITOR API
+# =============================================================================
+
+@app.get("/api/monitor/intelligent")
+async def intelligent_monitor_analysis(
+    days: int = 7,
+    use_llm: bool = False,
+    min_priority: int = 1
+):
+    """
+    Analisi intelligente completa.
+
+    Combina:
+    - Bug detection (errori ricorrenti, slot failures)
+    - Root cause analysis (clustering fallback, gap analysis)
+    - Trend analysis (confronto settimanale, degradazioni)
+    - User intent mining (bisogni non soddisfatti)
+    - Suggerimenti actionable con priorita'
+
+    Query params:
+        days: numero di giorni da analizzare (default: 7)
+        use_llm: abilita analisi semantica LLM (default: false, piu' lento)
+        min_priority: priorita' minima suggerimenti 1-5 (default: 1)
+
+    Returns:
+        - health_score: score complessivo 0-100 con componenti
+        - suggestions: suggerimenti raggruppati per priorita'
+        - bugs_detected: bug rilevati automaticamente
+        - trend_analysis: confronto settimanale e delta
+        - unmet_needs: bisogni utente non soddisfatti
+        - root_causes: analisi cause root problemi
+    """
+    try:
+        from tools.intelligent_monitor import IntelligentMonitor
+
+        monitor = IntelligentMonitor()
+        report = monitor.run_analysis(
+            days=days,
+            use_llm=use_llm,
+            min_priority=min_priority
+        )
+
+        return report.to_dict()
+
+    except ImportError as e:
+        logger.error(f"[IntelligentMonitor] Import error: {e}")
+        raise HTTPException(status_code=500, detail="Modulo intelligent_monitor non disponibile")
+    except Exception as e:
+        logger.error(f"[IntelligentMonitor] Error in analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/monitor/suggestions")
+async def intelligent_monitor_suggestions(
+    min_priority: int = 1,
+    limit: int = 20,
+    suggestion_type: Optional[str] = None
+):
+    """
+    Suggerimenti di miglioramento.
+
+    Query params:
+        min_priority: priorita' minima 1-5 (default: 1)
+        limit: numero massimo suggerimenti (default: 20, max: 50)
+        suggestion_type: filtra per tipo (fix_bug, add_pattern, add_intent, optimize_tool, update_training)
+
+    Returns:
+        Array di suggerimenti con:
+        - type: tipo suggerimento
+        - priority: priorita' 1-5
+        - title: titolo breve
+        - description: descrizione
+        - action: azione da intraprendere
+        - evidence: dati a supporto
+        - implementation_hint: suggerimento implementazione
+    """
+    try:
+        from tools.intelligent_monitor import IntelligentMonitor
+
+        limit = min(limit, 50)
+        monitor = IntelligentMonitor()
+        suggestions = monitor.get_suggestions(min_priority=min_priority, limit=limit)
+
+        # Filter by type if specified
+        if suggestion_type:
+            suggestions = [s for s in suggestions if s.type.value == suggestion_type]
+
+        return {
+            "total": len(suggestions),
+            "min_priority": min_priority,
+            "suggestion_type_filter": suggestion_type,
+            "suggestions": [s.to_dict() for s in suggestions],
+        }
+
+    except ImportError as e:
+        logger.error(f"[IntelligentMonitor] Import error: {e}")
+        raise HTTPException(status_code=500, detail="Modulo intelligent_monitor non disponibile")
+    except Exception as e:
+        logger.error(f"[IntelligentMonitor] Error getting suggestions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/monitor/health")
+async def intelligent_monitor_health():
+    """
+    Health score del sistema.
+
+    Calcola score complessivo 0-100 basato su:
+    - error_rate: tasso errori (peso 25%)
+    - fallback_rate: tasso fallback (peso 25%)
+    - latency: tempo risposta medio (peso 20%)
+    - trend: andamento rispetto settimana precedente (peso 15%)
+    - stability: assenza alert degradazione (peso 15%)
+
+    Returns:
+        - overall_score: score complessivo 0-100
+        - components: scores per singolo componente
+        - alerts: lista alert attivi con severity
+        - generated_at: timestamp generazione
+    """
+    try:
+        from tools.intelligent_monitor import IntelligentMonitor
+
+        monitor = IntelligentMonitor()
+        health = monitor.get_health()
+
+        # Add status interpretation
+        status = "healthy"
+        if health.overall_score < 40:
+            status = "critical"
+        elif health.overall_score < 60:
+            status = "degraded"
+        elif health.overall_score < 80:
+            status = "warning"
+
+        result = health.to_dict()
+        result["status"] = status
+        result["alerts_count"] = len(health.alerts)
+
+        return result
+
+    except ImportError as e:
+        logger.error(f"[IntelligentMonitor] Import error: {e}")
+        raise HTTPException(status_code=500, detail="Modulo intelligent_monitor non disponibile")
+    except Exception as e:
+        logger.error(f"[IntelligentMonitor] Error getting health: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -482,7 +482,7 @@ def _build_response_prompt(self, intent: str, tool_output: Dict) -> str:
 piani_df = pd.read_csv("piani_monitoraggio.csv")              # 730
 attivita_df = pd.read_csv("Master list rev 11_filtered.csv") # 538
 controlli_df = pd.read_csv("vw_2025_eseguiti_filtered.csv")  # 61,247
-osa_mai_controllati_df = pd.read_csv("osa_mai_controllati_con_linea_852-3_filtered.csv")  # 154,406
+osa_mai_controllati_df = pd.read_csv("osa_mai_controllati_con_linea_852-3_filtered.csv")  # 118,729
 ocse_df = pd.read_csv("OCSE_ISP_SEMP_2025_filtered_v2.csv")  # 101,343
 diff_prog_eseg_df = pd.read_csv("vw_diff_programmmati_eseguiti.csv")  # 3,002
 personale_df = pd.read_csv("personale_filtered.csv")         # 1,880

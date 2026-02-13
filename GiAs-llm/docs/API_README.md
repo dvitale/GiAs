@@ -53,7 +53,7 @@ GET http://localhost:5005/status
     "data_loaded": {
         "piani": 730,
         "controlli": 61247,
-        "osa_mai_controllati": 154406
+        "osa_mai_controllati": 118729
     },
     "framework": "LangGraph",
     "llm": "LLaMA 3.1 (stub)"

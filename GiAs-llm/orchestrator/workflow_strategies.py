@@ -67,8 +67,26 @@ WORKFLOW_STRATEGIES = {
     },
 
     "ask_risk_based_priority": {
-        "strategies": [],  # Intent diretto, solo raffinamento
-        "supported_filters": ["comune", "asl", "tipo_attivita", "limit", "piano_code"]
+        "strategies": [
+            {
+                "id": "mai_controllati",
+                "label": "mai controllati",
+                "description": "Stabilimenti che non hanno mai ricevuto controlli, ordinati per rischio attività",
+                "intent_mapping": "ask_risk_based_priority",
+                "requires_params": [],
+                "slot_value": "mai_controllati"
+            },
+            {
+                "id": "con_sanzioni",
+                "label": "con più sanzioni",
+                "description": "Stabilimenti con più non conformità storiche riportate nei controlli",
+                "intent_mapping": "ask_risk_based_priority",
+                "requires_params": [],
+                "slot_value": "con_sanzioni"
+            }
+        ],
+        "initial_question": "Quale tipo di stabilimenti a rischio vuoi visualizzare?",
+        "supported_filters": ["comune", "asl", "tipo_attivita", "limit", "piano_code", "tipo_analisi_rischio"]
     },
 
     "ask_delayed_plans": {

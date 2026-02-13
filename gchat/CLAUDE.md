@@ -75,16 +75,22 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
 ### 1. Endpoint Backend Utilizzato
 
 **Webhook REST**: `POST {BACKEND_URL}/webhooks/rest/webhook`
+**Webhook Streaming (SSE)**: `POST {BACKEND_URL}{STREAM_ENDPOINT}`
 
-L'endpoint è configurabile in `config/config.json`:
+Gli endpoint sono configurabili in `config/config.json`:
 ```json
 {
-  "backend": {
+  "llm_server": {
     "url": "http://localhost:5005",
-    "timeout": 30
+    "timeout": 60,
+    "stream_endpoint": "/webhooks/rest/webhook/stream"
   }
 }
 ```
+
+- `url`: URL base del backend LLM
+- `timeout`: Timeout HTTP in secondi
+- `stream_endpoint`: Path endpoint streaming (default: `/webhooks/rest/webhook/stream`)
 
 ### 2. Strutture Dati per Comunicazione con Backend
 
@@ -235,7 +241,11 @@ Dati caricati al rendering pagina se `user_id` presente in query string.
 ```json
 {
   "server": { "port": "8080", "host": "localhost" },
-  "rasa": { "url": "http://localhost:5005", "timeout": 30 },
+  "llm_server": {
+    "url": "http://localhost:5005",
+    "timeout": 60,
+    "stream_endpoint": "/webhooks/rest/webhook/stream"
+  },
   "log": { "level": "info", "file": "log/app.log" },
   "predefined_questions": [
     {
@@ -804,10 +814,16 @@ La configurazione timeout è stata ottimizzata per gestire le richieste LLM lung
 {
   "llm_server": {
     "url": "http://localhost:5005",
-    "timeout": 60
+    "timeout": 60,
+    "stream_endpoint": "/webhooks/rest/webhook/stream"
   }
 }
 ```
+
+**Parametri LLM Server**:
+- `url`: URL base del backend LLM
+- `timeout`: Timeout in secondi per le richieste HTTP
+- `stream_endpoint`: Path dell'endpoint SSE per streaming (default: `/webhooks/rest/webhook/stream`)
 
 #### Client JavaScript
 ```javascript

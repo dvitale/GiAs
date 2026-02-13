@@ -427,7 +427,7 @@ tail -f /opt/lang-env/GiAs-llm/logs/api-server.log
 INFO:__main__:[Webhook] Ricevuto messaggio da debug_user_1766596665548: chi dovrei controllare per primo oggi?
 INFO:__main__:[Webhook] Metadata: {'asl': 'AVELLINO', 'user_id': '42145', ...}
 INFO:__main__:[Webhook] Risposta generata (2733 caratteri)
-[Data] Caricati: piani=730, attivita=538, controlli=61247, osa=154406, ocse=101343, diff_prog_eseg=3002, personale=1880
+[Data] Caricati: piani=730, attivita=538, controlli=61247, osa=118729, ocse=101343, diff_prog_eseg=3002, personale=1880
 ```
 
 ---

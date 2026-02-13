@@ -809,16 +809,20 @@ class ResponseFormatter:
     def format_establishment_history(
         history_df: pd.DataFrame,
         num_registrazione: Optional[str] = None,
+        numero_riconoscimento: Optional[str] = None,
         partita_iva: Optional[str] = None,
         ragione_sociale: Optional[str] = None
     ) -> str:
         """
         Formatta storico controlli stabilimento.
+        Supporta sia controlli_df che ocse_df come fonte dati.
         """
         if history_df.empty:
             search_criteria = []
             if num_registrazione:
                 search_criteria.append(f"Numero registrazione: {num_registrazione}")
+            if numero_riconoscimento:
+                search_criteria.append(f"Numero riconoscimento: {numero_riconoscimento}")
             if partita_iva:
                 search_criteria.append(f"P.IVA: {partita_iva}")
             if ragione_sociale:
@@ -832,14 +836,23 @@ class ResponseFormatter:
         first_row = history_df.iloc[0]
         stab_ragione = first_row.get('ragione_sociale', 'N.D.')
         stab_reg = first_row.get('num_registrazione', 'N.D.')
+        stab_ric = first_row.get('numero_riconoscimento', numero_riconoscimento or 'N.D.')
         stab_piva = first_row.get('partita_iva', 'N.D.')
         stab_asl = first_row.get('descrizione_asl', 'N.D.')
+        data_source = first_row.get('_source', 'controlli_df')
 
         response = f"**📋 Storico Controlli Stabilimento**\n\n"
         response += f"**Ragione Sociale:** {stab_ragione}\n"
-        response += f"**Numero Registrazione:** {stab_reg}\n"
-        response += f"**Partita IVA:** {stab_piva}\n"
-        response += f"**ASL:** {stab_asl}\n\n"
+        if stab_reg and stab_reg != 'N.D.':
+            response += f"**Numero Registrazione:** {stab_reg}\n"
+        if stab_ric and stab_ric != 'N.D.':
+            response += f"**Numero Riconoscimento:** {stab_ric}\n"
+        if stab_piva and stab_piva != 'N.D.':
+            response += f"**Partita IVA:** {stab_piva}\n"
+        response += f"**ASL:** {stab_asl}\n"
+        if data_source == 'ocse_df':
+            response += f"**Fonte dati:** Solo non conformità (NC)\n"
+        response += "\n"
 
         response += f"**📊 Totale controlli trovati:** {len(history_df)}\n\n"
         response += "────────────────────────────────────\n\n"

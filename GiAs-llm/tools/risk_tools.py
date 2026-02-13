@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional
 import pandas as pd
+import re
 
 try:
     from langchain_core.tools import tool
@@ -72,10 +73,11 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
                 from agents.data import controlli_df
             controlli_df_copy = controlli_df.copy()
 
-            # Usa descrizione_indicatore con matching case-insensitive e startswith
+            # Usa descrizione_indicatore con matching esatto o sottopiani (A1, A1_A, ma non A10)
             piano_upper = str(piano_code).upper()
+            pattern = rf'^{re.escape(piano_upper)}(?:[_ ]|$)'
             attivita_piano = controlli_df_copy[
-                controlli_df_copy['descrizione_indicatore'].str.upper().str.startswith(piano_upper, na=False)
+                controlli_df_copy['descrizione_indicatore'].str.upper().str.match(pattern, na=False)
             ][['macroarea_cu', 'aggregazione_cu', 'attivita_cu']].drop_duplicates()
 
             if attivita_piano.empty:
@@ -252,7 +254,7 @@ def _format_risk_analysis_for_controlled_establishments(
 
             response += f"   ⚠️ **Non conformità storiche:** {nc_gravi} gravi, {nc_non_gravi} non gravi\n"
             if punteggio > 0:
-                response += f"   🎯 **Punteggio rischio:** {punteggio} punti\n"
+                response += f"   🎯 **Punteggio rischio:** {punteggio}/100\n"
 
         response += "\n"
 
@@ -270,7 +272,7 @@ def _format_risk_analysis_for_controlled_establishments(
 
 def risk_tool(asl: Optional[str] = None, piano_code: Optional[str] = None) -> Dict[str, Any]:
     """
-    Router per funzionalità di analisi rischio.
+    Router per funzionalità di analisi rischio (stabilimenti mai controllati).
 
     Args:
         asl: Codice ASL
@@ -284,6 +286,107 @@ def risk_tool(asl: Optional[str] = None, piano_code: Optional[str] = None) -> Di
         return risk_func(asl, piano_code)
     except Exception as e:
         return {"error": f"Errore in risk_tool: {str(e)}"}
+
+
+@tool("establishments_with_sanctions")
+def get_establishments_with_sanctions(asl: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
+    """
+    Identifica stabilimenti con più NC/sanzioni storiche.
+
+    Args:
+        asl: Codice ASL opzionale per filtrare
+        limit: Numero massimo stabilimenti da restituire
+
+    Returns:
+        Dict con stabilimenti ordinati per numero totale NC
+    """
+    try:
+        establishments_df = DataRetriever.get_establishments_with_most_sanctions(asl=asl, limit=limit)
+
+        if establishments_df.empty:
+            asl_text = f" per l'ASL **{asl}**" if asl else " nel database regionale"
+            return {
+                "info": f"Nessuno stabilimento con sanzioni trovato{asl_text}",
+                "asl": asl,
+                "total": 0,
+                "formatted_response": f"✅ Non sono stati trovati stabilimenti con non conformità{asl_text}."
+            }
+
+        # Prepara dati per output
+        establishments_data = []
+        for row in establishments_df.itertuples(index=False):
+            establishments_data.append({
+                'numero_riconoscimento': str(row.numero_riconoscimento),
+                'asl': str(row.asl),
+                'comune': str(row.comune).upper() if pd.notna(row.comune) else 'N/D',
+                'macroarea': str(row.macroarea),
+                'aggregazione': str(row.aggregazione),
+                'tot_nc_gravi': int(row.tot_nc_gravi),
+                'tot_nc_non_gravi': int(row.tot_nc_non_gravi),
+                'tot_nc': int(row.tot_nc),
+                'controlli_totali': int(row.controlli_totali),
+                'percentuale_nc': float(row.percentuale_nc)
+            })
+
+        # Formatta risposta
+        response = _format_establishments_with_sanctions(
+            asl=asl,
+            establishments=establishments_data,
+            total=len(establishments_df)
+        )
+
+        return {
+            "asl": asl,
+            "total": len(establishments_df),
+            "establishments_with_sanctions": establishments_data,
+            "formatted_response": response,
+            "predictor_type": "sanctions_analysis"
+        }
+
+    except Exception as e:
+        return {
+            "error": f"Errore nell'analisi sanzioni: {str(e)}",
+            "formatted_response": f"Si è verificato un errore durante l'analisi degli stabilimenti con sanzioni: {str(e)}"
+        }
+
+
+def _format_establishments_with_sanctions(asl: Optional[str], establishments: list, total: int) -> str:
+    """Formatta la risposta per stabilimenti con sanzioni."""
+    asl_header = f" - ASL **{asl}**" if asl else " (Regione Campania)"
+    response = f"**🚨 Stabilimenti con più Non Conformità**{asl_header}\n\n"
+
+    if not establishments:
+        response += "✅ Nessuno stabilimento con non conformità trovato.\n"
+        return response
+
+    response += f"**Totale stabilimenti con NC:** {total}\n\n"
+    response += "**Top 10 stabilimenti per numero di NC:**\n\n"
+
+    for i, est in enumerate(establishments[:10], 1):
+        nc_gravi = est['tot_nc_gravi']
+        nc_non_gravi = est['tot_nc_non_gravi']
+        tot_nc = est['tot_nc']
+
+        # Emoji basata su gravità
+        if nc_gravi >= 5:
+            emoji = "🔴"
+        elif nc_gravi >= 2:
+            emoji = "🟠"
+        else:
+            emoji = "🟡"
+
+        response += f"**{i}. {emoji} {est['numero_riconoscimento']}**\n"
+        response += f"   📍 {est['comune']} ({est['asl']})\n"
+        response += f"   🏭 {est['macroarea']} > {est['aggregazione']}\n"
+        response += f"   ⚠️ **NC totali: {tot_nc}** ({nc_gravi} gravi, {nc_non_gravi} non gravi)\n"
+        response += f"   🔍 Controlli: {est['controlli_totali']} | % NC: {est['percentuale_nc']}%\n\n"
+
+    response += "**💡 Interpretazione:**\n"
+    response += "• 🔴 = 5+ NC gravi (criticità alta)\n"
+    response += "• 🟠 = 2-4 NC gravi (attenzione)\n"
+    response += "• 🟡 = 0-1 NC gravi (monitoraggio)\n"
+
+    return response
 
 
 @tool("analyze_nc_by_category")

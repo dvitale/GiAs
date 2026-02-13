@@ -239,11 +239,11 @@ INTENT_TESTS_FULL = [
     ("stabilimenti controllati piano A1", r"stabiliment|control", "ask_piano_stabilimenti"),
     ("dove è stato applicato il piano A32", r"stabiliment|control|A32", "ask_piano_stabilimenti"),
 
-    # Piano queries - Generic (include attività)
-    ("attività piano A1", r"attivit|piano|A1", "ask_piano_generic"),
-    ("quali attività riguarda il piano B2", r"attivit|piano", "ask_piano_generic"),
-    ("dimmi del piano A1", r"piano|A1", "ask_piano_generic"),
-    ("parlami del piano C3", r"piano|C3", "ask_piano_generic"),
+    # Piano queries - Generic (include attività) - ora mappati a ask_piano_stabilimenti
+    ("attività piano A1", r"attivit|piano|A1", "ask_piano_stabilimenti"),
+    ("quali attività riguarda il piano B2", r"attivit|piano", "ask_piano_stabilimenti"),
+    ("dimmi del piano A1", r"piano|A1", "ask_piano_stabilimenti"),
+    ("parlami del piano C3", r"piano|C3", "ask_piano_stabilimenti"),
 
     # Piano queries - Statistics
     ("statistiche sui piani di controllo", r"statistic|piano|control", "ask_piano_statistics"),
@@ -301,7 +301,7 @@ INTENT_TESTS_FULL = [
 # Tests for needs_clarification scenarios (missing required slots)
 CLARIFICATION_TESTS = [
     # Intent requires piano_code but missing → should ask for clarification
-    ("dimmi del piano", "ask_piano_generic", True, {}),
+    ("dimmi del piano", "ask_piano_stabilimenti", True, {}),
     ("descrizione piano", "ask_piano_description", True, {}),
     ("stabilimenti controllati", "ask_piano_stabilimenti", True, {}),
     # Intent requires topic but missing
@@ -309,7 +309,7 @@ CLARIFICATION_TESTS = [
     # Intent requires establishment identifier but missing
     ("storico stabilimento", "ask_establishment_history", True, {}),
     # Intent with all required slots → should NOT need clarification
-    ("dimmi del piano A1", "ask_piano_generic", False, {"piano_code": "A1"}),
+    ("dimmi del piano A1", "ask_piano_stabilimenti", False, {"piano_code": "A1"}),
     ("piani su allevamenti", "search_piani_by_topic", False, {"topic": "allevamenti"}),
     # Self-sufficient intents (no required slots)
     ("chi controllare per primo", "ask_priority_establishment", False, {}),
@@ -1287,8 +1287,8 @@ def test_true_intent_classification(ctx: TestContext):
         # Piano queries
         ("di cosa tratta il piano A1", "ask_piano_description", {"piano_code": "A1"}),
         ("stabilimenti controllati piano A32", "ask_piano_stabilimenti", {"piano_code": "A32"}),
-        ("attività piano B2", "ask_piano_generic", {"piano_code": "B2"}),
-        ("dimmi del piano C3", "ask_piano_generic", {"piano_code": "C3"}),
+        ("attività piano B2", "ask_piano_stabilimenti", {"piano_code": "B2"}),
+        ("dimmi del piano C3", "ask_piano_stabilimenti", {"piano_code": "C3"}),
 
         # Search
         ("piani su allevamenti", "search_piani_by_topic", {"topic": "allevamenti"}),

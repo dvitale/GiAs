@@ -96,10 +96,11 @@ class DataRetriever:
         if controlli_df.empty or not piano_id:
             return None
 
-        # Usa descrizione_indicatore con matching case-insensitive e startswith
+        # Usa descrizione_indicatore con matching esatto o sottopiani (A1, A1_A, ma non A10)
         piano_upper = piano_id.upper()
+        pattern = rf'^{re.escape(piano_upper)}(?:[_ ]|$)'
         piano_filtrato = controlli_df[
-            controlli_df['descrizione_indicatore'].str.upper().str.startswith(piano_upper, na=False)
+            controlli_df['descrizione_indicatore'].str.upper().str.match(pattern, na=False)
         ]
 
         return piano_filtrato if not piano_filtrato.empty else None
@@ -302,6 +303,7 @@ class DataRetriever:
                     "source_file": hit.payload.get("source_file", ""),
                     "section": hit.payload.get("section", ""),
                     "title": hit.payload.get("title", ""),
+                    "page_num": hit.payload.get("page_num"),
                     "score": hit.score
                 }
                 for hit in search_results
@@ -435,8 +437,165 @@ class DataRetriever:
             return None
 
     @staticmethod
+    def find_establishment(
+        numero_riconoscimento: Optional[str] = None,
+        numero_registrazione: Optional[str] = None,
+        partita_iva: Optional[str] = None,
+        ragione_sociale: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Cerca stabilimento in entrambe le tabelle (controlli_df e ocse_df).
+
+        Normalizzazione uniforme:
+        - numero_riconoscimento/numero_registrazione: .upper().replace(" ", "")
+        - partita_iva: .strip()
+        - ragione_sociale: re.escape() + case=False
+
+        Args:
+            numero_riconoscimento: Numero riconoscimento (es. "UE IT 15 273")
+            numero_registrazione: Numero registrazione (es. "IT 123")
+            partita_iva: Partita IVA (10-11 cifre)
+            ragione_sociale: Ragione sociale (ricerca parziale)
+
+        Returns:
+            Dict con:
+            - found: bool
+            - source: "controlli_df", "ocse_df", "both" o None
+            - establishment_info: dict con info stabilimento
+            - controlli_df_matches: DataFrame controlli_df filtrato (può essere vuoto)
+            - ocse_df_matches: DataFrame ocse_df filtrato (può essere vuoto)
+        """
+        result = {
+            "found": False,
+            "source": None,
+            "establishment_info": {},
+            "controlli_df_matches": pd.DataFrame(),
+            "ocse_df_matches": pd.DataFrame()
+        }
+
+        # Almeno un parametro deve essere specificato
+        if not any([numero_riconoscimento, numero_registrazione, partita_iva, ragione_sociale]):
+            return result
+
+        controlli_matches = pd.DataFrame()
+        ocse_matches = pd.DataFrame()
+
+        # =====================================================================
+        # RICERCA IN controlli_df
+        # =====================================================================
+        if not controlli_df.empty:
+            filters_controlli = []
+
+            # approval_number (numero riconoscimento) - normalizzato
+            if numero_riconoscimento and 'approval_number' in controlli_df.columns:
+                num_norm = numero_riconoscimento.upper().replace(" ", "")
+                filters_controlli.append(
+                    controlli_df['approval_number'].fillna('').str.upper().str.replace(" ", "", regex=False) == num_norm
+                )
+
+            # num_registrazione - normalizzato
+            if numero_registrazione:
+                num_norm = numero_registrazione.upper().replace(" ", "")
+                filters_controlli.append(
+                    controlli_df['num_registrazione'].fillna('').str.upper().str.replace(" ", "", regex=False) == num_norm
+                )
+
+            # partita_iva - ricerca parziale
+            if partita_iva:
+                filters_controlli.append(
+                    controlli_df['partita_iva'].astype(str).str.contains(
+                        str(partita_iva).strip(), na=False, regex=False
+                    )
+                )
+
+            # ragione_sociale - ricerca parziale case-insensitive
+            if ragione_sociale:
+                escaped_ragione = re.escape(ragione_sociale)
+                filters_controlli.append(
+                    controlli_df['ragione_sociale'].fillna('').str.contains(
+                        escaped_ragione, case=False, na=False, regex=True
+                    )
+                )
+
+            if filters_controlli:
+                combined_filter = filters_controlli[0]
+                for f in filters_controlli[1:]:
+                    combined_filter = combined_filter | f
+                controlli_matches = controlli_df[combined_filter].copy()
+
+        # =====================================================================
+        # RICERCA IN ocse_df
+        # =====================================================================
+        if not ocse_df.empty:
+            filters_ocse = []
+
+            # numero_riconoscimento - normalizzato
+            if numero_riconoscimento and 'numero_riconoscimento' in ocse_df.columns:
+                num_norm = numero_riconoscimento.upper().replace(" ", "")
+                filters_ocse.append(
+                    ocse_df['numero_riconoscimento'].fillna('').str.upper().str.replace(" ", "", regex=False) == num_norm
+                )
+
+            # numero_registrazione - normalizzato
+            if numero_registrazione and 'numero_registrazione' in ocse_df.columns:
+                num_norm = numero_registrazione.upper().replace(" ", "")
+                filters_ocse.append(
+                    ocse_df['numero_registrazione'].fillna('').str.upper().str.replace(" ", "", regex=False) == num_norm
+                )
+
+            if filters_ocse:
+                combined_filter = filters_ocse[0]
+                for f in filters_ocse[1:]:
+                    combined_filter = combined_filter | f
+                ocse_matches = ocse_df[combined_filter].copy()
+
+        # =====================================================================
+        # COSTRUZIONE RISULTATO
+        # =====================================================================
+        found_in_controlli = not controlli_matches.empty
+        found_in_ocse = not ocse_matches.empty
+
+        if found_in_controlli or found_in_ocse:
+            result["found"] = True
+
+            if found_in_controlli and found_in_ocse:
+                result["source"] = "both"
+            elif found_in_controlli:
+                result["source"] = "controlli_df"
+            else:
+                result["source"] = "ocse_df"
+
+            result["controlli_df_matches"] = controlli_matches
+            result["ocse_df_matches"] = ocse_matches
+
+            # Estrai info stabilimento dalla prima riga disponibile
+            if found_in_controlli:
+                first_row = controlli_matches.iloc[0]
+                result["establishment_info"] = {
+                    "ragione_sociale": first_row.get('ragione_sociale', 'N.D.'),
+                    "num_registrazione": first_row.get('num_registrazione', 'N.D.'),
+                    "approval_number": first_row.get('approval_number', 'N.D.'),
+                    "partita_iva": first_row.get('partita_iva', 'N.D.'),
+                    "asl": first_row.get('descrizione_asl', 'N.D.'),
+                    "source": "controlli_df"
+                }
+            elif found_in_ocse:
+                first_row = ocse_matches.iloc[0]
+                result["establishment_info"] = {
+                    "numero_riconoscimento": first_row.get('numero_riconoscimento', 'N.D.'),
+                    "numero_registrazione": first_row.get('numero_registrazione', 'N.D.'),
+                    "asl": first_row.get('asl', 'N.D.'),
+                    "comune": first_row.get('comune', 'N.D.'),
+                    "macroarea": first_row.get('macroarea_sottoposta_a_controllo', 'N.D.'),
+                    "source": "ocse_df"
+                }
+
+        return result
+
+    @staticmethod
     def get_establishment_history(
         num_registrazione: Optional[str] = None,
+        numero_riconoscimento: Optional[str] = None,
         partita_iva: Optional[str] = None,
         ragione_sociale: Optional[str] = None,
         limit: int = 50
@@ -444,68 +603,83 @@ class DataRetriever:
         """
         Recupera storico controlli per stabilimento identificato da:
         - num_registrazione (es. "IT 123", "UE IT 2287 M")
+        - numero_riconoscimento (es. "UE IT 15 273") - cerca anche in ocse_df
         - partita_iva (solo numeri)
         - ragione_sociale (ricerca parziale case-insensitive)
 
-        Includes non-conformità (NC) data joined from ocse_df.
+        Usa find_establishment() per cercare in entrambe le tabelle
+        (controlli_df e ocse_df) e unisce i risultati.
 
         Returns:
             DataFrame con controlli ordinati per data (più recenti primi) o None
         """
-        if controlli_df.empty:
-            return None
-
         # Almeno un parametro deve essere specificato
-        if not any([num_registrazione, partita_iva, ragione_sociale]):
+        if not any([num_registrazione, numero_riconoscimento, partita_iva, ragione_sociale]):
             return None
 
-        filters = []
+        # Usa find_establishment() per ricerca unificata
+        search_result = DataRetriever.find_establishment(
+            numero_riconoscimento=numero_riconoscimento,
+            numero_registrazione=num_registrazione,
+            partita_iva=partita_iva,
+            ragione_sociale=ragione_sociale
+        )
 
-        if num_registrazione:
-            # Normalizza numero registrazione (rimuovi spazi, uppercase)
-            num_norm = num_registrazione.upper().replace(" ", "")
-            filters.append(
-                controlli_df['num_registrazione'].fillna('').str.upper().str.replace(" ", "") == num_norm
-            )
+        if not search_result["found"]:
+            return None
 
-        if partita_iva:
-            # Partita IVA: ricerca parziale per gestire zeri iniziali (02611810645 vs 2611810645)
-            filters.append(
-                controlli_df['partita_iva'].astype(str).str.contains(
-                    str(partita_iva).strip(), na=False, regex=False
+        result_df = pd.DataFrame()
+        controlli_matches = search_result["controlli_df_matches"]
+        ocse_matches = search_result["ocse_df_matches"]
+
+        # =====================================================================
+        # CASO 1: Trovato in controlli_df (o entrambi)
+        # =====================================================================
+        if not controlli_matches.empty:
+            result_df = controlli_matches.copy()
+
+            # Join con NC (ocse_df) se disponibile
+            if not ocse_df.empty and 'id_controllo' in result_df.columns:
+                # Join left per mantenere tutti i controlli anche senza NC
+                result_df = result_df.merge(
+                    ocse_df[['id_controllo_ufficiale', 'numero_nc_gravi', 'numero_nc_non_gravi',
+                             'tipo_non_conformita', 'oggetto_non_conformita']],
+                    left_on='id_controllo',
+                    right_on='id_controllo_ufficiale',
+                    how='left'
                 )
-            )
 
-        if ragione_sociale:
-            # Ricerca parziale case-insensitive (escape regex characters for safety)
-            import re
-            escaped_ragione_sociale = re.escape(ragione_sociale)
-            filters.append(
-                controlli_df['ragione_sociale'].fillna('').str.contains(
-                    escaped_ragione_sociale, case=False, na=False, regex=True
-                )
-            )
+        # =====================================================================
+        # CASO 2: Trovato SOLO in ocse_df (stabilimento con NC ma non in controlli_df)
+        # =====================================================================
+        elif not ocse_matches.empty:
+            # Costruisci un DataFrame "pseudo-controlli" dai dati NC
+            result_df = ocse_matches.copy()
 
-        # Combina filtri con OR logic
-        combined_filter = filters[0]
-        for f in filters[1:]:
-            combined_filter = combined_filter | f
+            # Rinomina colonne per compatibilità con il formatter
+            rename_map = {
+                'numero_riconoscimento': 'num_registrazione',
+                'id_controllo_ufficiale': 'id_controllo',
+                'anno_controllo': 'anno_controllo',
+                'macroarea_sottoposta_a_controllo': 'macroarea_cu',
+                'aggregazione_sottoposta_a_controllo': 'aggregazione_cu',
+                'linea_attivita_sottoposta_a_controllo': 'attivita_cu'
+            }
+            result_df = result_df.rename(columns={
+                k: v for k, v in rename_map.items() if k in result_df.columns
+            })
 
-        result_df = controlli_df[combined_filter].copy()
+            # Aggiungi colonne mancanti con valori di default
+            if 'ragione_sociale' not in result_df.columns:
+                result_df['ragione_sociale'] = 'N.D. (solo dati NC)'
+            if 'descrizione_asl' not in result_df.columns and 'asl' in result_df.columns:
+                result_df['descrizione_asl'] = result_df['asl']
+
+            # Marca la fonte come "ocse_df" per il formatter
+            result_df['_source'] = 'ocse_df'
 
         if result_df.empty:
             return None
-
-        # Join con NC (ocse_df) se disponibile
-        if not ocse_df.empty and 'id_controllo' in result_df.columns:
-            # Join left per mantenere tutti i controlli anche senza NC
-            result_df = result_df.merge(
-                ocse_df[['id_controllo_ufficiale', 'numero_nc_gravi', 'numero_nc_non_gravi',
-                         'tipo_non_conformita', 'oggetto_non_conformita']],
-                left_on='id_controllo',
-                right_on='id_controllo_ufficiale',
-                how='left'
-            )
 
         # Ordina per data controllo (più recenti primi)
         if 'data_inizio_controllo' in result_df.columns:
@@ -666,7 +840,7 @@ class DataRetriever:
         ]).agg({
             'numero_nc_gravi': 'sum',
             'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'count'
+            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
         }).reset_index()
 
         establishment_nc.columns = [
@@ -692,6 +866,84 @@ class DataRetriever:
         # Ordina per numero totale di NC nella categoria (decrescente)
         establishment_nc = establishment_nc.sort_values(
             'tot_nc_categoria', ascending=False
+        )
+
+        return establishment_nc.head(limit)
+
+    @staticmethod
+    def get_establishments_with_most_sanctions(asl: Optional[str] = None, limit: int = 20) -> pd.DataFrame:
+        """
+        Identifica stabilimenti con più NC/sanzioni storiche (tutte le categorie).
+
+        Args:
+            asl: Filtro opzionale per ASL specifica
+            limit: Numero massimo di stabilimenti da restituire
+
+        Returns:
+            DataFrame con stabilimenti ordinati per numero totale di NC
+        """
+        if ocse_df.empty:
+            return pd.DataFrame()
+
+        ocse_copy = ocse_df.copy()
+
+        # Filtra per ASL se specificata
+        if asl:
+            try:
+                ocse_copy = filter_by_asl(ocse_copy, asl, 'asl')
+            except Exception:
+                pass
+
+        if ocse_copy.empty:
+            return pd.DataFrame()
+
+        # Pulizia dati NC
+        ocse_copy['numero_nc_gravi'] = pd.to_numeric(
+            ocse_copy['numero_nc_gravi'], errors='coerce'
+        ).fillna(0)
+        ocse_copy['numero_nc_non_gravi'] = pd.to_numeric(
+            ocse_copy['numero_nc_non_gravi'], errors='coerce'
+        ).fillna(0)
+
+        # Aggrega per stabilimento (numero_riconoscimento)
+        establishment_nc = ocse_copy.groupby([
+            'numero_riconoscimento',
+            'asl',
+            'comune',
+            'macroarea_sottoposta_a_controllo',
+            'aggregazione_sottoposta_a_controllo'
+        ]).agg({
+            'numero_nc_gravi': 'sum',
+            'numero_nc_non_gravi': 'sum',
+            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
+        }).reset_index()
+
+        establishment_nc.columns = [
+            'numero_riconoscimento', 'asl', 'comune', 'macroarea', 'aggregazione',
+            'tot_nc_gravi', 'tot_nc_non_gravi', 'controlli_totali'
+        ]
+
+        # Calcola totale NC
+        establishment_nc['tot_nc'] = (
+            establishment_nc['tot_nc_gravi'] +
+            establishment_nc['tot_nc_non_gravi']
+        )
+
+        # Filtra solo stabilimenti con almeno una NC
+        establishment_nc = establishment_nc[establishment_nc['tot_nc'] > 0]
+
+        if establishment_nc.empty:
+            return pd.DataFrame()
+
+        # Calcola percentuale NC
+        establishment_nc['percentuale_nc'] = (
+            establishment_nc['tot_nc'] /
+            establishment_nc['controlli_totali'].replace(0, 1) * 100
+        ).round(2)
+
+        # Ordina per numero totale di NC (decrescente)
+        establishment_nc = establishment_nc.sort_values(
+            ['tot_nc', 'tot_nc_gravi'], ascending=[False, False]
         )
 
         return establishment_nc.head(limit)
@@ -880,30 +1132,44 @@ class BusinessLogic:
         """
         Estrae descrizioni uniche da righe piano.
 
+        Interpretazione campi tabella piani_monitoraggio:
+        - alias: nome/codice del piano (es. "A1", "B2")
+        - alias_indicatore: nome/codice del sottopiano
+        - descrizione: descrizione del piano
+        - descrizione-2 (o descrizione_2): descrizione del sotto-piano
+        - campionamento: True = prelievo campioni, False = attività di controllo
+        - sezione: sezione del piano (es. "A", "B", "C")
+
         Returns:
-            Dict con struttura {descrizione_main: {sezione, alias, descrizione-2: [...]}}
+            Dict con struttura {descrizione_main: {sezione, alias, campionamento, sottopiani: [...]}}
         """
         unique_descriptions = {}
 
-        for row in piano_rows.itertuples(index=False):
-            sezione = getattr(row, "sezione", "")
-            alias = getattr(row, "alias", "")
-            alias_ind = getattr(row, "alias_indicatore", "")
-            desc1 = getattr(row, "descrizione", "")
-            desc2 = getattr(row, "descrizione_2", "")
+        # Usa iterrows per accesso a colonne con caratteri speciali (es. "descrizione-2")
+        for _, row in piano_rows.iterrows():
+            sezione = row.get("sezione", "")
+            alias = row.get("alias", "")
+            alias_ind = row.get("alias_indicatore", "")
+            desc1 = row.get("descrizione", "")
+            # Colonna con trattino: accesso via dizionario
+            desc2 = row.get("descrizione-2", "")
+            # Campo campionamento: True = prelievo campioni, False/None = attività di controllo
+            campionamento = row.get("campionamento", None)
 
             if pd.notna(desc1) and desc1 not in unique_descriptions:
                 unique_descriptions[desc1] = {
                     'sezione': sezione,
                     'alias': alias,
-                    'descrizione-2': []
+                    'campionamento': campionamento,
+                    'sottopiani': []
                 }
 
             if pd.notna(desc2) and desc1 in unique_descriptions:
-                if desc2 not in [d['text'] for d in unique_descriptions[desc1]['descrizione-2']]:
-                    unique_descriptions[desc1]['descrizione-2'].append({
-                        'text': desc2,
-                        'alias_ind': alias_ind
+                if desc2 not in [d['descrizione_sottopiano'] for d in unique_descriptions[desc1]['sottopiani']]:
+                    unique_descriptions[desc1]['sottopiani'].append({
+                        'descrizione_sottopiano': desc2,
+                        'alias_indicatore': alias_ind,
+                        'campionamento': campionamento
                     })
 
         return unique_descriptions
@@ -1060,7 +1326,7 @@ class RiskAnalyzer:
         ]).agg({
             'numero_nc_gravi': 'sum',
             'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'count'
+            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
         }).reset_index()
 
         rischio_per_attivita.columns = [
@@ -1137,7 +1403,7 @@ class RiskAnalyzer:
             print("[RiskAnalyzer] Using cached categorized risk scores")
             return RiskAnalyzer._categorized_risk_scores_cache
 
-        ocse_df = DataRetriever.get_ocse()
+        # Usa il DataFrame globale ocse_df importato da agents.data
         if ocse_df.empty:
             return pd.DataFrame()
 
@@ -1179,7 +1445,7 @@ class RiskAnalyzer:
         ]).agg({
             'numero_nc_gravi': 'sum',
             'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'count'
+            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
         }).reset_index()
 
         rischio_per_categoria.columns = [
@@ -1289,7 +1555,7 @@ class RiskAnalyzer:
         ]).agg({
             'numero_nc_gravi': 'sum',
             'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'count'
+            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
         }).reset_index()
 
         trend_data.columns = [

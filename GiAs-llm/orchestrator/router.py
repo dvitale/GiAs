@@ -38,7 +38,7 @@ class Router:
     ]
 
     VALID_SLOT_KEYS = {
-        "piano_code", "asl", "topic", "num_registrazione",
+        "piano_code", "asl", "topic", "num_registrazione", "numero_riconoscimento",
         "partita_iva", "ragione_sociale", "categoria",
         "location", "radius_km"
     }
@@ -49,7 +49,7 @@ class Router:
         "ask_piano_stabilimenti": ["piano_code"],
         "check_if_plan_delayed": ["piano_code"],
         "search_piani_by_topic": ["topic"],
-        "ask_establishment_history": ["num_registrazione", "partita_iva", "ragione_sociale"],  # almeno uno
+        "ask_establishment_history": ["num_registrazione", "numero_riconoscimento", "partita_iva", "ragione_sociale"],  # almeno uno
         "analyze_nc_by_category": ["categoria"],
         "ask_nearby_priority": ["location"],
     }
@@ -120,8 +120,11 @@ OUTPUT:"""
     # ASL: NA1, NA2, AV1, CE1, etc.
     RE_ASL = re.compile(r'\b([A-Z]{2}[0-9])\b', re.IGNORECASE)
 
-    # Numero registrazione: deve contenere IT
-    RE_NUM_REG = re.compile(r'\b((?:UE\s*)?IT\s*[\d\s]+[A-Z]?)\b', re.IGNORECASE)
+    # Numero riconoscimento UE: inizia con "UE IT" (es. "UE IT 15 273")
+    RE_NUM_RIC = re.compile(r'\b(UE\s+IT\s*[\d\s]+[A-Z]?)\b', re.IGNORECASE)
+
+    # Numero registrazione: contiene IT ma NON "UE IT" (es. "IT 123", "IT 2287 M")
+    RE_NUM_REG = re.compile(r'\b(?<!UE\s)(IT\s*[\d\s]+[A-Z]?)\b', re.IGNORECASE)
 
     # Partita IVA: 10-11 cifre, opzionalmente preceduto da "p.iva" o "partita iva"
     RE_PARTITA_IVA = re.compile(r'(?:p\.?\s*iva|partita\s*iva)?\s*(\d{10,11})\b', re.IGNORECASE)
@@ -129,6 +132,16 @@ OUTPUT:"""
     # Topic: estrae argomento dopo "piani su/per/riguardanti/che trattano"
     RE_TOPIC = re.compile(
         r"\bpiani\s+(?:su|per|riguardant[io]|(?:che\s+)?riguardano|(?:che\s+)?trattano\s+(?:di\s+)?)\s*(?:la\s+|il\s+|i\s+|le\s+|gli\s+|l['\u2019])?(.+)",
+        re.IGNORECASE
+    )
+
+    # Tipo analisi rischio: disambiguazione tra mai controllati e con sanzioni
+    RE_RISK_TYPE_MAI_CONTROLLATI = re.compile(
+        r'^\s*(?:1|mai\s*controllat[io]|non\s*controllat[io])\s*$',
+        re.IGNORECASE
+    )
+    RE_RISK_TYPE_CON_SANZIONI = re.compile(
+        r'^\s*(?:2|con\s*(?:pi[uù]\s*)?sanzion[ie]|con\s*(?:pi[uù]\s*)?nc|pi[uù]\s*sanzionat[io])\s*$',
         re.IGNORECASE
     )
 
@@ -263,6 +276,8 @@ OUTPUT:"""
     # Include "come funziona [argomento specifico]" per domande su procedure GISA
     # Include domande su provvedimenti, azioni, gestione in contesti specifici
     # Include domande di definizione "cos'è X" per termini GISA (preaccettazione, checklist, matrix, etc.)
+    # Include "di cosa tratta X", "dammi informazioni su X", "cosa sono X"
+    # La logica per escludere "piano" è in _try_heuristics
     PROCEDURE_PATTERNS = re.compile(
         r'\b(procedura|procedimento|come\s+si\s+(fa|procede|esegue|effettua|registra|inserisce|gestisce)|'
         r'passi\s+per|step\s+per|guida\s+per|istruzioni\s+per|'
@@ -272,9 +287,18 @@ OUTPUT:"""
         r'quali\s+provvediment[io]|quali\s+azioni|cosa\s+(si\s+)?pu[oò]\s+fare|'
         r'come\s+gestire|come\s+trattare|'
         r'cos[\'\'`]?[eè]\s+(la|il|lo|l[\'\']\s*)?\w+|'
-        r'cosa\s+significa\s+\w+|definizione\s+di\s+\w+)\b',
+        r'cosa\s+significa\s+\w+|definizione\s+di\s+\w+|'
+        r'di\s+cosa\s+tratta|'
+        r'(che\s+)?cosa\s+sono\s+(gli|i|le|l[\'\']\s*)?\w+|'
+        r'(dammi|vorrei|voglio)\s+info(rmazioni)?\s+(su|sugl[io]|sull[aoe\'\']\s*)\w+)\b',
         re.IGNORECASE
     )
+
+    # Pattern per "di cosa tratta" generico (per esclusione piano in heuristics)
+    DI_COSA_TRATTA_PATTERN = re.compile(r'\bdi\s+cosa\s+tratta\b', re.IGNORECASE)
+
+    # Pattern per "dammi informazioni su X" generico (per esclusione piano in heuristics)
+    INFO_SU_PATTERN = re.compile(r'\b(dammi|vorrei|voglio)\s+info(rmazioni)?\s+(su|sugl[io]|sull[aoe\'\']\s*)', re.IGNORECASE)
 
     # Cerca piani per topic
     SEARCH_PIANI_PATTERNS = re.compile(
@@ -282,16 +306,27 @@ OUTPUT:"""
         re.IGNORECASE
     )
 
-    # Piano description: "di cosa tratta", "cosa prevede", "descrizione piano", "di cosa si occupa"
+    # Piano description: richieste generiche di informazioni/descrizione del piano
+    # "di cosa tratta", "cosa prevede", "descrizione", "informazioni", "parlami", "dimmi"
     PIANO_DESCRIPTION_PATTERNS = re.compile(
-        r'\b(di\s*cosa\s*tratta|di\s*cosa\s*si\s+occupa|cosa\s*prevede|cosa\s*riguarda|descrizione\s*(del\s*)?piano|descrivi\s*(il\s*)?piano)\b',
+        r'\b(di\s*cosa\s*tratta\s*(il\s*)?piano|di\s*cosa\s*si\s+occupa\s*(il\s*)?piano|'
+        r'cosa\s*prevede\s*(il\s*)?piano|cosa\s*riguarda\s*(il\s*)?piano|'
+        r'descrizione\s*(del\s*)?piano|descrivi\s*(il\s*)?piano|'
+        r'piano\s+[A-Z]\d+\s*(di\s*cosa|cosa)\s*(tratta|prevede|riguarda)|'
+        r'dimmi\s*(del\s*)?piano|parlami\s*(del\s*)?piano|'
+        r'info(rmazioni)?\s*(sul\s*|del\s*)?piano|'
+        r'(dammi|vorrei|voglio)\s*(info(rmazioni)?|dettagli)\s*(sul\s*|del\s*)?piano)\b',
         re.IGNORECASE
     )
 
-    # Piano stabilimenti: "stabilimenti controllati", "dove è stato applicato", "quali stabilimenti", "OSA controllati"
-    # Include anche pattern generici info piano: "dimmi del piano", "parlami del piano", "info sul piano", "attività del piano"
+    # Piano stabilimenti: richieste specifiche sugli stabilimenti/OSA controllati per un piano
+    # "stabilimenti controllati", "dove è stato applicato", "quali stabilimenti", "OSA controllati"
     PIANO_STABILIMENTI_PATTERNS = re.compile(
-        r'\b(stabiliment[io]\s*controllat[io]|dove\s*[eè]\s*stato\s*applicato|stabiliment[io]\s*(del\s*)?piano|quali\s*stabiliment[io]|stabiliment[io].{0,30}controll[io]|controll[io].{0,30}stabiliment[io]|OSA\s*controllat[io]|quali\s*OSA|dimmi\s*(del\s*)?piano|parlami\s*(del\s*)?piano|info\s*(sul\s*)?piano|attivit[aà]\s*(del\s*)?piano|quali\s*attivit[aà]\s*(riguarda|prevede))\b',
+        r'\b(stabiliment[io]\s*controllat[io]|dove\s*[eè]\s*stato\s*applicato|'
+        r'stabiliment[io]\s*(del\s*)?piano|quali\s*stabiliment[io]|'
+        r'stabiliment[io].{0,30}controll[io]|controll[io].{0,30}stabiliment[io]|'
+        r'OSA\s*controllat[io]|quali\s*OSA|'
+        r'attivit[aà]\s*(del\s*)?piano|quali\s*attivit[aà]\s*(riguarda|prevede))\b',
         re.IGNORECASE
     )
 
@@ -303,9 +338,9 @@ OUTPUT:"""
         re.IGNORECASE
     )
 
-    # Prossimità geografica: "vicino a", "vicino", "nei dintorni di", "nei pressi di", "zona di", "intorno a", "entro X km"
+    # Prossimità geografica: "vicino a", "vicino", "nei dintorni di", "nei pressi di", "zona di", "intorno a", "entro X km", "vicinanze"
     NEARBY_PATTERNS = re.compile(
-        r'\b(vicino(\s+a)?|nei\s+dintorni(\s+di)?|nei\s+pressi(\s+di)?|zona\s+di|intorno\s+a|entro\s+\d+\s*km(\s+da)?)\b',
+        r'\b(vicino(\s+a)?|nei\s+dintorni(\s+di)?|nei\s+pressi(\s+di)?|zona\s+di|intorno\s+a|entro\s+\d+\s*km(\s+da)?|(?:nelle?\s+(?:mie\s+)?)?vicinanz[ae])\b',
         re.IGNORECASE
     )
 
@@ -477,6 +512,12 @@ OUTPUT:"""
             if self.DECLINE_SHORT_PATTERNS.match(message):
                 return {"intent": "decline_show_details", "slots": {}, "needs_clarification": False}
 
+        # Risposte disambiguazione rischio (brevi: "1", "2", "mai controllati", "con sanzioni")
+        if self.RE_RISK_TYPE_MAI_CONTROLLATI.match(message):
+            return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "mai_controllati"}, "needs_clarification": False}
+        if self.RE_RISK_TYPE_CON_SANZIONI.match(message):
+            return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "con_sanzioni"}, "needs_clarification": False}
+
         # Saluti iniziali (solo se brevi)
         if len(msg_lower) < 20 and self.GREET_PATTERNS.match(message):
             return {"intent": "greet", "slots": {}, "needs_clarification": False}
@@ -486,8 +527,15 @@ OUTPUT:"""
             return {"intent": "goodbye", "slots": {}, "needs_clarification": False}
 
         # Procedure operative (RAG) - PRIMA di HELP per catturare "come funziona X"
+        # ECCEZIONE: richieste su "piano" → passa a PIANO_DESCRIPTION_PATTERNS
         if self.PROCEDURE_PATTERNS.search(message):
-            return {"intent": "info_procedure", "slots": {}, "needs_clarification": False}
+            # Se contiene "piano", lascia gestire a PIANO_DESCRIPTION_PATTERNS
+            has_piano = re.search(r'\bpiano\b', message, re.IGNORECASE)
+            is_info_request = self.DI_COSA_TRATTA_PATTERN.search(message) or self.INFO_SU_PATTERN.search(message)
+            if is_info_request and has_piano:
+                pass  # Non tornare qui, lascia proseguire per PIANO_DESCRIPTION_PATTERNS
+            else:
+                return {"intent": "info_procedure", "slots": {}, "needs_clarification": False}
 
         # Aiuto (dopo PROCEDURE per non catturare "come funziona X")
         if self.HELP_PATTERNS.search(message):
@@ -506,7 +554,11 @@ OUTPUT:"""
         if self.DELAYED_PATTERNS.search(message) and not self.RE_PIANO_CODE.search(message):
             return {"intent": "ask_delayed_plans", "slots": {}, "needs_clarification": False}
 
-        # Mai controllati
+        # Prossimità geografica (PRIMA di "mai controllati" per priorità su "da controllare nelle vicinanze")
+        if self.NEARBY_PATTERNS.search(message):
+            return {"intent": "ask_nearby_priority", "slots": {}, "needs_clarification": False}
+
+        # Mai controllati (DOPO nearby per evitare conflitti con "da controllare nelle vicinanze")
         if self.NEVER_CONTROLLED_PATTERNS.search(message):
             return {"intent": "ask_suggest_controls", "slots": {}, "needs_clarification": False}
 
@@ -525,10 +577,6 @@ OUTPUT:"""
         # Rischio (dopo NC e TOP_RISK)
         if self.RISK_PATTERNS.search(message) and not self.TOP_RISK_PATTERNS.search(message):
             return {"intent": "ask_risk_based_priority", "slots": {}, "needs_clarification": False}
-
-        # Prossimità geografica (vicino a, nei dintorni di, entro X km)
-        if self.NEARBY_PATTERNS.search(message):
-            return {"intent": "ask_nearby_priority", "slots": {}, "needs_clarification": False}
 
         # Statistiche piani
         if self.STATISTICS_PATTERNS.search(message):
@@ -575,12 +623,18 @@ OUTPUT:"""
         if asl_match:
             slots["asl"] = asl_match.group(1).upper()
 
-        # Numero registrazione (priorità su partita IVA se contiene IT)
-        num_reg_match = self.RE_NUM_REG.search(message)
-        if num_reg_match:
-            slots["num_registrazione"] = num_reg_match.group(1).strip().upper()
-        elif "p.iva" in message.lower() or "partita iva" in message.lower():
-            # Partita IVA solo se esplicitamente menzionata
+        # Numero riconoscimento UE (priorità su numero registrazione)
+        num_ric_match = self.RE_NUM_RIC.search(message)
+        if num_ric_match:
+            slots["numero_riconoscimento"] = num_ric_match.group(1).strip().upper()
+        else:
+            # Numero registrazione (senza UE, solo IT)
+            num_reg_match = self.RE_NUM_REG.search(message)
+            if num_reg_match:
+                slots["num_registrazione"] = num_reg_match.group(1).strip().upper()
+
+        # Partita IVA solo se esplicitamente menzionata
+        if "p.iva" in message.lower() or "partita iva" in message.lower():
             piva_match = self.RE_PARTITA_IVA.search(message)
             if piva_match:
                 slots["partita_iva"] = piva_match.group(1)
@@ -593,7 +647,7 @@ OUTPUT:"""
                 slots["topic"] = topic
 
         # Ragione sociale: parola(e) dopo "stabilimento" (non IT/UE/piano)
-        if "stabilimento" in message.lower() and "num_registrazione" not in slots:
+        if "stabilimento" in message.lower() and "num_registrazione" not in slots and "numero_riconoscimento" not in slots:
             ragione_match = re.search(
                 r'\bstabilimento\s+(?!IT\b|UE\b|piano\b)([A-Z][A-Za-z0-9\s]*)',
                 message, re.IGNORECASE
@@ -607,6 +661,7 @@ OUTPUT:"""
         # quando "stabilimento" non è presente nel messaggio
         if ("ragione_sociale" not in slots and
             "num_registrazione" not in slots and
+            "numero_riconoscimento" not in slots and
             "partita_iva" not in slots and
             self.ESTABLISHMENT_HISTORY_PATTERNS.search(message)):
             ragione_ctx_match = re.search(
@@ -665,6 +720,12 @@ OUTPUT:"""
                     slots["radius_km"] = max(1.0, min(50.0, radius))
                 except ValueError:
                     pass
+
+        # Tipo analisi rischio: disambiguazione stabilimenti a rischio
+        if self.RE_RISK_TYPE_MAI_CONTROLLATI.match(message):
+            slots["tipo_analisi_rischio"] = "mai_controllati"
+        elif self.RE_RISK_TYPE_CON_SANZIONI.match(message):
+            slots["tipo_analisi_rischio"] = "con_sanzioni"
 
         return slots
 
