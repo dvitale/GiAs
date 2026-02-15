@@ -7,14 +7,34 @@
     <title>{{.title}}</title>
     <link rel="stylesheet" href="{{.basePath}}/static/css/style.css">
     <link rel="stylesheet" href="{{.basePath}}/static/css/new-formatting.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <div class="header-top">
-                <h1 class="header-title">{{.title}}</h1>
-                <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+    <div class="app-container" id="appContainer">
+        <!-- Header con dati utente -->
+        <header class="app-header" id="appHeader">
+            <div class="header-left">
+                <img src="{{.basePath}}/static/img/gias.png" alt="GIAS" class="header-logo" id="giasLogo"
+                    title="Ctrl+Click: debug | Shift+Click: langgraph">
+            </div>
+            <div class="header-center">
+                {{if .user}}
+                <div class="user-info">
+                    <span class="user-name">{{.user.namefirst}} {{.user.namelast}}</span>
+                    {{if .user.asl}}<span class="user-asl">ASL {{.user.asl}}</span>{{end}}
+                    {{if .user.hierarchy}}
+                    <div class="user-hierarchy">{{.user.hierarchy}}</div>
+                    {{end}}
+                </div>
+                {{else}}
+                <span class="header-title">{{.title}}</span>
+                {{end}}
+            </div>
+            <div class="header-right">
+                <button class="theme-toggle" id="themeToggle" aria-label="Cambia tema">
                     <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
@@ -34,59 +54,84 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                     </svg>
                 </button>
+                <img src="{{.basePath}}/static/img/logo-reg.png" alt="Regione Campania" class="header-logo">
             </div>
-            <div class="header-content">
-                <img src="{{.basePath}}/static/img/gias.png" alt="GIAS Logo" class="header-logo" id="giasLogo"
-                    title="Ctrl+Click: debug | Shift+Click: langgraph">
-                {{if .user}}
-                <div class="header-text">
-                    <div class="user-info">
-                        <div class="user-details">
-                            <span class="user-name-line">{{.user.namefirst}} {{.user.namelast}}</span>
-                            {{if .user.asl}}<p class="user-asl-inline">ASL {{.user.asl}}</p>{{end}}
-                            {{if .user.hierarchy}}
-                            <ul class="user-hierarchy">
-                                {{.user.hierarchy}}
-                            </ul>
-                            {{end}}
-                        </div>
+        </header>
+
+        <!-- Welcome Screen (stato iniziale) -->
+        <div class="welcome-screen" id="welcomeScreen">
+            <div class="welcome-content">
+                <!-- Greeting -->
+                <div class="greeting-section">
+                    <div class="greeting-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="3" width="18" height="18" rx="4" fill="#d4a574"/>
+                            <path d="M8 12h8M12 8v8" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <h1 class="greeting-text" id="greetingText">Ciao</h1>
+                </div>
+
+                <!-- Input Area -->
+                <div class="welcome-input-wrapper">
+                    <div class="welcome-input-container">
+                        <textarea
+                            id="messageInput"
+                            class="welcome-textarea"
+                            placeholder="Come posso aiutarti oggi?"
+                            rows="1"
+                            autocomplete="off"
+                        ></textarea>
+                        <button id="sendButton" class="send-button" disabled aria-label="Invia messaggio">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
                     </div>
                 </div>
-                {{end}}
-                <img src="{{.basePath}}/static/img/logo-reg.png" alt="Logo Regione" class="header-logo">
-            </div>
-        </div>
-        <div class="chat-messages" id="chatMessages">
-            <div class="message bot-message" id="welcomeMessage">
-                <div class="message-content" id="welcomeContent">
-                    <!-- Welcome message will be rendered by JavaScript -->
-                </div>
-                <div class="message-time" id="welcomeTime"></div>
-            </div>
-        </div>
-        <div class="predefined-questions" id="predefinedQuestions">
-            <div class="questions-header">
-                <h4>Domande rapide ed esempi:</h4>
-            </div>
-            <div class="questions-container" id="questionsContainer">
-                <!-- Question buttons will be loaded here dynamically -->
-            </div>
-        </div>
-        <div class="chat-input">
-            <div class="input-container">
-                <input type="text" id="messageInput" placeholder="Scrivi il tuo messaggio..." autocomplete="off">
-                <button id="sendButton">Invia</button>
-            </div>
-        </div>
-    </div>
 
-    <div class="typing-indicator" id="typingIndicator">
-        <div class="typing-dots">
-            <div></div>
-            <div></div>
-            <div></div>
+                <!-- Quick Actions (Predefined Questions) -->
+                <div class="quick-actions" id="quickActions">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
         </div>
-        <span>Sto recuperando le informazioni...</span>
+
+        <!-- Chat Screen (stato chat) -->
+        <div class="chat-screen hidden" id="chatScreen">
+            <div class="chat-messages" id="chatMessages">
+                <!-- Messages will be added here -->
+            </div>
+
+            <div class="chat-input-area">
+                <div class="chat-input-container">
+                    <textarea
+                        id="chatMessageInput"
+                        class="chat-textarea"
+                        placeholder="Scrivi un messaggio..."
+                        rows="1"
+                        autocomplete="off"
+                    ></textarea>
+                    <button id="chatSendButton" class="send-button" disabled aria-label="Invia messaggio">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-dots">
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <span>Sto elaborando...</span>
+        </div>
     </div>
 
     <script>
@@ -102,7 +147,9 @@
         // Welcome message and user data
         window.welcomeData = {
             message: JSON.parse({{.welcomeMessage | printf "%q"}}),
-            userName: {{if .user}}{{.user.namefirst | json}}{{else}}null{{end}}
+            userName: {{if .user}}{{.user.namefirst | json}}{{else}}null{{end}},
+            userLastName: {{if .user}}{{.user.namelast | json}}{{else}}null{{end}},
+            userASL: {{if .user}}{{.user.asl | json}}{{else}}null{{end}}
         };
 
         // Pass query parameters to JavaScript
@@ -114,7 +161,7 @@
             username: {{if .queryParams.username}}{{.queryParams.username | json}}{{else}}null{{end}}
         };
     </script>
-    <script src="{{.basePath}}/static/js/chat.js?v=3"></script>
+    <script src="{{.basePath}}/static/js/chat.js?v=4"></script>
 </body>
 
 </html>

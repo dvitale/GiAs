@@ -60,6 +60,9 @@ class ConversationState(TypedDict, total=False):
     has_more_details: bool
     detail_context: Dict[str, Any]
 
+    # Classification confidence (P2)
+    _classification_confidence: Optional[float]  # 0.0-1.0, dalla classificazione
+
     # Dialogue State Tracking (nuovo)
     dialogue_state: Optional[Dict[str, Any]]
     dm_action: Optional[str]         # "execute", "ask_user", "fallback"
@@ -253,6 +256,8 @@ class ConversationGraph:
         state["slots"] = classification.get("slots", {})
         state["needs_clarification"] = classification.get("needs_clarification", False)
         state["error"] = classification.get("error", "")
+        # P2: Salva confidence reale dal router (heuristic o LLM)
+        state["_classification_confidence"] = classification.get("confidence", 0.70)
 
         if self._event_callback and state["intent"]:
             self._event_callback({
@@ -261,10 +266,13 @@ class ConversationGraph:
                 "message": f"Intent rilevato: {state['intent']}"
             })
 
-        # Slot carry-forward da sessione precedente
+        # Slot carry-forward da sessione precedente (solo se stesso intent)
         if state["needs_clarification"]:
+            session_last_intent = metadata.get("_session_last_intent")
             session_last_slots = metadata.get("_session_last_slots", {})
-            if session_last_slots:
+            # Carry-forward solo se l'intent corrente è lo stesso della sessione
+            # (evita "memory bleed" quando l'utente cambia topic)
+            if session_last_slots and session_last_intent == state["intent"]:
                 merged = {**session_last_slots, **state["slots"]}
                 state["slots"] = merged
                 re_result = self.router._post_validate({
@@ -314,11 +322,34 @@ class ConversationGraph:
         else:
             ds = create_empty_state()
 
+        # Topic change detection: se l'intent corrente è diverso da quello confermato
+        # nel DialogueState, resetta slots e confirmed_intent per evitare "memory bleed"
+        metadata = state.get("metadata", {})
+        session_last_intent = metadata.get("_session_last_intent")
+        if session_last_intent and session_last_intent != intent:
+            # L'utente ha cambiato argomento - reset DialogueState
+            ds["slots"] = {}
+            ds["confirmed_intent"] = None
+            ds["confirmed_strategy"] = None
+            ds["confirmed_strategy_id"] = None
+            ds["missing_slots"] = []
+            logger.info(f"[DM] Topic change detected ({session_last_intent} -> {intent}), reset DialogueState slots")
+
         # Costruisci lista candidati dal singolo intent del router
         # (il router attuale restituisce 1 intent — in futuro restituirà N)
-        confidence = 0.90 if not needs_clarification else 0.55
-        if intent == "fallback":
-            confidence = 0.30
+        # P2: Usa confidence reale dal router con fallback a euristica
+        classification_confidence = state.get("_classification_confidence")
+        if classification_confidence is not None:
+            confidence = classification_confidence
+        else:
+            # Fallback a euristica se router non ha fornito confidence
+            confidence = 0.90 if not needs_clarification else 0.55
+            if intent == "fallback":
+                confidence = 0.30
+
+        # Log per debug
+        source = "router" if classification_confidence is not None else "hardcoded"
+        logger.debug(f"[DM] Intent={intent}, confidence={confidence:.3f}, source={source}")
 
         candidates = [
             {"intent": intent, "confidence": confidence, "slots": slots}

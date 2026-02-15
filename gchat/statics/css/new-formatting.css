@@ -8,7 +8,7 @@
 }
 
 .list-item-compact {
-    background: rgba(245, 245, 247, 0.8);
+    background: var(--bg-tertiary, rgba(245, 245, 247, 0.8));
     border-radius: 6px;
     padding: 6px 10px;
     line-height: 1.3;
@@ -16,7 +16,7 @@
 
 .list-item-compact .list-number {
     font-weight: 600;
-    color: #007acc;
+    color: var(--accent-color, #d4a574);
 }
 
 .establishment-header {

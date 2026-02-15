@@ -1,0 +1,13 @@
+{
+  "_comment": "Payload esatto come costruito dal frontend gchat",
+  "_source": "gchat/statics/js/chat.js -> gchat/app/llm_client.go -> GiAs-llm/app/api.py",
+  "sender": "user_1739612345678_abc123def",
+  "message": "piani in ritardo",
+  "metadata": {
+    "asl": "BENEVENTO",
+    "asl_id": "202",
+    "user_id": "6448",
+    "codice_fiscale": "ZZIBRD65R11A783K",
+    "username": "mario.rossi"
+  }
+}

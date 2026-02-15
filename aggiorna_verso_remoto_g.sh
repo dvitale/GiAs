@@ -23,7 +23,7 @@ echo "Analisi dei file da aggiornare..."
 echo
 
 # Dry-run per mostrare i file coinvolti
-RSYNC_BASE='rsync -avzu \
+RSYNC_BASE='rsync -avzu --delete \
     --exclude=".*"\
     --exclude=".*/"\
     --exclude="runtime/logs/"\

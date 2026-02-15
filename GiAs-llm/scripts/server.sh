@@ -199,6 +199,58 @@ cmd_test() {
     echo ""
 }
 
+cmd_test_suite() {
+    # Esegue la suite completa di test E2E
+    echo ""
+    echo -e "${BOLD}${CYAN}═══ Running Full Test Suite ═══${NC}"
+    echo ""
+
+    # Verifica server
+    if ! is_running; then
+        log_warning "Server not running. Starting..."
+        cmd_start &
+        sleep 10
+    fi
+
+    # Esegui test runner
+    cd "$PROJECT_ROOT"
+    python3 tests/run_all_tests.py "$@"
+}
+
+cmd_test_quick() {
+    # Esegue solo test veloci
+    echo ""
+    echo -e "${BOLD}${CYAN}═══ Running Quick Tests ═══${NC}"
+    echo ""
+
+    # Verifica server
+    if ! is_running; then
+        log_warning "Server not running. Starting..."
+        cmd_start &
+        sleep 10
+    fi
+
+    cd "$PROJECT_ROOT"
+    python3 tests/run_all_tests.py --quick "$@"
+}
+
+cmd_test_report() {
+    # Esegue test con report JSON
+    echo ""
+    echo -e "${BOLD}${CYAN}═══ Running Tests with Report ═══${NC}"
+    echo ""
+
+    # Verifica server
+    if ! is_running; then
+        log_warning "Server not running. Starting..."
+        cmd_start &
+        sleep 10
+    fi
+
+    cd "$PROJECT_ROOT"
+    python3 tests/run_all_tests.py --report json "$@"
+}
+
 cmd_help() {
     echo ""
     echo -e "${BOLD}GiAs-llm Server Management${NC}"
@@ -206,13 +258,23 @@ cmd_help() {
     echo "Usage: $0 <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start     Start the server (delegates to start_server.sh)"
-    echo "  stop      Stop the server"
-    echo "  restart   Restart the server"
-    echo "  status    Show server status"
-    echo "  logs [n]  Show last n log lines (default: 50)"
-    echo "  test      Run quick API tests"
-    echo "  help      Show this help"
+    echo "  start        Start the server (delegates to start_server.sh)"
+    echo "  stop         Stop the server"
+    echo "  restart      Restart the server"
+    echo "  status       Show server status"
+    echo "  logs [n]     Show last n log lines (default: 50)"
+    echo "  test         Run quick API tests (3 queries)"
+    echo "  test-suite   Run full E2E test suite"
+    echo "  test-quick   Run quick tests (skip slow tests)"
+    echo "  test-report  Run tests and save JSON report"
+    echo "  help         Show this help"
+    echo ""
+    echo "Test options (for test-suite, test-quick, test-report):"
+    echo "  --quick        Skip slow tests"
+    echo "  --verbose      Show detailed pytest output"
+    echo "  --parallel N   Run with N parallel workers"
+    echo "  --suite TYPE   Run only 'e2e' or 'integration' suite"
+    echo "  --report FMT   Save report (json or html)"
     echo ""
     echo "Environment variables:"
     echo "  GIAS_LLM_MODEL   Model to use (llama3.2|falcon|velvet|mistral-nemo|ministral)"
@@ -220,11 +282,12 @@ cmd_help() {
     echo "  OLLAMA_HOST      Ollama server host (default: localhost or from config.json)"
     echo ""
     echo "Examples:"
-    echo "  $0 start                          # Selezione interattiva del modello"
-    echo "  GIAS_LLM_MODEL=falcon $0 start    # Avvio con Falcon (no prompt)"
-    echo "  GIAS_LLM_MODEL=velvet $0 start    # Avvio con Velvet (no prompt)"
-    echo "  $0 restart                        # Riavvia server"
-    echo "  $0 logs 100                       # Ultimi 100 log"
+    echo "  $0 start                          # Start server (interactive model selection)"
+    echo "  GIAS_LLM_MODEL=velvet $0 start    # Start with Velvet model"
+    echo "  $0 test-suite                     # Run all E2E and integration tests"
+    echo "  $0 test-quick                     # Run quick tests only"
+    echo "  $0 test-suite --report json       # Run tests with JSON report"
+    echo "  $0 logs 100                       # Show last 100 log lines"
     echo ""
 }
 
@@ -239,6 +302,9 @@ case "${1:-help}" in
     status)  cmd_status ;;
     logs)    cmd_logs "${2:-50}" ;;
     test)    cmd_test ;;
+    test-suite)   shift; cmd_test_suite "$@" ;;
+    test-quick)   shift; cmd_test_quick "$@" ;;
+    test-report)  shift; cmd_test_report "$@" ;;
     help|--help|-h) cmd_help ;;
     *)
         log_error "Unknown command: $1"

@@ -322,19 +322,16 @@ class ResponseFormatter:
                 numero_id = getattr(row, 'codice_fiscale', '')
 
             comune = str(getattr(row, 'comune', '')).upper() if pd.notna(getattr(row, 'comune', '')) else 'N/D'
+            indirizzo = getattr(row, 'indirizzo', '')
+            punteggio = int(getattr(row, 'punteggio_rischio_totale', 0))
+            nc_gravi = int(getattr(row, 'tot_nc_gravi', 0))
+            nc_non_gravi = int(getattr(row, 'tot_nc_non_gravi', 0))
+            controlli = int(getattr(row, 'numero_controlli_totali', 0))
+            aggregazione = getattr(row, 'aggregazione', '')
 
-            response += f"{idx}. **{getattr(row, 'macroarea', '')}** - {getattr(row, 'aggregazione', '')}\n"
-            response += f"   Comune: {comune}\n"
-            response += f"   Indirizzo: {getattr(row, 'indirizzo', '')}\n"
-            response += f"   ID: {numero_id}\n"
-            response += f"   Punteggio rischio attività: **{int(getattr(row, 'punteggio_rischio_totale', ''))}/100**\n"
-            response += f"   NC storiche attività: {int(getattr(row, 'tot_nc_gravi', ''))} gravi | {int(getattr(row, 'tot_nc_non_gravi', ''))} non gravi\n"
-            response += f"   Controlli regionali su questa attività: {int(getattr(row, 'numero_controlli_totali', ''))}"
-
-            if pd.notna(getattr(row, 'data_inizio_attivita', '')):
-                response += f"\n   Attivo dal: {getattr(row, 'data_inizio_attivita', '')}"
-
-            response += "\n\n"
+            response += f"{idx}. **{getattr(row, 'macroarea', '')}** - {aggregazione} | {comune}\n"
+            response += f"   {indirizzo} | ID: {numero_id}\n"
+            response += f"   Rischio: **{punteggio}/100** | NC: {nc_gravi} gravi, {nc_non_gravi} non gravi | Controlli: {controlli}\n"
 
         response += "**Legenda Punteggio Rischio:**\n"
         response += "• Il punteggio è calcolato sull'attività, non sul singolo stabilimento\n"
@@ -437,13 +434,14 @@ class ResponseFormatter:
                 num_id = 'N/D'
 
             comune = str(getattr(row, 'comune', '')).upper() if pd.notna(getattr(row, 'comune', '')) else 'N/D'
+            indirizzo = getattr(row, 'indirizzo', '')
+            piano = getattr(row, 'piano', '')
+            diff = int(getattr(row, 'diff', 0))
+            attivita = getattr(row, 'attivita', '')[:80]
 
-            response += f"{idx + 1}. **{getattr(row, 'macroarea', '')}**\n"
-            response += f"   Comune: {comune}\n"
-            response += f"   Indirizzo: {getattr(row, 'indirizzo', '')}\n"
-            response += f"   N. Riconoscimento: {num_id}\n"
-            response += f"   Piano in ritardo: {getattr(row, 'piano', '')} (ritardo: {int(getattr(row, 'diff', ''))} controlli)\n"
-            response += f"   Attività correlata: {getattr(row, 'attivita', '')[:80]}...\n\n"
+            response += f"{idx + 1}. **{getattr(row, 'macroarea', '')}** | {comune} | {indirizzo}\n"
+            response += f"   ID: {num_id} | Piano in ritardo: {piano} ({diff} controlli)\n"
+            response += f"   Attività: {attivita}...\n"
 
         response += "\n**Metodologia:**\n"
         response += "1. Identificati piani in ritardo per la tua struttura\n"
@@ -683,12 +681,8 @@ class ResponseFormatter:
             else:
                 num_ric = str(num_ric)
 
-            indirizzo_completo = f"{indirizzo}, {comune}" if indirizzo != 'N/D' and comune != 'N/D' else indirizzo
-
-            response += f"**{num}. {comune}**\n"
-            response += f"   Indirizzo: {indirizzo_completo}\n"
-            response += f"   N. Riconoscimento: {num_ric}\n"
-            response += f"   Info Attività: {info_complete[:100]}{'...' if len(info_complete) > 100 else ''}\n\n"
+            response += f"**{num}. {comune}** | {indirizzo} | ID: {num_ric}\n"
+            response += f"   Attività: {info_complete[:100]}{'...' if len(info_complete) > 100 else ''}\n"
 
         if filtered_count > limit:
             response += f"\n**Nota:** Altri {filtered_count - limit:,} stabilimenti disponibili"
@@ -891,23 +885,17 @@ class ResponseFormatter:
             except:
                 nc_non_gravi = 0
 
-            response += f"{idx}. **Data:** {data_controllo}\n"
-            response += f"   **Piano:** {piano}\n"
-            response += f"   **Tecnica:** {tecnica}\n"
-            response += f"   **Macroarea:** {macroarea}\n"
-            response += f"   **Aggregazione:** {aggregazione}\n"
-            response += f"   **Attività:** {attivita}\n"
-            response += f"   **UOC:** {uoc}\n"
+            response += f"{idx}. **{data_controllo}** | Piano: {piano} | Tecnica: {tecnica}\n"
+            response += f"   {macroarea} > {aggregazione} > {attivita}\n"
+            response += f"   UOC: {uoc}"
 
             # Mostra NC se presenti
             if nc_gravi > 0 or nc_non_gravi > 0:
-                response += f"   ⚠️ **NC Gravi:** {nc_gravi} | **NC Non Gravi:** {nc_non_gravi}\n"
+                response += f" | ⚠️ NC: {nc_gravi} gravi, {nc_non_gravi} non gravi"
                 if tipo_nc and pd.notna(tipo_nc) and str(tipo_nc).strip():
-                    response += f"   **Tipo NC:** {tipo_nc}\n"
-                if oggetto_nc and pd.notna(oggetto_nc) and str(oggetto_nc).strip():
-                    response += f"   **Oggetto NC:** {oggetto_nc}\n"
+                    response += f" ({tipo_nc})"
             else:
-                response += f"   ✅ **Esito:** Nessuna non conformità\n"
+                response += f" | ✅ Conforme"
 
             response += "\n"
 

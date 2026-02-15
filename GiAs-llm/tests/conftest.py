@@ -1,228 +1,320 @@
 """
-Configurazione pytest e fixtures
+Configurazione pytest e fixtures per test suite GiAs-llm v4.0
+
+PRINCIPI:
+- NESSUN mock globale
+- Test E2E replicano esattamente chiamate frontend
+- Sender ID dinamici come frontend JS
+- Metadata completi come passati da gchat
+- Timeout allineati al frontend (75s)
 """
 
-import sys
 import os
-from unittest.mock import Mock
+import sys
+import time
+import random
+import string
 from pathlib import Path
+from typing import Dict, Callable
 
 import pytest
+import requests
 
+# ============================================================
 # Path setup
+# ============================================================
+
 TEST_DIR = Path(__file__).parent
 PROJECT_ROOT = TEST_DIR.parent
 
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# NOTA: I mock globali sono stati rimossi perché interferivano con i test.
-# Ogni test che necessita di mock deve usare @patch localmente.
-# I moduli reali vengono importati normalmente.
+# ============================================================
+# Configuration
+# ============================================================
 
-# Mock minimale solo per langgraph/langchain se non installati
-try:
-    import langgraph
-except ImportError:
-    sys.modules['langgraph'] = Mock()
-    sys.modules['langgraph.graph'] = Mock()
+SERVER_URL = os.environ.get("GIAS_SERVER_URL", "http://localhost:5005")
+FRONTEND_URL = os.environ.get("GIAS_FRONTEND_URL", "http://localhost:8080")
+WEBHOOK_URL = f"{SERVER_URL}/webhooks/rest/webhook"
+STREAM_URL = f"{SERVER_URL}/webhooks/rest/webhook/stream"
+PARSE_URL = f"{SERVER_URL}/model/parse"
+STATUS_URL = f"{SERVER_URL}/status"
 
-try:
-    import langchain_core
-except ImportError:
-    sys.modules['langchain_core'] = Mock()
-    sys.modules['langchain_core.tools'] = Mock()
-
+# Timeout allineati al frontend (JS: 75s, Go: 60s)
+TIMEOUT_DEFAULT = 75
+TIMEOUT_QUICK = 30
+TIMEOUT_STREAMING = 120
 
 # ============================================================
-# Configurazione markers pytest
+# Markers pytest
 # ============================================================
 
 def pytest_configure(config):
     """Registra markers custom."""
     config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+        "markers", "e2e: End-to-end tests (require running server)"
     )
     config.addinivalue_line(
-        "markers", "rag: marks tests that require RAG server running"
+        "markers", "integration: Integration tests with real components"
     )
     config.addinivalue_line(
-        "markers", "integration: marks integration tests (require database connection)"
+        "markers", "slow: Tests taking more than 30 seconds"
+    )
+    config.addinivalue_line(
+        "markers", "streaming: SSE streaming tests"
+    )
+    config.addinivalue_line(
+        "markers", "rag: Tests requiring RAG/vector search"
     )
 
 
 # ============================================================
-# Fixtures per test RAG
+# Server fixtures
 # ============================================================
 
 @pytest.fixture(scope="session")
-def rag_api_url():
-    """URL dell'API RAG."""
-    return os.environ.get("RAG_API_URL", "http://localhost:5005/webhooks/rest/webhook")
+def server_url() -> str:
+    """URL base del server."""
+    return SERVER_URL
 
 
 @pytest.fixture(scope="session")
-def rag_status_url():
-    """URL per health check del server RAG."""
-    return os.environ.get("RAG_STATUS_URL", "http://localhost:5005/status")
+def webhook_url() -> str:
+    """URL endpoint webhook."""
+    return WEBHOOK_URL
 
 
 @pytest.fixture(scope="session")
-def rag_timeout():
-    """Timeout per chiamate API RAG (secondi)."""
-    return int(os.environ.get("RAG_TIMEOUT", "60"))
-
-
-@pytest.fixture
-def rag_test_sender():
-    """Sender ID per i test RAG."""
-    return "pytest_rag_test"
+def stream_url() -> str:
+    """URL endpoint streaming SSE."""
+    return STREAM_URL
 
 
 @pytest.fixture(scope="session")
-def rag_server_available(rag_status_url):
+def parse_url() -> str:
+    """URL endpoint parse NLU."""
+    return PARSE_URL
+
+
+# ============================================================
+# Health check fixtures
+# ============================================================
+
+@pytest.fixture(scope="session")
+def server_available() -> bool:
     """
-    Verifica se il server RAG e' disponibile.
+    Verifica se il server GiAs-llm e' disponibile.
     Fixture di sessione - verifica una sola volta.
     """
     try:
-        import requests
-        resp = requests.get(rag_status_url, timeout=5)
+        resp = requests.get(f"{SERVER_URL}/", timeout=10)
         return resp.status_code == 200
     except Exception:
         return False
 
 
+@pytest.fixture(scope="session")
+def server_status(server_available) -> Dict:
+    """Ritorna status completo del server."""
+    if not server_available:
+        return {"status": "offline", "error": "Server non raggiungibile"}
+
+    try:
+        resp = requests.get(STATUS_URL, timeout=10)
+        return resp.json()
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@pytest.fixture(autouse=True)
+def skip_if_server_down(request, server_available):
+    """Skip automatico per test E2E/integration se server non disponibile."""
+    # Skip solo per test marcati e2e o integration
+    markers = [m.name for m in request.node.iter_markers()]
+    if ("e2e" in markers or "integration" in markers) and not server_available:
+        pytest.skip("Server GiAs-llm non disponibile - avvia con: scripts/server.sh start")
+
+
+# ============================================================
+# Sender e Metadata fixtures (replica frontend)
+# ============================================================
+
 @pytest.fixture
-def skip_if_no_server(rag_server_available):
-    """Skip test se il server non e' disponibile."""
-    if not rag_server_available:
-        pytest.skip("Server RAG non disponibile")
+def unique_sender() -> str:
+    """
+    Genera sender ID identico al frontend JS.
+    Formato: user_<timestamp_ms>_<random9chars>
+
+    Da chat.js linea 34:
+    this.senderId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    """
+    timestamp = int(time.time() * 1000)
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=9))
+    return f"user_{timestamp}_{suffix}"
 
 
 @pytest.fixture
-def rag_api_client(rag_api_url, rag_timeout, rag_test_sender):
+def complete_metadata() -> Dict:
     """
-    Client per chiamate API RAG.
-    Ritorna una funzione che accetta query e ritorna la risposta.
-    """
-    import requests
+    Metadata completi come passati dal frontend gchat.
 
-    def call_api(query: str, metadata: dict = None) -> dict:
-        """Chiama l'API RAG e ritorna la prima risposta."""
+    Da gchat/statics/js/chat.js e gchat/app/llm_client.go:
+    - asl: nome ASL (prioritario)
+    - asl_id: ID numerico ASL
+    - user_id: ID utente
+    - codice_fiscale: CF utente
+    - username: nome utente
+    """
+    return {
+        "asl": "BENEVENTO",
+        "asl_id": "202",
+        "user_id": "6448",
+        "codice_fiscale": "ZZIBRD65R11A783K",
+        "username": "test_automation"
+    }
+
+
+@pytest.fixture
+def frontend_payload(unique_sender, complete_metadata) -> Dict:
+    """
+    Payload esattamente come costruito dal frontend gchat.
+
+    Formato identico a quello inviato da chat.js -> Go -> Python.
+    """
+    return {
+        "sender": unique_sender,
+        "message": "",  # Da sovrascrivere nel test
+        "metadata": complete_metadata.copy()
+    }
+
+
+@pytest.fixture
+def metadata_avellino() -> Dict:
+    """Metadata per ASL Avellino (usata in molti test esistenti)."""
+    return {
+        "asl": "AVELLINO",
+        "asl_id": "201",
+        "user_id": "test_av_001",
+        "codice_fiscale": "TESTAV00A00A000A",
+        "username": "test_avellino"
+    }
+
+
+@pytest.fixture
+def metadata_napoli() -> Dict:
+    """Metadata per ASL Napoli."""
+    return {
+        "asl": "NAPOLI 1 CENTRO",
+        "asl_id": "203",
+        "user_id": "test_na_001",
+        "codice_fiscale": "TESTNA00A00A000A",
+        "username": "test_napoli"
+    }
+
+
+# ============================================================
+# API Client fixtures
+# ============================================================
+
+@pytest.fixture
+def api_client(webhook_url) -> Callable:
+    """
+    Client per chiamate API webhook con timeout frontend-aligned.
+    Ritorna una funzione che accetta (message, sender, metadata).
+    """
+    def call(message: str, sender: str, metadata: Dict = None) -> Dict:
+        """Chiama webhook e ritorna prima risposta."""
         payload = {
-            "sender": rag_test_sender,
-            "message": query
+            "sender": sender,
+            "message": message
         }
         if metadata:
             payload["metadata"] = metadata
 
-        resp = requests.post(rag_api_url, json=payload, timeout=rag_timeout)
+        resp = requests.post(
+            webhook_url,
+            json=payload,
+            timeout=TIMEOUT_DEFAULT,
+            headers={"Content-Type": "application/json"}
+        )
         resp.raise_for_status()
 
-        responses = resp.json()
-        if not responses:
+        data = resp.json()
+        if not data:
             return {"text": "", "custom": {}}
-        return responses[0]
+        return data[0]
 
-    return call_api
+    return call
 
-
-# ============================================================
-# Fixtures per test cases YAML
-# ============================================================
-
-@pytest.fixture(scope="session")
-def rag_test_cases_path():
-    """Path al file YAML con i test cases."""
-    return TEST_DIR / "rag_test_cases.yaml"
-
-
-@pytest.fixture(scope="session")
-def rag_test_cases(rag_test_cases_path):
-    """Carica tutti i test cases dal file YAML."""
-    import yaml
-
-    if not rag_test_cases_path.exists():
-        return []
-
-    with open(rag_test_cases_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    return data.get("test_cases", [])
-
-
-@pytest.fixture(scope="session")
-def rag_config(rag_test_cases_path):
-    """Carica la configurazione dal file YAML."""
-    import yaml
-
-    if not rag_test_cases_path.exists():
-        return {}
-
-    with open(rag_test_cases_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    return data.get("config", {})
-
-
-# ============================================================
-# Fixture per test_server.py (TestContext)
-# ============================================================
 
 @pytest.fixture
-def ctx():
+def api_client_raw(webhook_url) -> Callable:
     """
-    Fixture per test_server.py che richiede TestContext.
-    Importa dinamicamente da test_server per evitare dipendenze circolari.
+    Client che ritorna response completa (lista di risposte).
     """
-    try:
-        from tests.test_server import TestContext
-        return TestContext(
-            quick_mode=True,
-            verbose=False,
-            json_output=False,
-            auto_start=False
+    def call(message: str, sender: str, metadata: Dict = None) -> list:
+        payload = {
+            "sender": sender,
+            "message": message
+        }
+        if metadata:
+            payload["metadata"] = metadata
+
+        resp = requests.post(
+            webhook_url,
+            json=payload,
+            timeout=TIMEOUT_DEFAULT,
+            headers={"Content-Type": "application/json"}
         )
-    except ImportError:
-        # Se non riesce a importare, skip il test
-        pytest.skip("TestContext non disponibile")
+        resp.raise_for_status()
+        return resp.json()
 
-
-# ============================================================
-# Helpers per tool invocation
-# ============================================================
-
-def call_tool(tool, *args, **kwargs):
-    """
-    Helper per chiamare un tool LangChain sia che sia decorato con @tool
-    sia che sia una funzione normale.
-
-    Usage:
-        from conftest import call_tool
-        result = call_tool(get_piano_description, "A1")
-    """
-    func = tool.func if hasattr(tool, 'func') else tool
-    return func(*args, **kwargs)
+    return call
 
 
 @pytest.fixture
-def tool_caller():
-    """Fixture per chiamare tool LangChain nei test."""
+def parse_client(parse_url) -> Callable:
+    """Client per endpoint /model/parse (NLU)."""
+    def call(text: str, metadata: Dict = None) -> Dict:
+        payload = {"text": text}
+        if metadata:
+            payload["metadata"] = metadata
+
+        resp = requests.post(
+            parse_url,
+            json=payload,
+            timeout=TIMEOUT_QUICK,
+            headers={"Content-Type": "application/json"}
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    return call
+
+
+# ============================================================
+# Helper fixtures
+# ============================================================
+
+@pytest.fixture
+def tool_caller() -> Callable:
+    """
+    Helper per chiamare tool LangChain decorati con @tool.
+    Gestisce sia tool decorati che funzioni normali.
+    """
+    def call_tool(tool, *args, **kwargs):
+        func = tool.func if hasattr(tool, 'func') else tool
+        return func(*args, **kwargs)
     return call_tool
 
 
-# ============================================================
-# Helpers per validazione
-# ============================================================
-
 @pytest.fixture
-def keyword_checker():
+def keyword_checker() -> Callable:
     """
-    Funzione helper per verificare keywords in un testo.
-    Ritorna una funzione che accetta (text, keywords) e ritorna
-    un dict con found, missing, coverage.
+    Helper per verificare keywords in un testo.
+    Ritorna dict con found, missing, coverage.
     """
-    def check(text: str, keywords: list) -> dict:
+    def check(text: str, keywords: list) -> Dict:
         text_lower = text.lower()
         found = [kw for kw in keywords if kw.lower() in text_lower]
         missing = [kw for kw in keywords if kw.lower() not in text_lower]
@@ -236,3 +328,76 @@ def keyword_checker():
         }
 
     return check
+
+
+# ============================================================
+# Session management fixtures
+# ============================================================
+
+@pytest.fixture
+def session_sender_factory() -> Callable:
+    """
+    Factory per creare sender unici per test di sessione.
+    Utile per test che richiedono multiple sessioni isolate.
+    """
+    def create_sender(prefix: str = "user") -> str:
+        timestamp = int(time.time() * 1000)
+        suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=9))
+        return f"{prefix}_{timestamp}_{suffix}"
+
+    return create_sender
+
+
+# ============================================================
+# Fixtures per compatibilita' con test esistenti
+# ============================================================
+
+@pytest.fixture(scope="session")
+def rag_api_url():
+    """URL dell'API RAG (alias per webhook_url)."""
+    return WEBHOOK_URL
+
+
+@pytest.fixture(scope="session")
+def rag_status_url():
+    """URL per health check (alias)."""
+    return STATUS_URL
+
+
+@pytest.fixture(scope="session")
+def rag_timeout():
+    """Timeout per chiamate API RAG."""
+    return TIMEOUT_DEFAULT
+
+
+@pytest.fixture
+def rag_test_sender(unique_sender):
+    """Sender ID per test RAG (usa unique_sender)."""
+    return unique_sender
+
+
+@pytest.fixture
+def rag_api_client(api_client):
+    """Client RAG (alias per api_client)."""
+    return api_client
+
+
+# ============================================================
+# Fixtures per test_server.py compatibility
+# ============================================================
+
+@pytest.fixture
+def ctx():
+    """
+    Fixture per test_server.py che richiede TestContext.
+    """
+    try:
+        from tests.test_server import TestContext
+        return TestContext(
+            quick_mode=True,
+            verbose=False,
+            json_output=False,
+            auto_start=False
+        )
+    except ImportError:
+        pytest.skip("TestContext non disponibile")

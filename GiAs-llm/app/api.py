@@ -530,17 +530,35 @@ async def webhook(message: RasaMessage) -> List[RasaResponse]:
             # Always update conversational memory
             with _session_lock:
                 existing = _session_store.get(message.sender, {}).copy()
-            existing["last_intent"] = result.get("intent", "")
+
+            # Detect topic change: se l'intent cambia significativamente, reset contesto
+            previous_intent = existing.get("last_intent", "")
+            current_intent = result.get("intent", "")
+            CONTINUATION_INTENTS = {"confirm_show_details", "decline_show_details", "fallback"}
+            is_topic_change = (
+                previous_intent and
+                current_intent and
+                previous_intent != current_intent and
+                current_intent not in CONTINUATION_INTENTS
+            )
+
+            if is_topic_change:
+                # Reset contesto che potrebbe confondere la prossima classificazione
+                existing.pop("last_response_context", None)
+                existing.pop("detail_context", None)
+                logger.info(f"[Webhook] Topic change detected ({previous_intent} -> {current_intent}), reset session context for {message.sender}")
+
+            existing["last_intent"] = current_intent
             existing["last_slots"] = result.get("slots", {})
-            existing["conversation_summary"] = f"intent={result.get('intent', '')}, slots={result.get('slots', {})}"
+            existing["conversation_summary"] = f"intent={current_intent}, slots={result.get('slots', {})}"
             existing["timestamp"] = time.time()
             # Keep detail_context if it was already there (don't overwrite)
             if "detail_context" not in existing:
                 existing["detail_context"] = {}
             # NUOVO: Aggiorna dialogue_state
             existing["dialogue_state"] = result.get("dialogue_state")
-            # Aggiorna contesto risposta per risoluzione anaforica
-            if last_response_context:
+            # Aggiorna contesto risposta per risoluzione anaforica (solo se NON cambio topic)
+            if last_response_context and not is_topic_change:
                 existing["last_response_context"] = last_response_context
             # NUOVO: Aggiorna workflow_context
             if result.get("workflow_id"):

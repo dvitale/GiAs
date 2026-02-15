@@ -7,4 +7,5 @@ REMOTE_USER="root"
 
 # Configurazioni alternative (commentate):
 #REMOTE_HOST="gias.u-s.it"
-REMOTE_HOST="100.83.250.3"
+#REMOTE_HOST="100.83.250.3"
+REMOTE_HOST="5.189.160.238"

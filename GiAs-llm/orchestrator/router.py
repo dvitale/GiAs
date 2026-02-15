@@ -7,6 +7,7 @@ try:
     from llm.client import LLMClient
     from configs.config import AppConfig
     from .intent_cache import IntentCache
+    from .few_shot_retriever import get_few_shot_retriever
 except ImportError:
     import sys
     import os
@@ -14,6 +15,7 @@ except ImportError:
     from llm.client import LLMClient
     from configs.config import AppConfig
     from orchestrator.intent_cache import IntentCache
+    from orchestrator.few_shot_retriever import get_few_shot_retriever
 
 
 class Router:
@@ -25,6 +27,11 @@ class Router:
     2. Pre-parsing: estrazione slot deterministici via regex
     3. LLM: classificazione per casi ambigui con prompt compatto
     """
+
+    # P3: Feature flag per heuristics minimali
+    # Quando True, solo heuristics essenziali (confirm/decline, disambiguazione rischio, greet/goodbye/help)
+    # Richiede validazione con 200+ messaggi prima di attivare in produzione
+    MINIMAL_HEURISTICS = True
 
     VALID_INTENTS = [
         "greet", "goodbye", "ask_help",
@@ -55,55 +62,136 @@ class Router:
     }
 
     # =========================================================================
-    # PROMPT COMPATTO (ottimizzato per modelli piccoli)
+    # PROMPT V2 (ottimizzato per accuratezza e disambiguazione)
+    # Budget: ~700 token, ~20 esempi con coppie confuse
     # =========================================================================
 
-    CLASSIFICATION_SYSTEM_PROMPT = """Classificatore intent veterinario. Rispondi SOLO con JSON.
-{"intent":"NOME","slots":{},"needs_clarification":false}
+    CLASSIFICATION_SYSTEM_PROMPT = """Classificatore intent veterinario GIAS. Output JSON esatto:
+{"reasoning":"breve motivazione","intent":"NOME","slots":{},"needs_clarification":false,"confidence":0.85}
 
-INTENT:
-ask_piano_description(piano_code) | ask_piano_stabilimenti(piano_code) | ask_piano_statistics
-search_piani_by_topic(topic) | ask_priority_establishment | ask_risk_based_priority | ask_suggest_controls
-ask_nearby_priority(location,radius_km) | ask_delayed_plans | check_if_plan_delayed(piano_code)
-ask_establishment_history(num_registrazione|partita_iva|ragione_sociale)
-ask_top_risk_activities | analyze_nc_by_category(categoria) | info_procedure
-greet | goodbye | ask_help | confirm_show_details | decline_show_details | fallback
+INTENT PER CATEGORIA:
 
-SLOT: piano_code(A1,B2), asl(NA1), topic, num_registrazione(IT...), partita_iva(10-11cifre), ragione_sociale, categoria, location(indirizzo), radius_km(5)
+[Piani]
+ask_piano_description(piano_code) - descrizione/info piano
+ask_piano_stabilimenti(piano_code) - stabilimenti controllati da piano
+ask_piano_statistics - statistiche/frequenza piani
+search_piani_by_topic(topic) - cerca piani per argomento
 
-REGOLE:
-- sì/si/ok/certo/mostrami → confirm_show_details
-- no/no grazie → decline_show_details
-- Slot mancante → needs_clarification:true
-- Fuori dominio → fallback
-- greet = SOLO saluti (ciao/salve/buongiorno), NON domande generiche
-- STABILIMENTI a rischio → ask_risk_based_priority
-- ATTIVITA' a rischio (classifica) → ask_top_risk_activities
-- LISTA piani in ritardo → ask_delayed_plans
-- Verifica UN piano in ritardo → check_if_plan_delayed
-- procedura/come si fa/passi per/istruzioni per → info_procedure
-- vicino a/nei dintorni/nei pressi/zona di/entro X km → ask_nearby_priority
-- SE c'è CONTESTO RISPOSTA PRECEDENTE, risolvi riferimenti ("le varianti"→varianti del piano, "quelli"→elementi citati)
+[Priorità]
+ask_priority_establishment - chi controllare oggi/priorità generica
+ask_risk_based_priority - STABILIMENTI a rischio (score, non conformità)
+ask_top_risk_activities - classifica ATTIVITÀ più rischiose
+ask_suggest_controls - stabilimenti MAI controllati
+ask_nearby_priority(location,radius_km) - controlli VICINO a indirizzo
 
-ESEMPI:
-"piano A1" → {"intent":"ask_piano_stabilimenti","slots":{"piano_code":"A1"},"needs_clarification":false}
-"piani su latte" → {"intent":"search_piani_by_topic","slots":{"topic":"latte"},"needs_clarification":false}
-"piani che trattano di igiene" → {"intent":"search_piani_by_topic","slots":{"topic":"igiene"},"needs_clarification":false}
-"stabilimenti a rischio" → {"intent":"ask_risk_based_priority","slots":{},"needs_clarification":false}
-"attività più rischiose" → {"intent":"ask_top_risk_activities","slots":{},"needs_clarification":false}
-"piani in ritardo" → {"intent":"ask_delayed_plans","slots":{},"needs_clarification":false}
-"il piano B2 è in ritardo?" → {"intent":"check_if_plan_delayed","slots":{"piano_code":"B2"},"needs_clarification":false}
-"voglio verificare se un piano è in ritardo" → {"intent":"check_if_plan_delayed","slots":{},"needs_clarification":true}
-"dimmi del piano" → {"intent":"ask_piano_stabilimenti","slots":{},"needs_clarification":true}
-"di cosa si occupa il piano A1" → {"intent":"ask_piano_description","slots":{"piano_code":"A1"},"needs_clarification":false}
-"chi devo controllare per primo" → {"intent":"ask_priority_establishment","slots":{},"needs_clarification":false}
-"procedura ispezione semplice" → {"intent":"info_procedure","slots":{},"needs_clarification":false}
-"stabilimenti vicino a Piazza Garibaldi Napoli" → {"intent":"ask_nearby_priority","slots":{"location":"Piazza Garibaldi Napoli"},"needs_clarification":false}
-"controlli entro 3 km da Via Roma, Benevento" → {"intent":"ask_nearby_priority","slots":{"location":"Via Roma, Benevento","radius_km":3},"needs_clarification":false}
-"pizza?" → {"intent":"fallback","slots":{},"needs_clarification":false}
-[con CONTESTO: "info piano - piano A2 - 5 varianti"] "quali sono le varianti?" → {"intent":"ask_piano_stabilimenti","slots":{"piano_code":"A2"},"needs_clarification":false}
+[Ritardi]
+ask_delayed_plans - LISTA piani in ritardo (plurale/generico)
+check_if_plan_delayed(piano_code) - verifica ritardo UN piano specifico
 
-Rispondi SOLO JSON."""
+[Storico]
+ask_establishment_history(num_registrazione|partita_iva|ragione_sociale) - storico controlli stabilimento
+
+[Procedure]
+info_procedure - procedure operative, come si fa, passi per
+analyze_nc_by_category(categoria) - analisi NC per categoria
+
+[Base]
+greet - SOLO saluti brevi (ciao/salve/buongiorno), MAI domande
+goodbye - commiato
+ask_help - aiuto, cosa puoi fare
+confirm_show_details - sì/ok/mostrami (in risposta a offerta dettagli)
+decline_show_details - no/basta (in risposta a offerta dettagli)
+fallback - fuori dominio
+
+SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km
+
+REGOLE DISAMBIGUAZIONE:
+1. "STABILIMENTI a rischio" → ask_risk_based_priority (NON ask_top_risk_activities)
+2. "ATTIVITÀ rischiose" / "classifica attività" → ask_top_risk_activities (NON ask_risk_based_priority)
+3. "piani in ritardo" (plurale/generico) → ask_delayed_plans
+4. "il piano X è in ritardo" (specifico) → check_if_plan_delayed
+5. greet SOLO se messaggio è SOLO saluto, altrimenti altro intent
+6. Slot mancante per intent che lo richiede → needs_clarification:true
+7. confidence: 0.95+ per match esatto, 0.70-0.90 per inferenza, <0.70 se incerto
+8. CAMBIO TOPIC: Se il messaggio è chiaramente un NUOVO ARGOMENTO (es. "attività rischiose" dopo aver parlato di "piani"), IGNORA la sessione precedente e classifica il messaggio in isolamento
+
+ESEMPI CRITICI (coppie confuse):
+"stabilimenti a rischio" → {"reasoning":"chiede stabilimenti con alto rischio","intent":"ask_risk_based_priority","slots":{},"needs_clarification":false,"confidence":0.95}
+"attività più rischiose" → {"reasoning":"chiede classifica attività per rischio","intent":"ask_top_risk_activities","slots":{},"needs_clarification":false,"confidence":0.95}
+"piani in ritardo" → {"reasoning":"lista piani ritardo generico","intent":"ask_delayed_plans","slots":{},"needs_clarification":false,"confidence":0.95}
+"il piano B2 è in ritardo?" → {"reasoning":"verifica ritardo piano specifico B2","intent":"check_if_plan_delayed","slots":{"piano_code":"B2"},"needs_clarification":false,"confidence":0.95}
+"voglio verificare se un piano è in ritardo" → {"reasoning":"manca piano_code","intent":"check_if_plan_delayed","slots":{},"needs_clarification":true,"confidence":0.85}
+"piano A1" → {"reasoning":"info piano A1","intent":"ask_piano_stabilimenti","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.90}
+"di cosa si occupa il piano A1" → {"reasoning":"descrizione piano","intent":"ask_piano_description","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.95}
+"piani su latte" → {"reasoning":"cerca piani tema latte","intent":"search_piani_by_topic","slots":{"topic":"latte"},"needs_clarification":false,"confidence":0.95}
+"chi devo controllare" → {"reasoning":"priorità generica","intent":"ask_priority_establishment","slots":{},"needs_clarification":false,"confidence":0.90}
+"mai controllati" → {"reasoning":"stabilimenti mai controllati","intent":"ask_suggest_controls","slots":{},"needs_clarification":false,"confidence":0.90}
+"vicino a Napoli" → {"reasoning":"controlli vicino indirizzo","intent":"ask_nearby_priority","slots":{"location":"Napoli"},"needs_clarification":false,"confidence":0.90}
+"entro 5 km da Via Roma" → {"reasoning":"raggio specifico","intent":"ask_nearby_priority","slots":{"location":"Via Roma","radius_km":5},"needs_clarification":false,"confidence":0.95}
+"NC categoria HACCP" → {"reasoning":"analisi NC HACCP","intent":"analyze_nc_by_category","slots":{"categoria":"HACCP"},"needs_clarification":false,"confidence":0.95}
+"procedura ispezione" → {"reasoning":"come si fa ispezione","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.90}
+"storico IT 2287" → {"reasoning":"storico stabilimento","intent":"ask_establishment_history","slots":{"num_registrazione":"IT 2287"},"needs_clarification":false,"confidence":0.95}
+"ciao" → {"reasoning":"saluto","intent":"greet","slots":{},"needs_clarification":false,"confidence":0.99}
+"ciao cosa puoi fare" → {"reasoning":"non solo saluto, chiede help","intent":"ask_help","slots":{},"needs_clarification":false,"confidence":0.95}
+"sì mostrami" → {"reasoning":"conferma offerta dettagli","intent":"confirm_show_details","slots":{},"needs_clarification":false,"confidence":0.95}
+"no grazie" → {"reasoning":"rifiuto dettagli","intent":"decline_show_details","slots":{},"needs_clarification":false,"confidence":0.95}
+"pizza?" → {"reasoning":"fuori dominio","intent":"fallback","slots":{},"needs_clarification":false,"confidence":0.99}
+
+CAMBIO TOPIC (ignora sessione precedente):
+SESSIONE: intent=ask_delayed_plans, slots={"piano_code":"A1"}
+"attività più rischiose" → {"reasoning":"nuovo topic, ignoro sessione piani","intent":"ask_top_risk_activities","slots":{},"needs_clarification":false,"confidence":0.95}
+
+Output: SOLO JSON valido, niente altro."""
+
+    # =========================================================================
+    # PROMPT V1 (backup per rollback)
+    # =========================================================================
+    # CLASSIFICATION_SYSTEM_PROMPT_V1 = """Classificatore intent veterinario. Rispondi SOLO con JSON.
+    # {"intent":"NOME","slots":{},"needs_clarification":false}
+    #
+    # INTENT:
+    # ask_piano_description(piano_code) | ask_piano_stabilimenti(piano_code) | ask_piano_statistics
+    # search_piani_by_topic(topic) | ask_priority_establishment | ask_risk_based_priority | ask_suggest_controls
+    # ask_nearby_priority(location,radius_km) | ask_delayed_plans | check_if_plan_delayed(piano_code)
+    # ask_establishment_history(num_registrazione|partita_iva|ragione_sociale)
+    # ask_top_risk_activities | analyze_nc_by_category(categoria) | info_procedure
+    # greet | goodbye | ask_help | confirm_show_details | decline_show_details | fallback
+    #
+    # SLOT: piano_code(A1,B2), asl(NA1), topic, num_registrazione(IT...), partita_iva(10-11cifre), ragione_sociale, categoria, location(indirizzo), radius_km(5)
+    #
+    # REGOLE:
+    # - sì/si/ok/certo/mostrami → confirm_show_details
+    # - no/no grazie → decline_show_details
+    # - Slot mancante → needs_clarification:true
+    # - Fuori dominio → fallback
+    # - greet = SOLO saluti (ciao/salve/buongiorno), NON domande generiche
+    # - STABILIMENTI a rischio → ask_risk_based_priority
+    # - ATTIVITA' a rischio (classifica) → ask_top_risk_activities
+    # - LISTA piani in ritardo → ask_delayed_plans
+    # - Verifica UN piano in ritardo → check_if_plan_delayed
+    # - procedura/come si fa/passi per/istruzioni per → info_procedure
+    # - vicino a/nei dintorni/nei pressi/zona di/entro X km → ask_nearby_priority
+    # - SE c'è CONTESTO RISPOSTA PRECEDENTE, risolvi riferimenti ("le varianti"→varianti del piano, "quelli"→elementi citati)
+    #
+    # ESEMPI:
+    # "piano A1" → {"intent":"ask_piano_stabilimenti","slots":{"piano_code":"A1"},"needs_clarification":false}
+    # "piani su latte" → {"intent":"search_piani_by_topic","slots":{"topic":"latte"},"needs_clarification":false}
+    # "piani che trattano di igiene" → {"intent":"search_piani_by_topic","slots":{"topic":"igiene"},"needs_clarification":false}
+    # "stabilimenti a rischio" → {"intent":"ask_risk_based_priority","slots":{},"needs_clarification":false}
+    # "attività più rischiose" → {"intent":"ask_top_risk_activities","slots":{},"needs_clarification":false}
+    # "piani in ritardo" → {"intent":"ask_delayed_plans","slots":{},"needs_clarification":false}
+    # "il piano B2 è in ritardo?" → {"intent":"check_if_plan_delayed","slots":{"piano_code":"B2"},"needs_clarification":false}
+    # "voglio verificare se un piano è in ritardo" → {"intent":"check_if_plan_delayed","slots":{},"needs_clarification":true}
+    # "dimmi del piano" → {"intent":"ask_piano_stabilimenti","slots":{},"needs_clarification":true}
+    # "di cosa si occupa il piano A1" → {"intent":"ask_piano_description","slots":{"piano_code":"A1"},"needs_clarification":false}
+    # "chi devo controllare per primo" → {"intent":"ask_priority_establishment","slots":{},"needs_clarification":false}
+    # "procedura ispezione semplice" → {"intent":"info_procedure","slots":{},"needs_clarification":false}
+    # "stabilimenti vicino a Piazza Garibaldi Napoli" → {"intent":"ask_nearby_priority","slots":{"location":"Piazza Garibaldi Napoli"},"needs_clarification":false}
+    # "controlli entro 3 km da Via Roma, Benevento" → {"intent":"ask_nearby_priority","slots":{"location":"Via Roma, Benevento","radius_km":3},"needs_clarification":false}
+    # "pizza?" → {"intent":"fallback","slots":{},"needs_clarification":false}
+    # [con CONTESTO: "info piano - piano A2 - 5 varianti"] "quali sono le varianti?" → {"intent":"ask_piano_stabilimenti","slots":{"piano_code":"A2"},"needs_clarification":false}
+    #
+    # Rispondi SOLO JSON."""
 
     CLASSIFICATION_USER_TEMPLATE = """MESSAGGIO: "{message}"
 METADATA: {metadata}
@@ -114,8 +202,24 @@ OUTPUT:"""
     # REGEX PATTERNS per pre-parsing slot
     # =========================================================================
 
-    # Piano code: A1, B2, C3_F, a32, A13_AAB, etc.
-    RE_PIANO_CODE = re.compile(r'\b([A-Za-z]+[0-9]+(?:_[A-Za-z]+)?)\b')
+    # Piano code: pattern GIAS reali (A1, B2, C3, A22, C3_F, etc.)
+    # Formato: 1-2 lettere + 1-3 numeri + opzionale suffisso _LETTERE
+    # NON matcha pattern casuali come XYZ123, ABC999, etc.
+    RE_PIANO_CODE = re.compile(r'\b([A-Z]{1,2}[0-9]{1,3}(?:_[A-Z]+)?)\b', re.IGNORECASE)
+
+    # Parole chiave dominio GIAS per rilevare query significative
+    # Se un messaggio non contiene NESSUNA di queste e non è saluto/aiuto, è probabilmente gibberish
+    DOMAIN_KEYWORDS = re.compile(
+        r'\b(piano|piani|controllo|controlli|stabilimento|stabilimenti|'
+        r'rischio|ritardo|ritardi|priorit[àa]|verificare|verifica|'
+        r'asl|uoc|osa|nc|non\s*conformit[àa]|ispezione|ispezion[ie]|'
+        r'storico|storia|attivit[àa]|categoria|bovini|suini|latte|carni|'
+        r'allevament[io]|macellazione|igiene|sicurezza|alimentare|'
+        r'descrizione|informazioni|descrivimi|dimmi|mostrami|cerca|'
+        r'vicino|dintorni|zona|controllare|controllato|controllati|'
+        r'sanzion[ie]|procedura|procedure|chi|quali|quanti|cosa|come)\b',
+        re.IGNORECASE
+    )
 
     # ASL: NA1, NA2, AV1, CE1, etc.
     RE_ASL = re.compile(r'\b([A-Z]{2}[0-9])\b', re.IGNORECASE)
@@ -372,6 +476,7 @@ OUTPUT:"""
     def classify(self, message: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Classifica il messaggio con approccio ibrido:
+        0. Gibberish detection per messaggi senza senso
         1. Heuristics per intent comuni
         2. Pre-parsing per slot
         3. LLM per casi ambigui
@@ -383,6 +488,12 @@ OUTPUT:"""
         message = message.strip()
         metadata = metadata or {}
         has_detail_context = bool(metadata.get("detail_context"))
+
+        # =====================================================================
+        # LAYER 0: Gibberish detection (bypass LLM per nonsense)
+        # =====================================================================
+        if self._is_gibberish(message):
+            return self._fallback_response("Messaggio non riconosciuto")
 
         # =====================================================================
         # LAYER 1: Heuristics (bypass LLM per casi ovvi)
@@ -410,14 +521,26 @@ OUTPUT:"""
             if cached_result:
                 print(f"[Router] 📦 Cache HIT for: {message[:50]}...")
                 self.intent_cache.record_time_saved(24000)
-                # Merge extracted slots con cached
-                cached_result["slots"] = {**extracted_slots, **cached_result.get("slots", {})}
+                # Usa SOLO slot estratti dalla query corrente (quelli cached potrebbero essere di sessioni diverse)
+                cached_result["slots"] = extracted_slots
                 return self._post_validate(cached_result)
 
         # =====================================================================
         # LAYER 4: LLM classification
         # =====================================================================
         classification_start = time.time()
+
+        # P4: Recupera esempi few-shot dinamici
+        few_shot_examples = ""
+        try:
+            retriever = get_few_shot_retriever()
+            if retriever.is_available():
+                examples = retriever.retrieve(message, top_k=6, score_threshold=0.40, max_per_intent=2)
+                if examples:
+                    few_shot_examples = retriever.format_for_prompt(examples)
+                    print(f"[Router] 🎯 Few-shot: {len(examples)} esempi recuperati")
+        except Exception as e:
+            print(f"[Router] ⚠️ Few-shot fallback: {e}")
 
         # Serializza metadata compatto (no indent)
         metadata_str = json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
@@ -446,6 +569,9 @@ OUTPUT:"""
             metadata=metadata_str,
             extracted_slots=extracted_slots_str
         )
+        # P4: Inietta esempi few-shot se disponibili
+        if few_shot_examples:
+            user_prompt = few_shot_examples + "\n\n" + user_prompt
         if session_context:
             user_prompt = session_context + "\n" + user_prompt
 
@@ -495,36 +621,69 @@ OUTPUT:"""
         Tenta classificazione via pattern matching.
         Ritorna None se non c'è match sicuro.
 
-        ORDINE IMPORTANTE: pattern più specifici prima dei generici.
+        P3: Quando MINIMAL_HEURISTICS=True, usa solo heuristics essenziali:
+        - confirm/decline (explicit + short con context)
+        - disambiguazione rischio (mai_controllati, con_sanzioni)
+        - greet/goodbye/help (triviali)
+
+        Quando MINIMAL_HEURISTICS=False, usa tutte le heuristics (legacy).
         """
         msg_lower = message.lower().strip()
 
+        # =====================================================================
+        # HEURISTICS ESSENZIALI (sempre attive)
+        # =====================================================================
+
         # Conferme/Rifiuti ESPLICITI (non richiedono detail_context)
         if self.CONFIRM_EXPLICIT_PATTERNS.match(message):
-            return {"intent": "confirm_show_details", "slots": {}, "needs_clarification": False}
+            return {"intent": "confirm_show_details", "slots": {}, "needs_clarification": False, "confidence": 0.99}
         if self.DECLINE_EXPLICIT_PATTERNS.match(message):
-            return {"intent": "decline_show_details", "slots": {}, "needs_clarification": False}
+            return {"intent": "decline_show_details", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Conferme/Rifiuti BREVI (richiedono detail_context per disambiguare)
         if has_detail_context:
             if self.CONFIRM_SHORT_PATTERNS.match(message):
-                return {"intent": "confirm_show_details", "slots": {}, "needs_clarification": False}
+                return {"intent": "confirm_show_details", "slots": {}, "needs_clarification": False, "confidence": 0.99}
             if self.DECLINE_SHORT_PATTERNS.match(message):
-                return {"intent": "decline_show_details", "slots": {}, "needs_clarification": False}
+                return {"intent": "decline_show_details", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Risposte disambiguazione rischio (brevi: "1", "2", "mai controllati", "con sanzioni")
         if self.RE_RISK_TYPE_MAI_CONTROLLATI.match(message):
-            return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "mai_controllati"}, "needs_clarification": False}
+            return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "mai_controllati"}, "needs_clarification": False, "confidence": 0.99}
         if self.RE_RISK_TYPE_CON_SANZIONI.match(message):
-            return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "con_sanzioni"}, "needs_clarification": False}
+            return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "con_sanzioni"}, "needs_clarification": False, "confidence": 0.99}
 
         # Saluti iniziali (solo se brevi)
         if len(msg_lower) < 20 and self.GREET_PATTERNS.match(message):
-            return {"intent": "greet", "slots": {}, "needs_clarification": False}
+            return {"intent": "greet", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Saluti finali (può essere più lungo, es. "grazie e arrivederci")
         if len(msg_lower) < 30 and self.GOODBYE_PATTERNS.search(message):
-            return {"intent": "goodbye", "slots": {}, "needs_clarification": False}
+            return {"intent": "goodbye", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Aiuto
+        if self.HELP_PATTERNS.search(message):
+            return {"intent": "ask_help", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Piani in ritardo PLURALE (caso comune, non richiede slot)
+        # Essenziale per evitare confusione LLM con check_if_plan_delayed
+        if self.DELAYED_PATTERNS.search(message) and not self.RE_PIANO_CODE.search(message):
+            return {"intent": "ask_delayed_plans", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Prossimità geografica (caso comune, richiede slot location)
+        # Essenziale per evitare fallback LLM
+        if self.NEARBY_PATTERNS.search(message):
+            return {"intent": "ask_nearby_priority", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # =====================================================================
+        # HEURISTICS ESTESE (solo quando MINIMAL_HEURISTICS=False)
+        # =====================================================================
+
+        if self.MINIMAL_HEURISTICS:
+            # P3: Delega tutto il resto all'LLM
+            return None
+
+        # --- Heuristics legacy (disabilitate con MINIMAL_HEURISTICS=True) ---
 
         # Procedure operative (RAG) - PRIMA di HELP per catturare "come funziona X"
         # ECCEZIONE: richieste su "piano" → passa a PIANO_DESCRIPTION_PATTERNS
@@ -535,75 +694,63 @@ OUTPUT:"""
             if is_info_request and has_piano:
                 pass  # Non tornare qui, lascia proseguire per PIANO_DESCRIPTION_PATTERNS
             else:
-                return {"intent": "info_procedure", "slots": {}, "needs_clarification": False}
-
-        # Aiuto (dopo PROCEDURE per non catturare "come funziona X")
-        if self.HELP_PATTERNS.search(message):
-            return {"intent": "ask_help", "slots": {}, "needs_clarification": False}
+                return {"intent": "info_procedure", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Ritardo piano specifico (con piano_code → check_if_plan_delayed)
         if self.CHECK_PLAN_DELAYED_PATTERNS.search(message) and self.RE_PIANO_CODE.search(message):
-            return {"intent": "check_if_plan_delayed", "slots": {}, "needs_clarification": False}
+            return {"intent": "check_if_plan_delayed", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Singolare "un piano" + ritardo SENZA piano_code → passa a LLM per needs_clarification
         if self.SINGULAR_PLAN_PATTERN.search(message) and self.CHECK_PLAN_DELAYED_PATTERNS.search(message):
             if not self.RE_PIANO_CODE.search(message):
                 return None  # Forza passaggio a LLM
 
-        # Piani in ritardo PLURALE (senza piano specifico → ask_delayed_plans)
-        if self.DELAYED_PATTERNS.search(message) and not self.RE_PIANO_CODE.search(message):
-            return {"intent": "ask_delayed_plans", "slots": {}, "needs_clarification": False}
-
-        # Prossimità geografica (PRIMA di "mai controllati" per priorità su "da controllare nelle vicinanze")
-        if self.NEARBY_PATTERNS.search(message):
-            return {"intent": "ask_nearby_priority", "slots": {}, "needs_clarification": False}
-
-        # Mai controllati (DOPO nearby per evitare conflitti con "da controllare nelle vicinanze")
+        # Mai controllati
         if self.NEVER_CONTROLLED_PATTERNS.search(message):
-            return {"intent": "ask_suggest_controls", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_suggest_controls", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Top attività rischiose (PRIMA di RISK per evitare conflitti)
         if self.TOP_RISK_PATTERNS.search(message):
-            return {"intent": "ask_top_risk_activities", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_top_risk_activities", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Priorità controlli
         if self.PRIORITY_PATTERNS.search(message) and not self.RISK_PATTERNS.search(message):
-            return {"intent": "ask_priority_establishment", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_priority_establishment", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # NC per categoria (PRIMA di RISK per evitare "non conformità" → risk)
         if self.NC_CATEGORY_PATTERNS.search(message):
-            return {"intent": "analyze_nc_by_category", "slots": {}, "needs_clarification": False}
+            return {"intent": "analyze_nc_by_category", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Rischio (dopo NC e TOP_RISK)
         if self.RISK_PATTERNS.search(message) and not self.TOP_RISK_PATTERNS.search(message):
-            return {"intent": "ask_risk_based_priority", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_risk_based_priority", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Statistiche piani
         if self.STATISTICS_PATTERNS.search(message):
-            return {"intent": "ask_piano_statistics", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_piano_statistics", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Establishment history (storico, storia controlli, controlli per partita iva)
         if self.ESTABLISHMENT_HISTORY_PATTERNS.search(message):
-            return {"intent": "ask_establishment_history", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_establishment_history", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Piano description (di cosa tratta, cosa prevede, descrizione piano)
         if self.PIANO_DESCRIPTION_PATTERNS.search(message):
-            return {"intent": "ask_piano_description", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_piano_description", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Piano stabilimenti (stabilimenti controllati, dove è stato applicato, dimmi del piano, info piano)
         if self.PIANO_STABILIMENTI_PATTERNS.search(message):
-            return {"intent": "ask_piano_stabilimenti", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_piano_stabilimenti", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Cerca piani per topic
         if self.SEARCH_PIANI_PATTERNS.search(message):
-            return {"intent": "search_piani_by_topic", "slots": {}, "needs_clarification": False}
+            return {"intent": "search_piani_by_topic", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Catch-all: "piano" + piano_code → ask_piano_stabilimenti
         # Escludi "ritardo" per non interferire con check_if_plan_delayed
         if (self.RE_PIANO_CODE.search(message) and
             re.search(r'\bpiano\b', message, re.IGNORECASE) and
             not re.search(r'\britard', message, re.IGNORECASE)):
-            return {"intent": "ask_piano_stabilimenti", "slots": {}, "needs_clarification": False}
+            return {"intent": "ask_piano_stabilimenti", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         return None
 
@@ -777,6 +924,16 @@ OUTPUT:"""
         if "slots" not in parsed:
             parsed["slots"] = {}
 
+        # FIXUP: Parsing confidence con clamp 0-1
+        if "confidence" in parsed:
+            try:
+                conf = float(parsed["confidence"])
+                parsed["confidence"] = max(0.0, min(1.0, conf))
+            except (TypeError, ValueError):
+                parsed["confidence"] = 0.70  # fallback se non numerico
+        else:
+            parsed["confidence"] = 0.70  # default se non presente
+
         return parsed
 
     def _extract_balanced_json(self, text: str) -> str:
@@ -859,6 +1016,9 @@ OUTPUT:"""
         """
         Post-validation: forza needs_clarification basandosi sulla presenza slot.
         Aggiunge correzioni semantiche per intent classificati erroneamente.
+
+        P3: Quando MINIMAL_HEURISTICS=True, skip correzioni semantiche
+        (l'LLM con prompt V2 dovrebbe già fare la disambiguazione corretta).
         """
         intent = result.get("intent", "fallback")
         slots = result.get("slots", {})
@@ -868,8 +1028,31 @@ OUTPUT:"""
         slots = {k: v for k, v in slots.items() if v not in invalid_values}
         result["slots"] = slots
 
+        # =====================================================================
+        # CORREZIONI SEMANTICHE DETERMINISTICHE
+        # =====================================================================
+
+        # Fix 1: search_piani_by_topic con piano_code
+        # Se l'LLM classifica "attività del piano B2" come search_piani_by_topic
+        # ma c'è un piano_code, l'utente vuole info SU quel piano, non cerca piani
+        if intent == "search_piani_by_topic" and slots.get("piano_code"):
+            result["intent"] = "ask_piano_stabilimenti"
+            intent = "ask_piano_stabilimenti"
+            # Rimuovi topic se presente (era una falsa estrazione)
+            if "topic" in result["slots"]:
+                del result["slots"]["topic"]
+
+        # Fix 2: ask_priority_establishment con "rischio"
+        # Se la query menziona "rischio" ma l'LLM classifica come priority_establishment
+        # l'utente vuole priorità basata sul rischio, non sulla programmazione
+        if intent == "ask_priority_establishment" and message:
+            if re.search(r'\brischio\b', message, re.IGNORECASE):
+                result["intent"] = "ask_risk_based_priority"
+                intent = "ask_risk_based_priority"
+
         # Correzioni semantiche (deterministiche, no LLM cost)
-        if message:
+        # P3: Skip quando MINIMAL_HEURISTICS=True - deleghiamo all'LLM
+        if message and not self.MINIMAL_HEURISTICS:
             msg_lower = message.lower()
             for pattern, wrong_intents, correct_intent in self._SEMANTIC_CORRECTIONS:
                 if intent in wrong_intents and re.search(pattern, msg_lower):
@@ -920,8 +1103,65 @@ OUTPUT:"""
             "intent": "fallback",
             "slots": {},
             "needs_clarification": False,
+            "confidence": 0.99,
             "error": reason
         }
+
+    def _is_gibberish(self, message: str) -> bool:
+        """
+        Rileva messaggi senza senso (gibberish) per evitare classificazione errata.
+
+        Un messaggio è considerato gibberish se:
+        1. Non contiene parole chiave del dominio GIAS
+        2. Non è un saluto, aiuto, conferma o rifiuto riconosciuto
+        3. Ha almeno 3 caratteri (esclude input brevissimi come "?")
+
+        Returns:
+            True se il messaggio è gibberish, False altrimenti.
+        """
+        if len(message) < 3:
+            return False  # Input troppo breve, lascia decidere ad altri layer
+
+        msg_lower = message.lower().strip()
+
+        # Saluti brevi sono OK
+        if len(msg_lower) < 20 and self.GREET_PATTERNS.match(message):
+            return False
+
+        # Conferme/rifiuti sono OK
+        if self.CONFIRM_EXPLICIT_PATTERNS.match(message):
+            return False
+        if self.DECLINE_EXPLICIT_PATTERNS.match(message):
+            return False
+        if self.CONFIRM_SHORT_PATTERNS.match(message):
+            return False
+        if self.DECLINE_SHORT_PATTERNS.match(message):
+            return False
+
+        # Goodbye pattern sono OK
+        if self.GOODBYE_PATTERNS.search(message):
+            return False
+
+        # Help pattern sono OK
+        if self.HELP_PATTERNS.search(message):
+            return False
+
+        # Disambiguazione rischio sono OK
+        if self.RE_RISK_TYPE_MAI_CONTROLLATI.match(message):
+            return False
+        if self.RE_RISK_TYPE_CON_SANZIONI.match(message):
+            return False
+
+        # Se contiene almeno una parola chiave del dominio, non è gibberish
+        if self.DOMAIN_KEYWORDS.search(message):
+            return False
+
+        # Se contiene numeri italiani comuni (per risposte numeriche)
+        if re.match(r'^\s*[0-9]+\s*$', message):
+            return False
+
+        # Nessuna parola chiave trovata → gibberish
+        return True
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get intent cache statistics."""

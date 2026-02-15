@@ -54,6 +54,7 @@ User Message
 **State**: `ConversationState` (TypedDict, ~35 campi) tracks:
 - `message`, `metadata` — input (metadata: `{asl, asl_id, user_id, codice_fiscale}`)
 - `intent`, `slots`, `needs_clarification` — output del Router
+- `_classification_confidence` — confidence reale dal router (0.0-1.0), usata dal dialogue manager al posto di valori hardcoded
 - `tool_output` — risultato del tool node (dict con `type` e `data`)
 - `final_response` — testo generato dal response node
 - `dialogue_state` — `DialogueState` per tracking multi-turno
@@ -62,15 +63,37 @@ User Message
 - `workflow_*`, `fallback_*` — stato legacy workflow/fallback (backwards compat)
 - `error` — messaggi errore
 
+**Confidence propagation** (`graph.py`):
+- `_classify_node`: salva `classification.get("confidence", 0.70)` in `_classification_confidence`
+- `_dialogue_manager_node`: usa confidence reale se disponibile, fallback a euristica (0.90/0.55/0.30) se assente
+- Soglie dialogue manager in `dialogue_manager.py` (`_MODEL_CONFIDENCE_THRESHOLDS["ministral"]`): high=0.65, min=0.40
+
+**Topic change detection** (`graph.py._dialogue_manager_node`):
+- Se `_session_last_intent != intent` corrente, resetta `DialogueState` (slots, confirmed_intent, confirmed_strategy)
+- Evita "memory bleed" quando l'utente cambia argomento tra turni
+
+**Slot carry-forward** (`graph.py._classify_node`):
+- Carry-forward da sessione solo se `_session_last_intent == intent` corrente (guardia anti-topic-change)
+
 ### Intent Classification
 
 **Router** (`orchestrator/router.py`):
-- Router ibrido a 4 livelli: heuristics → pre-parsing → cache → LLM
-- Calls configurable LLM (default: Almawave/Velvet) with domain-specific prompt
-- Returns JSON: `{intent, slots, needs_clarification}`
+- Router ibrido LLM-first a 3 livelli: heuristics essenziali → pre-parsing slot → LLM con few-shot dinamico
+- **Feature flag**: `MINIMAL_HEURISTICS = True` (default) delega la classificazione all'LLM; `False` riattiva tutte le heuristic legacy
+- **Prompt V2**: output JSON con `reasoning`, `confidence` (0.0-1.0), intent raggruppati per categoria, regole di disambiguazione esplicite, ~20 esempi critici
+- **Few-shot dinamico**: `FewShotRetriever` recupera 6 esempi simili da Qdrant (`intent_examples`, 384 dim) e li inietta nel prompt
+- Returns JSON: `{reasoning, intent, slots, needs_clarification, confidence}`
 - Validates against 20 valid intents
+- **Confidence reale**: propagata dal router al dialogue manager via `_classification_confidence` nello state LangGraph
 - Fallback on parsing errors
 - Supports 3 LLM models with performance profiles
+
+**Heuristics essenziali** (sempre attive, anche con `MINIMAL_HEURISTICS=True`):
+- `confirm_show_details` / `decline_show_details` — pattern espliciti e brevi (con detail_context)
+- Disambiguazione rischio: `mai_controllati`, `con_sanzioni` → `ask_risk_based_priority`
+- `greet` (< 20 char), `goodbye` (< 30 char), `ask_help`
+- `ask_delayed_plans` — "piani in ritardo" senza codice piano (disambigua da `check_if_plan_delayed`)
+- `ask_nearby_priority` — pattern prossimita' geografica
 
 **Valid Intents** (20):
 - `greet`, `goodbye`, `ask_help`
@@ -117,7 +140,10 @@ Uses `formatted_response` from `ResponseFormatter` when available, falls back to
 - **Active Dataset**: `dataset.10/` (updated format, 323,146 records)
 - **Import location**: `from ..data import <dataframe_name>`
 - **Data Sources**: Configurable CSV/PostgreSQL via `config.json`
-- **Vector Index**: Qdrant storage with 730 vectors (384 dimensions)
+- **Vector Index**: Qdrant storage con 2 collection:
+  - `piani_monitoraggio`: 730 vettori (384 dim) per ricerca semantica piani
+  - `intent_examples`: ~150 vettori (384 dim) per few-shot intent classification
+- **Rebuild index**: `python tools/indexing/build_intent_examples_index.py` (ricostruire quando cambiano intent o esempi)
 
 ## Key Concepts
 
@@ -170,7 +196,8 @@ GiAs-llm/
 ├── orchestrator/               # LangGraph workflow
 │   ├── graph.py                # ConversationGraph, _build_graph(), entry point run()
 │   ├── graph_legacy.py         # Backup vecchio grafo lineare (pre-refactoring)
-│   ├── router.py               # Router ibrido 4-livelli, VALID_INTENTS, REQUIRED_SLOTS
+│   ├── router.py               # Router ibrido LLM-first 3-livelli, MINIMAL_HEURISTICS, prompt V2
+│   ├── few_shot_retriever.py   # FewShotRetriever singleton - recupero esempi Qdrant per classificazione
 │   ├── dialogue_manager.py     # Decision engine rule-based (nessuna chiamata LLM)
 │   ├── dialogue_state.py       # DialogueState TypedDict per tracking multi-turno
 │   ├── tool_nodes.py           # Tool node functions, TOOL_REGISTRY, INTENT_TO_TOOL
@@ -202,6 +229,7 @@ GiAs-llm/
 │   │   └── config_manager.py   # Dynamic configuration management
 │   └── indexing/
 │       ├── build_qdrant_index.py  # Indexing piani monitoraggio
+│       ├── build_intent_examples_index.py  # Indexing esempi intent per few-shot retrieval
 │       ├── build_docs_index.py    # Indexing documenti procedure (RAG)
 │       └── doc_chunker.py         # Chunker documenti (PDF/DOCX/TXT)
 ├── llm/                        # LLM client (unchanged)
@@ -285,6 +313,8 @@ GiAs-llm/
 5. Aggiornare le domande di esempio in `help_tool()` in `orchestrator/tool_nodes.py`
 6. Se e' un intent a risposta diretta (senza LLM), aggiungere a `DIRECT_RESPONSE_INTENTS` in `orchestrator/response_node.py`
 7. Aggiungere mapping suggerimenti follow-up in `orchestrator/followup_suggestions.py` (metodo `_suggest_<intent>` + entry in dispatch dict)
+8. Aggiungere esempi al prompt V2 in `CLASSIFICATION_SYSTEM_PROMPT` (router.py) e/o alle disambiguation pairs in `build_intent_examples_index.py`
+9. Ricostruire indice few-shot: `python tools/indexing/build_intent_examples_index.py`
 
 ### Working with Data
 
@@ -414,7 +444,9 @@ The system supports two risk prediction strategies for the `ask_risk_based_prior
 - **Intent coverage**: 20/20 intent testati (100%)
 - Integration tests for hybrid search system
 - Component tests for all tools and workflow
-- Heuristics tests per ogni intent con pattern regex
+- Heuristics tests per pattern essenziali + confidence validation
+- Test prompt token budget (< 600 parole)
+- Test parsing confidence (valid, invalid, missing, clamped)
 - Performance benchmarking capabilities
 - 100% accuracy validation on veterinary domain
 
@@ -518,14 +550,15 @@ When writing prompts or responses, use correct Italian veterinary terms:
 **Production Ready** ✅:
 - Multi-model LLM support with performance profiles
 - Hybrid search system with intelligent routing
-- Vector database with 730 indexed plans
-- 20-intent classification with 100% accuracy
-- Comprehensive testing and monitoring
+- Vector database with 730 indexed plans + collection `intent_examples` per few-shot retrieval
+- 20-intent classification LLM-first con confidence reale e few-shot dinamico
+- **NLU migliorato**: prompt V2 con disambiguazione, `MINIMAL_HEURISTICS=True`, `FewShotRetriever` Qdrant
+- Comprehensive testing and monitoring (42 test, 100% intent coverage)
 - FastAPI deployment with Rasa compatibility
 - 323,146 veterinary records processed
 - **Configurable risk predictor** (ML or statistical) via `GIAS_RISK_PREDICTOR`
 
-**Last Updated**: February 2026 (test coverage 100%, geocoding fix, structured follow-up suggestions)
+**Last Updated**: February 2026 (NLU refactoring: prompt V2, confidence reale, few-shot dinamico, heuristics minimali)
 
 ## Regole di manutenzione
 
@@ -535,7 +568,9 @@ Quando modifichi il backend, aggiorna questo file se tocchi:
 - `VALID_INTENTS` o `REQUIRED_SLOTS` → aggiornare sezione "Intent Classification"
 - `TOOL_REGISTRY` o `INTENT_TO_TOOL` → aggiornare sezione "Common Patterns" e file tree
 - File in `orchestrator/` → aggiornare file tree
-- Nuovo intent → aggiungere mapping suggerimenti in `followup_suggestions.py`
+- Nuovo intent → aggiungere mapping suggerimenti in `followup_suggestions.py` + ricostruire indice few-shot
 - Flusso del grafo (`_build_graph`) → aggiornare sezione "Orchestration Flow"
 - `ConversationState` → aggiornare sezione "State"
 - Configurazione risk predictor → aggiornare sezione "Risk Predictor Configuration"
+- `CLASSIFICATION_SYSTEM_PROMPT` o heuristics essenziali → aggiornare sezione "Intent Classification"
+- `MINIMAL_HEURISTICS` flag → aggiornare sezione "Intent Classification"

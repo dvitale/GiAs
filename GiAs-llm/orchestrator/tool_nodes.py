@@ -55,7 +55,7 @@ def greet_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     state["tool_output"] = {
         "type": "greet",
         "data": {
-            "formatted_response": "Benvenuto nel supporto conversazionale per il sistema GISA della Regione Campania."
+            "formatted_response": "Benvenuto nel supporto conversazionale per il sistema GISA della Regione Campania. Come posso aiutarti oggi?"
         }
     }
     return state

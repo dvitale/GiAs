@@ -40,8 +40,15 @@ run_case() {
     return 0
   fi
 
-  local list
-  list="$(printf '%s\n' "$out" | sed -n 's/^__RSYNC__//p' | awk 'substr($0,1,1)!="d"{print substr($0,13)}' | awk '$0!="" && $0!="." && $0!="./" && $0!~ /\/$/')"
+  # Separa file da copiare e file da cancellare
+  local raw_list to_copy to_delete
+  raw_list="$(printf '%s\n' "$out" | sed -n 's/^__RSYNC__//p')"
+
+  # File da cancellare: iniziano con *deleting
+  to_delete="$(printf '%s\n' "$raw_list" | awk '/^\*deleting/{print $2}' | awk '$0!="" && $0!="." && $0!="./" && $0!~ /\/$/')"
+
+  # File da copiare: non directory (primo char != 'd') e non *deleting
+  to_copy="$(printf '%s\n' "$raw_list" | awk 'substr($0,1,1)!="d" && !/^\*deleting/{print substr($0,13)}' | awk '$0!="" && $0!="." && $0!="./" && $0!~ /\/$/')"
 
   print_box() {
     local -a lines=("$@")
@@ -62,19 +69,28 @@ run_case() {
     echo "$border"
   }
 
-  if [[ -z "$list" ]]; then
+  if [[ -z "$to_copy" && -z "$to_delete" ]]; then
     echo "OK: Nessun aggiornamento pendente."
   else
     print_box \
       "ATTENZIONE: File da allineare" \
       "Script: $suggest_script"
-    echo "$list"
+
+    if [[ -n "$to_copy" ]]; then
+      echo -e "\033[32m[COPIA/AGGIORNA]\033[0m"
+      echo "$to_copy"
+    fi
+
+    if [[ -n "$to_delete" ]]; then
+      echo -e "\033[31m[CANCELLA]\033[0m"
+      echo "$to_delete"
+    fi
   fi
   echo -e "==============================\n"
 }
 
 run_case "GiAs-llm: locale -> remoto" "aggiorna_verso_remoto_G.sh" \
-  rsync -avzu -e ssh \
+  rsync -avzu --delete -e ssh \
   --exclude=".*" \
   --exclude=".*/" \
   --exclude="runtime/logs/" \
@@ -92,7 +108,7 @@ run_case "GiAs-llm: locale -> remoto" "aggiorna_verso_remoto_G.sh" \
   "$REMOTE_USER@$REMOTE_HOST:$GIAS_REMOTE_PATH"
 
 run_case "GiAs-llm: remoto -> locale" "aggiorna_da_remoto_G.sh" \
-  rsync -avzu \
+  rsync -avzu --delete \
   --exclude=".*" \
   --exclude=".*/" \
   --exclude="runtime/logs/" \
@@ -111,7 +127,7 @@ run_case "GiAs-llm: remoto -> locale" "aggiorna_da_remoto_G.sh" \
   "$GIAS_LOCAL_PATH"
 
 run_case "gchat: locale -> remoto" "aggiorna_verso_remoto_g.sh" \
-  rsync -avzu \
+  rsync -avzu --delete \
   --exclude=".*" \
   --exclude=".*/" \
   --exclude="runtime/logs/" \
@@ -131,7 +147,7 @@ run_case "gchat: locale -> remoto" "aggiorna_verso_remoto_g.sh" \
   "$REMOTE_USER@$REMOTE_HOST:$GCHAT_REMOTE_PATH"
 
 run_case "gchat: remoto -> locale" "aggiorna_da_remoto_g.sh" \
-  rsync -avzu \
+  rsync -avzu --delete \
   --exclude=".*" \
   --exclude=".*/" \
   --exclude="runtime/logs/" \
