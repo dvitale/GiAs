@@ -125,6 +125,7 @@ ESEMPI CRITICI (coppie confuse):
 "di cosa si occupa il piano A1" → {"reasoning":"descrizione piano","intent":"ask_piano_description","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.95}
 "piani su latte" → {"reasoning":"cerca piani tema latte","intent":"search_piani_by_topic","slots":{"topic":"latte"},"needs_clarification":false,"confidence":0.95}
 "chi devo controllare" → {"reasoning":"priorità generica","intent":"ask_priority_establishment","slots":{},"needs_clarification":false,"confidence":0.90}
+"chi devo controllare secondo la programmazione" → {"reasoning":"priorità per programmazione","intent":"ask_priority_establishment","slots":{},"needs_clarification":false,"confidence":0.95}
 "mai controllati" → {"reasoning":"stabilimenti mai controllati","intent":"ask_suggest_controls","slots":{},"needs_clarification":false,"confidence":0.90}
 "vicino a Napoli" → {"reasoning":"controlli vicino indirizzo","intent":"ask_nearby_priority","slots":{"location":"Napoli"},"needs_clarification":false,"confidence":0.90}
 "entro 5 km da Via Roma" → {"reasoning":"raggio specifico","intent":"ask_nearby_priority","slots":{"location":"Via Roma","radius_km":5},"needs_clarification":false,"confidence":0.95}
@@ -491,8 +492,16 @@ OUTPUT:"""
 
         # =====================================================================
         # LAYER 0: Gibberish detection (bypass LLM per nonsense)
+        # Skip se c'è un confirmed_intent con missing_slots pendenti
+        # (es. l'utente risponde con un indirizzo puro a "Dove ti trovi?")
         # =====================================================================
-        if self._is_gibberish(message):
+        dialogue_state = metadata.get("_dialogue_state") or {}
+        has_pending_slots = (
+            dialogue_state.get("confirmed_intent")
+            and dialogue_state.get("missing_slots")
+        )
+        print(f"[Router DEBUG] message='{message[:50]}', has_pending_slots={has_pending_slots}, confirmed_intent={dialogue_state.get('confirmed_intent')}, missing_slots={dialogue_state.get('missing_slots')}")
+        if not has_pending_slots and self._is_gibberish(message):
             return self._fallback_response("Messaggio non riconosciuto")
 
         # =====================================================================
@@ -511,6 +520,28 @@ OUTPUT:"""
         # LAYER 2: Pre-parsing slot (passa al LLM come suggerimento)
         # =====================================================================
         extracted_slots = self._extract_slots(message)
+
+        # Context-aware slot extraction: se il dialogue_state ha missing_slots
+        # e l'estrazione standard non ha trovato lo slot, usa il messaggio intero
+        if has_pending_slots:
+            pending_missing = dialogue_state.get("missing_slots", [])
+            confirmed_intent = dialogue_state.get("confirmed_intent")
+            if "location" in pending_missing and "location" not in extracted_slots:
+                # L'utente ha risposto con un indirizzo puro (es. "piazza roma, benevento")
+                location_value = message.strip().rstrip('?.!')
+                if location_value and len(location_value) > 2:
+                    extracted_slots["location"] = location_value
+            # Se abbiamo estratto slot pendenti, ritorna direttamente con il confirmed_intent
+            # senza passare dall'LLM (che potrebbe misclassificare un indirizzo puro)
+            if extracted_slots and confirmed_intent:
+                filled_pending = [s for s in pending_missing if extracted_slots.get(s)]
+                if filled_pending:
+                    return {
+                        "intent": confirmed_intent,
+                        "slots": self._normalize_slots(extracted_slots),
+                        "needs_clarification": False,
+                        "confidence": 0.95,
+                    }
 
         # =====================================================================
         # LAYER 3: Cache check
@@ -674,6 +705,36 @@ OUTPUT:"""
         # Essenziale per evitare fallback LLM
         if self.NEARBY_PATTERNS.search(message):
             return {"intent": "ask_nearby_priority", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Suggerisci controlli / mai controllati (caso comune per LLM inconsistente)
+        # Pattern: "suggerisci controlli", "mai controllati", "non controllati", "da controllare"
+        if self.NEVER_CONTROLLED_PATTERNS.search(message) or re.search(r'\bsuggerisci\s+controll', message, re.IGNORECASE):
+            return {"intent": "ask_suggest_controls", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Priorità controlli (pattern preciso, guardia anti-rischio)
+        # Escludi sia RISK_PATTERNS sia menzione diretta di "rischio" (es. "secondo il rischio storico")
+        if self.PRIORITY_PATTERNS.search(message) and not self.RISK_PATTERNS.search(message) and not re.search(r'\brischio\b', message, re.IGNORECASE):
+            return {"intent": "ask_priority_establishment", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Top attività rischiose (PRIMA di RISK per evitare conflitti)
+        if self.TOP_RISK_PATTERNS.search(message):
+            return {"intent": "ask_top_risk_activities", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Rischio stabilimenti (dopo TOP_RISK per evitare conflitti)
+        if self.RISK_PATTERNS.search(message) and not self.TOP_RISK_PATTERNS.search(message):
+            return {"intent": "ask_risk_based_priority", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # NC per categoria
+        if self.NC_CATEGORY_PATTERNS.search(message):
+            return {"intent": "analyze_nc_by_category", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Procedure operative (RAG) - pattern preciso per "come si fa/inserisce/gestisce"
+        # ECCEZIONE: richieste su "piano" → passa al LLM per ask_piano_description
+        if self.PROCEDURE_PATTERNS.search(message):
+            has_piano = re.search(r'\bpiano\b', message, re.IGNORECASE)
+            is_info_request = self.DI_COSA_TRATTA_PATTERN.search(message) or self.INFO_SU_PATTERN.search(message)
+            if not (is_info_request and has_piano):
+                return {"intent": "info_procedure", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # =====================================================================
         # HEURISTICS ESTESE (solo quando MINIMAL_HEURISTICS=False)

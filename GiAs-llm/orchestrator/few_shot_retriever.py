@@ -70,7 +70,7 @@ class FewShotRetriever:
 
         try:
             from qdrant_client import QdrantClient
-            from sentence_transformers import SentenceTransformer
+            from agents.embedding_singleton import get_embedding_model
 
             # Verifica esistenza storage
             if not os.path.exists(self.QDRANT_PATH):
@@ -90,9 +90,9 @@ class FewShotRetriever:
                 self._available = False
                 return False
 
-            # Init embedding model
-            logger.info(f"[FewShot] Caricamento modello embedding...")
-            self._embedding_model = SentenceTransformer(self.MODEL_NAME)
+            # Init embedding model (singleton condiviso con DataRetriever)
+            logger.info(f"[FewShot] Caricamento modello embedding (singleton)...")
+            self._embedding_model = get_embedding_model()
 
             self._available = True
             logger.info(f"[FewShot] Inizializzato: collection={self.COLLECTION_NAME}, "

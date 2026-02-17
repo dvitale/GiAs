@@ -116,7 +116,7 @@ class DataRetriever:
         if osa_mai_controllati_df.empty:
             return pd.DataFrame()
 
-        df = osa_mai_controllati_df.copy()
+        df = osa_mai_controllati_df
 
         if asl:
             try:
@@ -142,7 +142,7 @@ class DataRetriever:
 
         return diff_prog_eseg_df[
             diff_prog_eseg_df['descrizione_uoc'].str.contains(uoc_name, case=False, na=False)
-        ].copy()
+        ]
 
     @classmethod
     def _initialize_qdrant(cls):
@@ -152,7 +152,7 @@ class DataRetriever:
 
         try:
             from qdrant_client import QdrantClient
-            from sentence_transformers import SentenceTransformer
+            from agents.embedding_singleton import get_embedding_model
 
             qdrant_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -167,9 +167,7 @@ class DataRetriever:
 
             cls._qdrant_client = QdrantClient(path=qdrant_path)
 
-            cls._embedding_model = SentenceTransformer(
-                'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
-            )
+            cls._embedding_model = get_embedding_model()
 
             try:
                 cls._qdrant_client.get_collection("piani_monitoraggio")
@@ -715,7 +713,7 @@ class DataRetriever:
         if osa_mai_controllati_df.empty:
             return pd.DataFrame()
 
-        df = osa_mai_controllati_df.copy()
+        df = osa_mai_controllati_df
 
         # Filtra per ASL se specificata
         if asl:
@@ -771,20 +769,18 @@ class DataRetriever:
         if categoria not in VALID_NC_CATEGORIES:
             return pd.DataFrame()
 
-        ocse_copy = ocse_df.copy()
-
-        # Filtra per categoria NC (partial match case-insensitive)
-        ocse_copy = ocse_copy[ocse_copy['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
+        # Filtra per categoria NC (partial match case-insensitive) - no copy, solo lettura
+        filtered = ocse_df[ocse_df['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
 
         # Filtra per ASL se specificata
         if asl:
             try:
-                ocse_copy = filter_by_asl(ocse_copy, asl, 'asl')
+                filtered = filter_by_asl(filtered, asl, 'asl')
             except Exception:
                 # Se il filtro ASL fallisce, continuiamo senza filtro ASL
                 pass
 
-        return ocse_copy
+        return filtered
 
     @staticmethod
     def get_establishments_with_nc_category(categoria: str, limit: int = 20, asl: Optional[str] = None) -> pd.DataFrame:
@@ -806,21 +802,21 @@ class DataRetriever:
         if categoria not in VALID_NC_CATEGORIES:
             return pd.DataFrame()
 
-        ocse_copy = ocse_df.copy()
-
-        # Filtra per categoria NC (partial match case-insensitive)
-        ocse_copy = ocse_copy[ocse_copy['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
+        # Filtra per categoria NC prima, poi copy solo del sottoinsieme (evita copy dell'intero ocse_df)
+        ocse_copy = ocse_df[ocse_df['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
 
         # Filtra per ASL se specificata
         if asl:
             try:
                 ocse_copy = filter_by_asl(ocse_copy, asl, 'asl')
             except Exception:
-                # Se il filtro ASL fallisce, continuiamo senza filtro ASL
                 pass
 
         if ocse_copy.empty:
             return pd.DataFrame()
+
+        # Copy del sottoinsieme filtrato (necessario per pd.to_numeric in-place)
+        ocse_copy = ocse_copy.copy()
 
         # Pulizia dati NC
         ocse_copy['numero_nc_gravi'] = pd.to_numeric(
@@ -885,17 +881,20 @@ class DataRetriever:
         if ocse_df.empty:
             return pd.DataFrame()
 
-        ocse_copy = ocse_df.copy()
-
-        # Filtra per ASL se specificata
+        # Filtra per ASL prima di copiare (evita copy dell'intero ocse_df)
         if asl:
             try:
-                ocse_copy = filter_by_asl(ocse_copy, asl, 'asl')
+                ocse_filtered = filter_by_asl(ocse_df, asl, 'asl')
             except Exception:
-                pass
+                ocse_filtered = ocse_df
+        else:
+            ocse_filtered = ocse_df
 
-        if ocse_copy.empty:
+        if ocse_filtered.empty:
             return pd.DataFrame()
+
+        # Copy solo del sottoinsieme (necessario per pd.to_numeric in-place)
+        ocse_copy = ocse_filtered.copy()
 
         # Pulizia dati NC
         ocse_copy['numero_nc_gravi'] = pd.to_numeric(
@@ -1244,12 +1243,12 @@ class BusinessLogic:
         if controlli_df.empty:
             return pd.DataFrame()
 
-        # Filtra per ASL se specificata
-        df = controlli_df.copy()
+        # Filtra per ASL prima di copiare (evita copy dell'intero controlli_df)
         if asl:
-            # Normalizza ASL per matching flessibile
             asl_upper = asl.upper().strip()
-            df = df[df['descrizione_asl'].fillna('').str.upper().str.contains(asl_upper, na=False, regex=False)]
+            df = controlli_df[controlli_df['descrizione_asl'].fillna('').str.upper().str.contains(asl_upper, na=False, regex=False)].copy()
+        else:
+            df = controlli_df.copy()
 
         if df.empty:
             return pd.DataFrame()
@@ -1520,13 +1519,14 @@ class RiskAnalyzer:
         if categoria not in VALID_NC_CATEGORIES:
             return pd.DataFrame()
 
-        ocse_copy = ocse_df.copy()
-
-        # Filtra per categoria specifica (partial match case-insensitive)
-        ocse_copy = ocse_copy[ocse_copy['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
+        # Filtra per categoria prima, poi copy solo del sottoinsieme (evita copy dell'intero ocse_df)
+        ocse_copy = ocse_df[ocse_df['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
 
         if ocse_copy.empty:
             return pd.DataFrame()
+
+        # Copy del sottoinsieme filtrato (necessario per modifiche in-place)
+        ocse_copy = ocse_copy.copy()
 
         # Converti data_inizio_attivita a datetime se possibile
         # Usiamo anno_controllo come fallback per l'analisi temporale
