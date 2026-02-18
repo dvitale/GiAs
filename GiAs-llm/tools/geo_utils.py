@@ -290,7 +290,77 @@ class GeocodingService:
                     # Solo nome città, senza indirizzo specifico
                     return (city_lat, city_lon, f"{target_city}, Campania, Italia (centro città)")
 
-            # Nessun capoluogo riconosciuto, cerca normalmente
+            # =================================================================
+            # STEP GENERICO: city-first per comuni non capoluogo
+            # Splitta "Via X, Comune Y" → geocodifica il comune, poi
+            # cerca la via con viewbox centrato sul comune.
+            # =================================================================
+            parts = [p.strip() for p in address_normalized.split(',') if p.strip()]
+            if len(parts) >= 2:
+                # Ultimo segmento = comune candidato, resto = via/indirizzo
+                city_candidate = parts[-1].strip()
+                street_candidate = ', '.join(parts[:-1]).strip()
+
+                # Pulisci preposizioni spurie: "in via" → "via", "in piazza" → "piazza"
+                street_candidate = re.sub(
+                    r'^(?:in|al|alla|allo|alle|agli|ai)\s+',
+                    '', street_candidate, flags=re.IGNORECASE
+                ).strip()
+
+                try:
+                    city_location = self._geocode_fn(f"{city_candidate}, Campania, Italia")
+                    if city_location:
+                        city_lat = city_location.latitude
+                        city_lon = city_location.longitude
+
+                        if street_candidate:
+                            radius = 0.05  # ~5km
+                            city_viewbox = [
+                                Point(city_lat + radius, city_lon - radius),
+                                Point(city_lat - radius, city_lon + radius)
+                            ] if Point else None
+
+                            search_variants = [
+                                f"{street_candidate}, {city_candidate}, Campania, Italia",
+                                f"{street_candidate}, comune di {city_candidate}, Campania, Italia",
+                            ]
+
+                            location = None
+                            for variant in search_variants:
+                                if city_viewbox:
+                                    location = self._geocode_fn(variant, viewbox=city_viewbox, bounded=True)
+                                if location is None:
+                                    location = self._geocode_fn(variant)
+                                if location:
+                                    dist = calculate_distance_km(
+                                        city_lat, city_lon,
+                                        location.latitude, location.longitude
+                                    )
+                                    if dist <= MAX_DISTANCE_FROM_CENTER_KM:
+                                        resolved = location.address if hasattr(location, 'address') else address
+                                        logger.debug(f"Geocodificato '{address}' -> ({location.latitude}, {location.longitude}) [{resolved}]")
+                                        return (location.latitude, location.longitude, resolved)
+                                    else:
+                                        logger.debug(f"Risultato per '{variant}' troppo lontano ({dist:.1f} km), scarto")
+                                        location = None
+
+                            # Via non trovata nel comune → usa centro comune + warning
+                            logger.warning(f"Indirizzo '{street_candidate}' non trovato in {city_candidate}, uso centro comune")
+                            warning_address = (
+                                f"⚠️ CENTRO CITTÀ: Indirizzo '{street_candidate}' non trovato in {city_candidate}. "
+                                f"Uso il centro di {city_candidate} come riferimento."
+                            )
+                            return (city_lat, city_lon, warning_address)
+                        else:
+                            # Solo comune, nessuna via
+                            resolved = city_location.address if hasattr(city_location, 'address') else city_candidate
+                            return (city_lat, city_lon, resolved)
+                except (GeocoderTimedOut, GeocoderServiceError):
+                    raise
+                except Exception as e:
+                    logger.debug(f"Generic city-first fallback failed for '{address}': {e}")
+
+            # Nessun capoluogo riconosciuto e city-first non applicabile, cerca normalmente
             if "italia" not in addr_lower and "italy" not in addr_lower:
                 address_normalized = f"{address_normalized}, Campania, Italia"
 

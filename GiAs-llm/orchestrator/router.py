@@ -466,6 +466,106 @@ OUTPUT:"""
     # Estrazione raggio: "entro X km", "X km"
     RE_RADIUS = re.compile(r'(\d+(?:\.\d+)?)\s*km', re.IGNORECASE)
 
+    # Pattern per pulizia location da messaggi naturali (slot fill)
+    _LOCATION_PREFIXES = re.compile(
+        r'^(?:mi\s+trovo\s+(?:a|in|ad|al|alla|presso|all[\'\']\s*)|'
+        r'sono\s+(?:a|in|ad|al|alla|presso|all[\'\']\s*)|'
+        r'sto\s+(?:a|in|ad|al|alla|presso|all[\'\']\s*))\s*',
+        re.IGNORECASE
+    )
+    _LOCATION_PROX_PREFIX = re.compile(
+        r'^(?:vicino\s+(?:a\s+)?|nei\s+pressi\s+di\s+|nei\s+dintorni\s+di\s+|'
+        r'dalle\s+parti\s+di\s+|nella\s+zona\s+di\s+)',
+        re.IGNORECASE
+    )
+    _LOCATION_VICINO_SPLIT = re.compile(
+        r'^(.+?),?\s+vicino\s+(?:a\s+)?(.+)$',
+        re.IGNORECASE
+    )
+
+    def _clean_location_from_message(self, message: str) -> str:
+        """
+        Estrae un indirizzo pulito da un messaggio in linguaggio naturale.
+
+        Gestisce frasi come:
+        - "mi trovo a Montesarchio, vicino Piazza Croce" → "Piazza Croce, Montesarchio"
+        - "sono in Via Roma 15, Napoli" → "Via Roma 15, Napoli"
+        - "vicino a Piazza Garibaldi" → "Piazza Garibaldi"
+        - "Piazza Croce, Montesarchio" → "Piazza Croce, Montesarchio" (invariato)
+        """
+        text = message.strip().rstrip('?.!')
+
+        # Rimuovi prefissi tipo "mi trovo a", "sono in"
+        text = self._LOCATION_PREFIXES.sub('', text).strip()
+
+        # Gestisci "X, vicino (a) Y" → "Y, X" (es. "Montesarchio, vicino Piazza Croce" → "Piazza Croce, Montesarchio")
+        vicino_match = self._LOCATION_VICINO_SPLIT.match(text)
+        if vicino_match:
+            before = vicino_match.group(1).strip().rstrip(',')
+            after = vicino_match.group(2).strip().rstrip(',')
+            if before and after:
+                return f"{after}, {before}"
+            return after or before
+
+        # Rimuovi "vicino a" semplice all'inizio (senza contesto prima)
+        text = self._LOCATION_PROX_PREFIX.sub('', text).strip()
+
+        # Pulisci preposizioni spurie: "in via Roma" → "Via Roma", "in piazza" → "Piazza"
+        text = re.sub(
+            r'\bin\s+(via|piazza|viale|corso|largo|vicolo|contrada|strada|localit[àa])\b',
+            lambda m: m.group(1).capitalize(),
+            text,
+            flags=re.IGNORECASE
+        )
+
+        return text
+
+    def _extract_location_with_llm(self, message: str) -> str:
+        """
+        Estrae indirizzo/location da messaggio naturale usando LLM.
+        Fallback a _clean_location_from_message se LLM fallisce.
+        """
+        system_prompt = (
+            "Estrai l'indirizzo o posizione geografica dal messaggio utente.\n"
+            "Formato: \"via/piazza/luogo, comune\" oppure solo \"comune\".\n"
+            "Ignora frasi conversazionali (mi trovo, sono, sto, vicino a, nei pressi di).\n"
+            "Se ci sono piu' riferimenti geografici, combinali (luogo + comune).\n"
+            "Se non c'e' un indirizzo identificabile, address = null.\n"
+            "Output: solo JSON {\"address\": \"...\"}"
+        )
+        try:
+            response = self.llm_client.query(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ],
+                temperature=0.0,
+                max_tokens=150,
+                json_mode=True,
+                timeout=10.0
+            )
+            if response:
+                parsed = None
+                try:
+                    parsed = json.loads(response)
+                except json.JSONDecodeError:
+                    extracted = self._extract_balanced_json(response)
+                    if extracted:
+                        try:
+                            parsed = json.loads(extracted)
+                        except json.JSONDecodeError:
+                            pass
+                if parsed and isinstance(parsed, dict):
+                    address = parsed.get("address")
+                    if address and isinstance(address, str) and len(address.strip()) > 2:
+                        print(f"[Router] 📍 LLM location: '{address.strip()}' <- '{message[:50]}'")
+                        return address.strip()
+        except Exception as e:
+            print(f"[Router] ⚠️ LLM location fallback a regex: {e}")
+
+        # Fallback: regex
+        return self._clean_location_from_message(message)
+
     def __init__(self, llm_client: LLMClient = None, enable_cache: bool = True, cache_ttl: int = 3600):
         self.llm_client = llm_client or LLMClient()
         self.enable_cache = enable_cache
@@ -505,33 +605,30 @@ OUTPUT:"""
             return self._fallback_response("Messaggio non riconosciuto")
 
         # =====================================================================
-        # LAYER 1: Heuristics (bypass LLM per casi ovvi)
+        # LAYER 1: Pending slot fill (PRIMA delle heuristics)
+        # Quando c'è un confirmed_intent con missing_slots, processiamo
+        # direttamente la risposta senza ri-classificare il messaggio.
         # =====================================================================
-        heuristic_result = self._try_heuristics(message, has_detail_context)
-        if heuristic_result:
-            # Pre-parse slots anche per heuristics
-            slots = self._extract_slots(message)
-            heuristic_result["slots"] = slots
-            # Post-validation
-            heuristic_result = self._post_validate(heuristic_result)
-            return heuristic_result
-
-        # =====================================================================
-        # LAYER 2: Pre-parsing slot (passa al LLM come suggerimento)
-        # =====================================================================
-        extracted_slots = self._extract_slots(message)
-
-        # Context-aware slot extraction: se il dialogue_state ha missing_slots
-        # e l'estrazione standard non ha trovato lo slot, usa il messaggio intero
         if has_pending_slots:
             pending_missing = dialogue_state.get("missing_slots", [])
             confirmed_intent = dialogue_state.get("confirmed_intent")
-            if "location" in pending_missing and "location" not in extracted_slots:
-                # L'utente ha risposto con un indirizzo puro (es. "piazza roma, benevento")
-                location_value = message.strip().rstrip('?.!')
-                if location_value and len(location_value) > 2:
-                    extracted_slots["location"] = location_value
-            # Se abbiamo estratto slot pendenti, ritorna direttamente con il confirmed_intent
+            extracted_slots = self._extract_slots(message)
+
+            if "location" in pending_missing:
+                # Usa LLM per estrarre indirizzo da linguaggio naturale.
+                # Fallback automatico a regex se LLM fallisce.
+                cleaned_location = self._extract_location_with_llm(message)
+                if cleaned_location and len(cleaned_location) > 2:
+                    extracted_slots["location"] = cleaned_location
+            elif "location" not in extracted_slots:
+                # Fallback: usa messaggio intero per slot non-location pendenti
+                for slot_name in pending_missing:
+                    if slot_name not in extracted_slots:
+                        slot_value = message.strip().rstrip('?.!')
+                        if slot_value and len(slot_value) > 2:
+                            extracted_slots[slot_name] = slot_value
+
+            # Se abbiamo estratto slot pendenti, ritorna con il confirmed_intent
             # senza passare dall'LLM (che potrebbe misclassificare un indirizzo puro)
             if extracted_slots and confirmed_intent:
                 filled_pending = [s for s in pending_missing if extracted_slots.get(s)]
@@ -544,7 +641,24 @@ OUTPUT:"""
                     }
 
         # =====================================================================
-        # LAYER 3: Cache check
+        # LAYER 2: Heuristics (bypass LLM per casi ovvi)
+        # =====================================================================
+        heuristic_result = self._try_heuristics(message, has_detail_context)
+        if heuristic_result:
+            # Pre-parse slots anche per heuristics
+            slots = self._extract_slots(message)
+            heuristic_result["slots"] = slots
+            # Post-validation
+            heuristic_result = self._post_validate(heuristic_result)
+            return heuristic_result
+
+        # =====================================================================
+        # LAYER 3: Pre-parsing slot (passa al LLM come suggerimento)
+        # =====================================================================
+        extracted_slots = self._extract_slots(message)
+
+        # =====================================================================
+        # LAYER 4: Cache check
         # =====================================================================
         cache_key = self._build_cache_key(message, has_detail_context)
         if self.enable_cache and self.intent_cache is not None:
@@ -557,7 +671,7 @@ OUTPUT:"""
                 return self._post_validate(cached_result)
 
         # =====================================================================
-        # LAYER 4: LLM classification
+        # LAYER 5: LLM classification
         # =====================================================================
         classification_start = time.time()
 
