@@ -52,7 +52,10 @@ cd gchat && ./all.sh    # compila Go + riavvia server
 
 ```bash
 scripts/server.sh start|stop|restart|status|logs|test
-GIAS_LLM_MODEL=velvet scripts/server.sh start   # modello custom
+GIAS_LLM_MODEL=velvet scripts/server.sh start   # modello locale custom
+
+# Provider LLM esterno (richiede gdpr.allow_external_llm=true in config.json)
+GIAS_LLM_BACKEND=openai_compat MISTRAL_API_KEY=sk-xxx scripts/server.sh start
 ```
 
 ### Gestione frontend (gchat)
@@ -89,8 +92,11 @@ curl -X POST http://localhost:5005/webhooks/rest/webhook \
 | `localhost:5005/webhooks/rest/webhook` | POST | Chat principale |
 | `localhost:5005/status` | GET | Stato + dati caricati |
 | `localhost:5005/model/parse` | POST | Parsing NLU |
+| `localhost:5005/api/chat-log/user-conversations` | GET | Lista conversazioni utente (per codice_fiscale) |
+| `localhost:5005/api/chat-log/conversation/{sid}` | GET | Messaggi di una conversazione |
 | `localhost:8080/gias/webchat/` | GET | UI chat |
 | `localhost:8080/gias/webchat/chat` | POST | Invio messaggio |
+| `localhost:8080/gias/webchat/history` | GET | Pagina cronologia chat |
 
 ## Convenzioni codice
 
@@ -112,6 +118,7 @@ curl -X POST http://localhost:5005/webhooks/rest/webhook \
 - **Protocollo Rasa**: l'API webhook mantiene compatibilita' con il formato Rasa (`sender`, `message`, `metadata`) anche se il backend usa LangGraph.
 - **Metadata utente**: passati via query string URL -> template JS -> POST body -> backend state. Il campo `asl` (nome) ha priorita' su `asl_id`.
 - **Config duplicata**: backend e frontend hanno ciascuno il proprio `config.json` con impostazioni indipendenti.
+- **LLM provider esterni**: il backend supporta provider LLM esterni (OpenAI, Anthropic, Mistral via openai_compat) oltre ai locali (Ollama, llama.cpp). Configurazione in `config.json` sezione `llm_backend.type`. API key solo via env var. GDPR gate (`gdpr.allow_external_llm`) blocca provider esterni per default.
 - **Timeout chain**: JS (75s) > Go (60s) > Backend streaming (120s). Il client deve avere timeout maggiore del server.
 - **Health check**: il frontend verifica la disponibilita' del backend prima di ogni richiesta chat.
 - **Refactoring docs**: il piano di refactoring completo (architettura, migrazione, rollback) e' in `GiAs-llm/docs/refactoring-dialogue-manager.md`.

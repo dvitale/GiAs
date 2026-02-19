@@ -1,0 +1,2039 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GiAs-llm Test Report - 2026-02-17</title>
+    <style>
+        :root {
+            --color-pass: #4CAF50;
+            --color-fail: #f44336;
+            --color-skip: #ff9800;
+            --color-bg: #f5f5f5;
+            --color-card: #ffffff;
+            --color-border: #e0e0e0;
+            --color-text: #333333;
+            --color-text-secondary: #666666;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2em;
+        }
+        .header-meta {
+            opacity: 0.9;
+            font-size: 0.95em;
+        }
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: var(--color-card);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        .card h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.1em;
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--color-border);
+            padding-bottom: 10px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        .stat {
+            text-align: center;
+            padding: 15px;
+            background: var(--color-bg);
+            border-radius: 8px;
+        }
+        .stat-value {
+            font-size: 2.2em;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .stat-label {
+            font-size: 0.85em;
+            color: var(--color-text-secondary);
+            margin-top: 5px;
+        }
+        .stat-passed .stat-value { color: var(--color-pass); }
+        .stat-failed .stat-value { color: var(--color-fail); }
+        .stat-skipped .stat-value { color: var(--color-skip); }
+        .env-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        .env-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--color-bg);
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+        .env-label {
+            color: var(--color-text-secondary);
+        }
+        .env-value {
+            font-weight: 500;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+        .suite {
+            background: var(--color-card);
+            border-radius: 10px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        .suite-header {
+            padding: 15px 20px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .suite-header:hover {
+            background: var(--color-bg);
+        }
+        .suite-passed { border-left: 4px solid var(--color-pass); }
+        .suite-failed { border-left: 4px solid var(--color-fail); }
+        .suite-stats {
+            display: flex;
+            gap: 15px;
+            font-size: 0.9em;
+        }
+        .suite-body {
+            border-top: 1px solid var(--color-border);
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .suite.expanded .suite-body {
+            max-height: 5000px;
+        }
+        .test-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        .test-table th {
+            background: var(--color-bg);
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            position: sticky;
+            top: 0;
+        }
+        .test-table td {
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--color-border);
+            vertical-align: top;
+        }
+        .test-table tr:last-child td {
+            border-bottom: none;
+        }
+        .test-table tr:hover {
+            background: var(--color-bg);
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-passed { background: #e8f5e9; color: var(--color-pass); }
+        .status-failed { background: #ffebee; color: var(--color-fail); }
+        .status-skipped { background: #fff3e0; color: var(--color-skip); }
+        .status-error { background: #ffebee; color: var(--color-fail); }
+        .query-text {
+            font-family: 'SF Mono', Monaco, monospace;
+            background: var(--color-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .intent-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #e3f2fd;
+            color: #1565c0;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: var(--color-text-secondary);
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--color-text-secondary);
+            font-size: 0.9em;
+        }
+        .expand-icon {
+            transition: transform 0.3s;
+        }
+        .suite.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+        .progress-bar {
+            height: 8px;
+            background: var(--color-border);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--color-pass);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        @media (max-width: 768px) {
+            .cards-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .env-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>GiAs-llm Test Report</h1>
+            <div class="header-meta">
+                <strong>Timestamp:</strong> 2026-02-17T15:06:50.824398 |
+                <strong>Server:</strong> http://localhost:5005 (ok) |
+                <strong>Version:</strong> 1.0.0
+            </div>
+        </div>
+
+        <div class="cards-grid">
+            <div class="card">
+                <h2>Test Results</h2>
+                <div class="stats-grid">
+                    <div class="stat">
+                        <div class="stat-value">172</div>
+                        <div class="stat-label">Total</div>
+                    </div>
+                    <div class="stat stat-passed">
+                        <div class="stat-value">172</div>
+                        <div class="stat-label">Passed</div>
+                    </div>
+                    <div class="stat stat-failed">
+                        <div class="stat-value">0</div>
+                        <div class="stat-label">Failed</div>
+                    </div>
+                    <div class="stat stat-skipped">
+                        <div class="stat-value">0</div>
+                        <div class="stat-label">Skipped</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">100.0%</div>
+                        <div class="stat-label">Pass Rate</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">182s</div>
+                        <div class="stat-label">Duration</div>
+                    </div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100.0%"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Environment</h2>
+                <div class="env-grid">
+                    <div class="env-item">
+                        <span class="env-label">Host</span>
+                        <span class="env-value">laptop-dv24</span>
+                    </div>
+                    <div class="env-item">
+                        <span class="env-label">IP Address</span>
+                        <span class="env-value">172.27.248.209</span>
+                    </div>
+                    <div class="env-item">
+                        <span class="env-label">Platform</span>
+                        <span class="env-value">Linux 6.6.87.2-microsoft-standard-WSL2</span>
+                    </div>
+                    <div class="env-item">
+                        <span class="env-label">Python</span>
+                        <span class="env-value">3.10.13</span>
+                    </div>
+                    <div class="env-item">
+                        <span class="env-label">LLM Model</span>
+                        <span class="env-value">llama3.2:3b (real)</span>
+                    </div>
+                    <div class="env-item">
+                        <span class="env-label">LLM Backend</span>
+                        <span class="env-value">openai_compat</span>
+                    </div>
+                    <div class="env-item">
+                        <span class="env-label">User</span>
+                        <span class="env-value">root</span>
+                    </div>
+                    <div class="env-item">
+                        <span class="env-label">Timezone</span>
+                        <span class="env-value">CET</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2 style="margin: 30px 0 15px; color: var(--color-text-secondary);">Test Suites (12)</h2>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_api_endpoints.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">16 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>12.3s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_health_check_available</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_health_check_version</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_health_check_model_loaded</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_status_available</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_status_data_loaded</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_status_framework</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_config_available</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_config_data_source</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_parse_simple</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_parse_with_slot</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_parse_with_metadata</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_parse_confidence</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_tracker_new_session</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_parse_empty_text</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_webhook_malformed_json</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_webhook_missing_message</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:03</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_api_webhook.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">12 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>1.9s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_webhook_greet</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_webhook_help</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_webhook_goodbye</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_webhook_all_metadata_fields</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_webhook_minimal_metadata</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_webhook_no_metadata</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_sender_frontend_format</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_sender_uniqueness</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_response_is_list</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_response_has_text</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_response_custom_field</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_complex_query_timeout</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:05</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_intents.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">30 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>40.8s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response</td>
+                            <td><span class="query-text">ciao</span></td>
+                            <td><span class="intent-badge">greet</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response</td>
+                            <td><span class="query-text">arrivederci</span></td>
+                            <td><span class="intent-badge">goodbye</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response</td>
+                            <td><span class="query-text">aiuto</span></td>
+                            <td><span class="intent-badge">ask_help</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[di</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[stabilimenti</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[attivit\xe0</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[statistiche</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[quali</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[piani</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[chi</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[quale</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[stabilimenti</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[sulla</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[suggerisci</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[piani</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[il</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[storico</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[attivit\xe0</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_intent_response[analizza</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_greet_response_quality</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_help_lists_capabilities</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_piano_description_has_content</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_delayed_plans_format</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_piano_code_extraction</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_topic_extraction</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_all_valid_intents_defined</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_high_confidence_greet</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_moderate_confidence_complex</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_delayed_vs_check_delayed</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_priority_vs_risk</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:46</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_metadata.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">13 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>2.9s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_asl_name_priority_over_id</td>
+                            <td><span class="query-text">chi devo controllare</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_asl_id_fallback</td>
+                            <td><span class="query-text">piani in ritardo</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_uoc_resolution_from_user_id</td>
+                            <td><span class="query-text">stabilimenti prioritari</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_explicit_uoc_preserved</td>
+                            <td><span class="query-text">chi devo controllare</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_all_frontend_fields</td>
+                            <td><span class="query-text">piani in ritardo</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_metadata_napoli</td>
+                            <td><span class="query-text">stabilimenti prioritari</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_metadata_avellino</td>
+                            <td><span class="query-text">suggerisci controlli</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_no_metadata_greet</td>
+                            <td><span class="query-text">ciao</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_no_metadata_help</td>
+                            <td><span class="query-text">aiuto</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_no_asl_data_query</td>
+                            <td><span class="query-text">piani in ritardo</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_invalid_asl_name</td>
+                            <td><span class="query-text">stabilimenti prioritari</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_empty_metadata_fields</td>
+                            <td><span class="query-text">ciao</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_user_id_defaults_to_sender</td>
+                            <td><span class="query-text">ciao</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:49</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_sessions.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">9 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>3.1s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_different_senders_isolated</td>
+                            <td><span class="query-text">sì, mostrami i dettagli</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_parallel_sessions</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_session_remembers_context</td>
+                            <td><span class="query-text">quali sono</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_session_slot_carryforward</td>
+                            <td><span class="query-text">e gli stabilimenti</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_topic_change_resets_context</td>
+                            <td><span class="query-text">stabilimenti ad alto rischio</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_frontend_sender_format</td>
+                            <td><span class="query-text">aiuto</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_simple_sender_works</td>
+                            <td><span class="query-text">ciao</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_rapid_requests_same_sender</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_memory_not_shared</td>
+                            <td><span class="query-text">e gli stabilimenti di questo piano</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:52</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_two_phase.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">12 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>5.3s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_confirm_after_summary</td>
+                            <td><span class="query-text">sì</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_confirm_si_grazie</td>
+                            <td><span class="query-text">sì grazie</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_confirm_mostrami</td>
+                            <td><span class="query-text">mostrami i dettagli</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_confirm_procedi</td>
+                            <td><span class="query-text">procedi</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_decline_after_summary</td>
+                            <td><span class="query-text">no grazie</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_decline_no_semplice</td>
+                            <td><span class="query-text">no</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_decline_basta_cosi</td>
+                            <td><span class="query-text">basta così</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_confirm_isolated_between_sessions</td>
+                            <td><span class="query-text">sì</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_confirm_without_context</td>
+                            <td><span class="query-text">sì</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_decline_without_context</td>
+                            <td><span class="query-text">no grazie</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_multiple_queries_then_confirm</td>
+                            <td><span class="query-text">sì</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_confirm_then_new_query</td>
+                            <td><span class="query-text">stabilimenti ad alto rischio</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:57</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_fallback.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">12 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>1.5s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_fallback_gibberish</td>
+                            <td><span class="query-text">asdfghjkl qwerty xyz123</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_fallback_empty_meaningful</td>
+                            <td><span class="query-text">cosa</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_recovery_after_fallback</td>
+                            <td><span class="query-text">piani in ritardo</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_greet_after_fallback</td>
+                            <td><span class="query-text">ciao</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_fallback_offers_suggestions</td>
+                            <td><span class="query-text">xyz123 nonsense</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_fallback_category_menu</td>
+                            <td><span class="query-text">qrs nonsense 3</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_multiple_fallbacks_escalate</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_fallback_preserves_session</td>
+                            <td><span class="query-text">mostrami i dettagli</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_numeric_selection_after_menu</td>
+                            <td><span class="query-text">1</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_very_long_query_fallback</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_special_characters_fallback</td>
+                            <td><span class="query-text">@#$%^&*()!?</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_numbers_only_fallback</td>
+                            <td><span class="query-text">12345 67890</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:07:59</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_router_real.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">19 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>31.9s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_greet</td>
+                            <td><span class="query-text">ciao</span></td>
+                            <td><span class="intent-badge">greet</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_goodbye</td>
+                            <td><span class="query-text">arrivederci</span></td>
+                            <td><span class="intent-badge">goodbye</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_help</td>
+                            <td><span class="query-text">cosa puoi fare</span></td>
+                            <td><span class="intent-badge">ask_help</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_piano_with_slot</td>
+                            <td><span class="query-text">di cosa tratta il piano A1</span></td>
+                            <td><span class="intent-badge">ask_piano_description</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_piano_complex_code</td>
+                            <td><span class="query-text">descrizione piano A11_F</span></td>
+                            <td><span class="intent-badge">ask_piano_description</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_search_topic</td>
+                            <td><span class="query-text">quali piani riguardano bovini</span></td>
+                            <td><span class="intent-badge">search_piani_by_topic</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_delayed_plans</td>
+                            <td><span class="query-text">piani in ritardo</span></td>
+                            <td><span class="intent-badge">ask_delayed_plans</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_check_specific_plan_delayed</td>
+                            <td><span class="query-text">il piano B47 è in ritardo</span></td>
+                            <td><span class="intent-badge">check_if_plan_delayed</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_priority</td>
+                            <td><span class="query-text">chi devo controllare per primo</span></td>
+                            <td><span class="intent-badge">ask_priority_establishment|ask_risk_based_priority</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_risk</td>
+                            <td><span class="query-text">stabilimenti ad alto rischio</span></td>
+                            <td><span class="intent-badge">ask_risk_based_priority</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_suggest_controls</td>
+                            <td><span class="query-text">suggerisci controlli</span></td>
+                            <td><span class="intent-badge">ask_suggest_controls</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_empty_returns_fallback</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span class="intent-badge">fallback</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_classify_nonsense_returns_fallback</td>
+                            <td><span class="query-text">xyz123 asdfgh qwerty</span></td>
+                            <td><span class="intent-badge">fallback</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_high_confidence_clear_intent</td>
+                            <td><span class="query-text">ciao</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_confidence_in_range</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_extract_piano_code</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_extract_topic</td>
+                            <td><span class="query-text">piani che riguardano bovini</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_heuristic_greet_short</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span class="intent-badge">greet</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_heuristic_help</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span class="intent-badge">ask_help</span></td>
+                            <td class="timestamp">15:08:31</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_tools_real.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">19 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>26.4s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_get_piano_description_real</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_get_piano_description_not_found</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_get_piano_description_empty_code</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_piano_tool_description_action</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_piano_tool_stabilimenti_action</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_piano_tool_invalid_action</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_piani_by_topic_real</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_piani_empty_query</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_piani_no_results</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_tool_router</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_get_priority_establishment_real</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_get_priority_missing_asl</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_get_delayed_plans_real</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_suggest_controls_real</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_get_risk_based_priority_real</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_risk_tool_router</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_get_establishment_history</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_data_retriever_piani</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_data_retriever_controlli</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:08:57</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_search_real.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">14 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>23.4s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_simple_keyword</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_complex_query</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_exact_code</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_results_structure</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_vector_search_simple</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_semantic_search_complex</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_various_topics</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_various_topics</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_various_topics</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_various_topics[sicurezza</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_various_topics</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_various_topics</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_various_topics</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_search_formatted_response</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:20</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_streaming.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">5 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>7.8s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_streaming_available</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:28</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_streaming_receives_events</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:28</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_streaming_event_format</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:28</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_streaming_metadata_passed</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:28</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_streaming_long_query</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:28</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="suite suite-passed" onclick="this.classList.toggle('expanded')">
+            <div class="suite-header">
+                <span>test_ml_predictor_real.py</span>
+                <div class="suite-stats">
+                    <span style="color: var(--color-pass)">11 passed</span>
+                    <span style="color: var(--color-fail)">0 failed</span>
+                    <span>24.1s</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="suite-body">
+                <table class="test-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px">Status</th>
+                            <th>Test Name</th>
+                            <th>Query</th>
+                            <th>Expected Intent</th>
+                            <th style="width: 180px">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_predictor_loads</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_predictor_predict_asl</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_predictor_predict_with_piano</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_predictor_risky_establishments_format</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_ml_prediction_tool</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_ml_vs_statistical_comparison</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_predictor_config_loaded</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_predictor_type_check</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_model_file_exists</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_training_data_exists</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                        <tr>
+                            <td><span class="status-badge status-passed">passed</span></td>
+                            <td>test_taxonomy_map_exists</td>
+                            <td><span style="color: #999">-</span></td>
+                            <td><span style="color: #999">-</span></td>
+                            <td class="timestamp">15:09:52</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Generated by GiAs-llm Test Suite v5.0 | 2026-02-17 15:09:52</p>
+        </div>
+    </div>
+</body>
+</html>

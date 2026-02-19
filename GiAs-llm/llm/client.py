@@ -3,6 +3,7 @@ import re
 from typing import Optional, Generator
 import sys
 import os
+
 import requests
 
 # Aggiungi il path per importare config
@@ -12,12 +13,15 @@ from configs.config import AppConfig, LLMBackendConfig
 
 class LLMClient:
     """
-    Configurable LLM client supporting multiple backends (Ollama, Llama.cpp).
-    Uses requests library directly for reliable HTTP communication.
+    Configurable LLM client supporting multiple backends.
+    Uses the Strategy Pattern to delegate to provider implementations.
 
     Backends supported:
     - Ollama: API /api/chat (Ollama native format)
     - Llama.cpp: API /v1/chat/completions (OpenAI-compatible format)
+    - OpenAI: API via SDK (GPT-4o, GPT-4o-mini)
+    - Anthropic: API via SDK (Claude Sonnet, Haiku)
+    - OpenAI-Compatible: Generic /v1/chat/completions with API key (Mistral, Groq, etc.)
     """
 
     def __init__(self, model: str = None, use_real_llm: bool = True):
@@ -37,6 +41,9 @@ class LLMClient:
             if self.backend_type == "llamacpp":
                 model = self.backend_config.get("model_name", "Llama-3.2-3B-Instruct-Q6_K_L.gguf")
                 model_key = "llamacpp"
+            elif self.backend_type in ("openai", "anthropic", "openai_compat"):
+                model = self.backend_config.get("model", "gpt-4o-mini")
+                model_key = "external"
             else:
                 model = AppConfig.get_model_name()
                 model_key = AppConfig.LLM_MODEL
@@ -52,17 +59,20 @@ class LLMClient:
         # Usa timeout specifico del backend, fallback al timeout globale
         self.timeout = self.backend_config.get("timeout_seconds", AppConfig.LLM_TIMEOUT_SECONDS)
 
+        self._provider = None
+
         if use_real_llm:
             try:
-                # Check backend availability
-                response = requests.get(
-                    f"{self.base_url}{self.health_endpoint}",
-                    timeout=5
-                )
-                response.raise_for_status()
+                # GDPR check per provider esterni
+                if LLMBackendConfig.is_external_provider():
+                    self._check_gdpr_consent()
 
-                backend_name = "Llama.cpp" if self.backend_type == "llamacpp" else "Ollama"
-                model_info = AppConfig.get_model_info() if model_key != "custom" and model_key != "llamacpp" else {"description": f"Model: {model}"}
+                self._provider = self._create_provider()
+                backend_name = self._provider.provider_name
+                if model_key not in ("custom", "llamacpp", "external"):
+                    model_info = AppConfig.get_model_info()
+                else:
+                    model_info = {"description": f"Model: {model}"}
 
                 print(f"✅ LLM Client initialized with backend: {backend_name}")
                 print(f"   🔌 URL: {self.base_url}")
@@ -71,6 +81,56 @@ class LLMClient:
             except Exception as e:
                 print(f"⚠️ Warning: {self.backend_type} not available ({e}), falling back to stub")
                 self.use_real_llm = False
+                self._provider = None
+
+    def _create_provider(self):
+        """Factory method: creates the appropriate provider backend."""
+        from .providers import (
+            OllamaProvider, LlamaCppProvider,
+            OpenAIProvider, AnthropicProvider, OpenAICompatProvider
+        )
+
+        if self.backend_type == "ollama":
+            provider = OllamaProvider(
+                self.model, self.backend_config,
+                keep_alive=AppConfig.KEEP_ALIVE_DURATION
+            )
+        elif self.backend_type == "llamacpp":
+            provider = LlamaCppProvider(self.model, self.backend_config)
+        elif self.backend_type == "openai":
+            provider = OpenAIProvider(self.model, self.backend_config)
+        elif self.backend_type == "anthropic":
+            provider = AnthropicProvider(self.model, self.backend_config)
+        elif self.backend_type == "openai_compat":
+            provider = OpenAICompatProvider(self.model, self.backend_config)
+        else:
+            raise ValueError(f"Backend LLM non supportato: {self.backend_type}")
+
+        # Verifica disponibilita' (ping)
+        if not provider.ping():
+            raise ConnectionError(f"{provider.provider_name} non raggiungibile")
+
+        return provider
+
+    def _check_gdpr_consent(self):
+        """Verifica che l'uso di provider esterni sia esplicitamente autorizzato in config."""
+        try:
+            config_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "configs", "config.json"
+            )
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            allowed = config.get("gdpr", {}).get("allow_external_llm", False)
+            if not allowed:
+                raise ValueError(
+                    "⛔ Provider LLM esterno configurato ma gdpr.allow_external_llm e' False in config.json. "
+                    "I dati delle query verrebbero inviati a server esterni. "
+                    "Impostare a True solo dopo aver verificato la conformita' GDPR con le normative "
+                    "della Regione Campania per il trattamento dei dati sanitari veterinari."
+                )
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass  # Nessun config file, consenti (modalita' sviluppo)
 
     def query(self, prompt: str = None, temperature: float = None, max_tokens: int = None,
               messages: list = None, json_mode: bool = False, timeout: float = None) -> str:
@@ -106,55 +166,11 @@ class LLMClient:
         effective_messages = messages or [{'role': 'user', 'content': prompt}]
 
         try:
-            if self.backend_type == "llamacpp":
-                # Llama.cpp - OpenAI-compatible format
-                request_body = {
-                    'model': self.model,
-                    'messages': effective_messages,
-                    'temperature': temperature,
-                    'max_tokens': max_tokens,
-                    'stream': False
-                }
-
-                if json_mode:
-                    request_body['response_format'] = {'type': 'json_object'}
-
-                response = requests.post(
-                    f"{self.base_url}{self.api_endpoint}",
-                    json=request_body,
-                    timeout=timeout if timeout is not None else self.timeout
-                )
-                response.raise_for_status()
-
-                result = response.json()
-                return result['choices'][0]['message']['content'].strip()
-
-            else:
-                # Ollama - Native format
-                request_body = {
-                    'model': self.model,
-                    'messages': effective_messages,
-                    'options': {
-                        'temperature': temperature,
-                        'num_predict': max_tokens
-                    },
-                    'keep_alive': AppConfig.KEEP_ALIVE_DURATION,
-                    'stream': False
-                }
-
-                if json_mode:
-                    request_body['format'] = 'json'
-
-                response = requests.post(
-                    f"{self.base_url}{self.api_endpoint}",
-                    json=request_body,
-                    timeout=timeout if timeout is not None else self.timeout
-                )
-                response.raise_for_status()
-
-                result = response.json()
-                return result['message']['content'].strip()
-
+            return self._provider.query(
+                effective_messages, temperature, max_tokens,
+                json_mode=json_mode,
+                timeout=timeout
+            )
         except requests.exceptions.Timeout:
             print(f"❌ LLM query timeout after {self.timeout}s")
             return self._fallback_stub(prompt)
@@ -200,7 +216,8 @@ class LLMClient:
         else:
             user_message = prompt_lower
 
-        if re.match(r'^\s*(ciao|salve|buongiorno|buonasera|hello|hey)\s*[!.?]?\s*$', user_message):
+        if re.match(r'^\s*(ciao|salve|buongiorno|buonasera|buonanotte|buondì|buon\s*pomeriggio|'
+                    r'hello|hey|hi|ehilà|ehi|eccomi|ben\s*trovato|ben\s*tornato|come\s*(stai|va))\s*[!.?]?\s*$', user_message):
             return json.dumps({
                 "intent": "greet",
                 "slots": {},
@@ -214,7 +231,8 @@ class LLMClient:
                 "needs_clarification": False
             })
 
-        if re.match(r'^\s*(arrivederci|addio|bye|ciao ciao)\s*[!.?]?\s*$', user_message):
+        if re.match(r'^\s*(arrivederci|addio|bye|ciao\s*ciao|tanti\s*saluti|'
+                    r'alla\s*prossima|ci\s*vediamo|a\s*domani|stammi?\s*bene)\s*[!.?]?\s*$', user_message):
             return json.dumps({
                 "intent": "goodbye",
                 "slots": {},
@@ -293,12 +311,12 @@ class LLMClient:
             topic_words = []
 
             keywords = [
-                "bovini", "bovino", "vacche", "vitelli", "bufalini",
-                "suini", "suino", "maiali", "porci",
-                "ovini", "ovino", "pecore", "agnelli",
-                "caprini", "caprino", "capre",
-                "avicoli", "avicolo", "polli", "pollame", "galline",
-                "equini", "equino", "cavalli",
+                "bovini", "bovino", "vacche", "vitelli", "bufalini", "bufale", "bufala",
+                "suini", "suino", "maiali", "porci", "scrofe", "scrofa", "verri", "verro", "suinetti",
+                "ovini", "ovino", "pecore", "agnelli", "arieti",
+                "caprini", "caprino", "capre", "capretti",
+                "avicoli", "avicolo", "polli", "pollame", "galline", "tacchini", "oche", "anatre",
+                "equini", "equino", "cavalli", "asini", "muli",
                 "latte", "lattiero", "caseario", "latticini",
                 "carne", "macellazione", "macello", "carni",
                 "mangimi", "mangime", "alimentazione",
@@ -306,16 +324,19 @@ class LLMClient:
                 "benessere", "biosicurezza",
                 "salmonella", "residui", "farmaco", "farmaci",
                 "api", "apicoltura", "miele",
-                "acquacoltura", "ittico", "pesca", "pesci"
+                "acquacoltura", "ittico", "pesca", "pesci",
+                "cani", "gatti", "randagismo", "canile",
+                "selvaggina", "selvatici", "cinghiali",
             ]
 
             for word in keywords:
                 if word in user_message:
                     topic_words.append(word)
 
+            slots = {"topic": " ".join(topic_words)} if topic_words else {}
             return json.dumps({
                 "intent": "search_piani_by_topic",
-                "slots": {"topic": " ".join(topic_words) if topic_words else "generico"},
+                "slots": slots,
                 "needs_clarification": False
             })
 
@@ -379,84 +400,11 @@ class LLMClient:
         effective_messages = messages or [{'role': 'user', 'content': prompt}]
 
         try:
-            if self.backend_type == "llamacpp":
-                # Llama.cpp - OpenAI-compatible format with streaming
-                request_body = {
-                    'model': self.model,
-                    'messages': effective_messages,
-                    'temperature': temperature,
-                    'max_tokens': max_tokens,
-                    'stream': True  # Enable streaming
-                }
-
-                if json_mode:
-                    request_body['response_format'] = {'type': 'json_object'}
-
-                response = requests.post(
-                    f"{self.base_url}{self.api_endpoint}",
-                    json=request_body,
-                    stream=True,  # Critical: enable streaming
-                    timeout=timeout if timeout is not None else self.timeout
-                )
-                response.raise_for_status()
-
-                # Parse SSE stream from Llama.cpp
-                for line in response.iter_lines():
-                    if line:
-                        line_text = line.decode('utf-8')
-                        # Llama.cpp sends "data: {json}" format
-                        if line_text.startswith('data: '):
-                            data_json = line_text[6:]  # Remove "data: " prefix
-                            if data_json.strip() == '[DONE]':
-                                break
-                            try:
-                                data = json.loads(data_json)
-                                if 'choices' in data and len(data['choices']) > 0:
-                                    delta = data['choices'][0].get('delta', {})
-                                    if 'content' in delta:
-                                        yield delta['content']
-                            except json.JSONDecodeError:
-                                continue
-
-            else:
-                # Ollama - Native format with streaming
-                request_body = {
-                    'model': self.model,
-                    'messages': effective_messages,
-                    'options': {
-                        'temperature': temperature,
-                        'num_predict': max_tokens
-                    },
-                    'keep_alive': AppConfig.KEEP_ALIVE_DURATION,
-                    'stream': True  # Enable streaming
-                }
-
-                if json_mode:
-                    request_body['format'] = 'json'
-
-                response = requests.post(
-                    f"{self.base_url}{self.api_endpoint}",
-                    json=request_body,
-                    stream=True,
-                    timeout=timeout if timeout is not None else self.timeout
-                )
-                response.raise_for_status()
-
-                # Parse streaming JSON objects from Ollama
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            data = json.loads(line.decode('utf-8'))
-                            if 'message' in data:
-                                content = data['message'].get('content', '')
-                                if content:
-                                    yield content
-                            # Check if done
-                            if data.get('done', False):
-                                break
-                        except json.JSONDecodeError:
-                            continue
-
+            yield from self._provider.query_stream(
+                effective_messages, temperature, max_tokens,
+                json_mode=json_mode,
+                timeout=timeout
+            )
         except requests.exceptions.Timeout:
             print(f"❌ LLM streaming timeout after {timeout or self.timeout}s")
             return
@@ -474,11 +422,6 @@ class LLMClient:
         if not self.use_real_llm:
             return True
 
-        try:
-            response = requests.get(
-                f"{self.base_url}{self.health_endpoint}",
-                timeout=5
-            )
-            return response.status_code == 200
-        except:
-            return False
+        if self._provider:
+            return self._provider.ping()
+        return False

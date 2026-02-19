@@ -5,8 +5,11 @@ Verifica che le risposte del sistema siano coerenti con i contenuti
 dei PDF indicizzati.
 
 Esecuzione:
-    python -m pytest tests/test_rag_consistency.py -v
-    python -m pytest tests/test_rag_consistency.py::TestRAGConsistency::test_rag_response[cu_01] -v
+    python -m pytest tests/integration/test_rag_consistency.py -v
+    python -m pytest tests/integration/test_rag_consistency.py::TestRAGConsistency::test_rag_response[cu_01] -v
+
+Nota: Questi test richiedono il server backend attivo e sono marcati come @pytest.mark.e2e.
+Il conftest gestisce automaticamente lo skip se il server non e' disponibile.
 """
 
 import pytest
@@ -19,11 +22,14 @@ from pathlib import Path
 
 
 # Configurazione
-TEST_DIR = Path(__file__).parent
+TEST_DIR = Path(__file__).parent.parent  # tests/ (YAML e' nella root dei test)
 YAML_PATH = TEST_DIR / "rag_test_cases.yaml"
 API_URL = "http://localhost:5005/webhooks/rest/webhook"
 STATUS_URL = "http://localhost:5005/status"
 TIMEOUT = 60
+
+# Marker globale per tutti i test di questo modulo
+pytestmark = pytest.mark.e2e
 
 
 @dataclass
@@ -67,21 +73,21 @@ def load_test_cases() -> List[RAGTestCase]:
 # Carica test cases all'import
 TEST_CASES = load_test_cases()
 
+# Skip esplicito se file YAML non disponibile (evita test silenziosi)
+if not YAML_PATH.exists():
+    pytest.skip(
+        f"File YAML test cases non trovato: {YAML_PATH}. "
+        "TestRAGConsistency non avra' test parametrizzati.",
+        allow_module_level=True
+    )
+
 
 class TestRAGConsistency:
-    """Test di consistenza per le risposte RAG."""
+    """Test di consistenza per le risposte RAG.
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Verifica che il server sia attivo."""
-        try:
-            resp = requests.get(STATUS_URL, timeout=5)
-            if resp.status_code != 200:
-                pytest.skip("Server non risponde correttamente")
-        except requests.exceptions.ConnectionError:
-            pytest.skip("Server non disponibile - avviare con: scripts/server.sh start")
-        except requests.exceptions.Timeout:
-            pytest.skip("Server timeout")
+    Lo skip automatico per server non disponibile e' gestito dal conftest
+    tramite il marker @pytest.mark.e2e a livello di modulo.
+    """
 
     def _call_api(self, query: str) -> Dict[str, Any]:
         """Chiama l'API e ritorna la risposta."""
@@ -192,17 +198,10 @@ class TestRAGConsistency:
 
 
 class TestRAGMetrics:
-    """Test aggregati per metriche RAG."""
+    """Test aggregati per metriche RAG.
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Verifica che il server sia attivo."""
-        try:
-            resp = requests.get(STATUS_URL, timeout=5)
-            if resp.status_code != 200:
-                pytest.skip("Server non risponde correttamente")
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-            pytest.skip("Server non disponibile")
+    Lo skip automatico e' gestito dal conftest tramite il marker e2e.
+    """
 
     def _call_api(self, query: str) -> Dict[str, Any]:
         """Chiama l'API e ritorna la risposta."""
@@ -276,16 +275,10 @@ class TestRAGMetrics:
 
 # Test individuali per debug
 class TestIndividualCases:
-    """Test individuali per debug di casi specifici."""
+    """Test individuali per debug di casi specifici.
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        try:
-            resp = requests.get(STATUS_URL, timeout=5)
-            if resp.status_code != 200:
-                pytest.skip("Server non risponde")
-        except:
-            pytest.skip("Server non disponibile")
+    Lo skip automatico e' gestito dal conftest tramite il marker e2e.
+    """
 
     def _call_api(self, query: str) -> Dict[str, Any]:
         payload = {"sender": "test_individual", "message": query}

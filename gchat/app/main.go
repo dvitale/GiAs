@@ -269,6 +269,33 @@ func main() {
 		c.HTML(http.StatusOK, "monitor.html", templateData)
 	})
 
+	// Chat History API proxy (avoid CORS by proxying through Go server)
+	api.GET("/api/chat-log/user-conversations", func(c *gin.Context) {
+		ProxyChatLogAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.GET("/api/chat-log/conversation/:sessionId", func(c *gin.Context) {
+		ProxyChatLogAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+
+	// Chat History Page
+	api.GET("/history", func(c *gin.Context) {
+		userIDStr, aslID, aslName, codiceFiscale, username := MergeSessionParams(c)
+		log.Printf("HISTORY_PAGE_REQUEST: user_id=%s, asl_id=%s, asl_name=%s, client_ip=%s",
+			userIDStr, aslID, aslName, c.ClientIP())
+
+		templateData := gin.H{
+			"title":      "GIAS Cronologia Chat",
+			"user":       loadUserData(userIDStr, aslName, "HISTORY"),
+			"basePath":   basePath,
+			"backendUrl": config.LLMServer.URL,
+			"queryParams": gin.H{
+				"asl_id": aslID, "asl_name": aslName, "user_id": userIDStr,
+				"codice_fiscale": codiceFiscale, "username": username,
+			},
+		}
+		c.HTML(http.StatusOK, "history.html", templateData)
+	})
+
 	port := config.Server.Port
 	if port == "" {
 		port = "8080"

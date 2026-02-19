@@ -736,6 +736,47 @@ func HandlePredefinedQuestions(c *gin.Context) {
 	})
 }
 
+// ProxyChatLogAPI proxies chat-log API requests to the backend to avoid CORS issues
+func ProxyChatLogAPI(c *gin.Context, llmServerURL string, timeout int) {
+	// Reconstruct the backend URL from the original request path
+	// Strip the base path prefix to get the API path
+	originalPath := c.Request.URL.Path
+	// Find "/api/chat-log/" in the path and use everything from there
+	apiIdx := strings.Index(originalPath, "/api/chat-log/")
+	if apiIdx == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid API path"})
+		return
+	}
+	apiPath := originalPath[apiIdx:]
+	backendURL := llmServerURL + apiPath
+	if c.Request.URL.RawQuery != "" {
+		backendURL += "?" + c.Request.URL.RawQuery
+	}
+
+	log.Printf("CHATLOG_PROXY: %s -> %s", originalPath, backendURL)
+
+	client := &http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
+
+	resp, err := client.Get(backendURL)
+	if err != nil {
+		log.Printf("CHATLOG_PROXY_ERROR: url=%s, error=%v", backendURL, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Backend not available"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("CHATLOG_PROXY_ERROR: read error=%v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read backend response"})
+		return
+	}
+
+	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
+}
+
 // Debug mode structures
 type LLMParseResponse struct {
 	Text   string                   `json:"text"`

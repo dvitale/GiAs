@@ -29,9 +29,12 @@ class TestFallbackBasic:
         resp = api_client("cosa", unique_sender, complete_metadata)
 
         assert "text" in resp
-        # Deve chiedere chiarimento
+        # Deve chiedere chiarimento o offrire menu
         text = resp["text"].lower()
-        assert any(w in text for w in ["cosa", "aiuto", "domand", "posso"])
+        assert any(w in text for w in [
+            "cosa", "aiuto", "domand", "posso",
+            "capito", "intendevi", "scegli", "categoria", "richiesta"
+        ]), f"Risposta non offre chiarimento: {text[:200]}"
 
 
 class TestFallbackRecovery:

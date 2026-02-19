@@ -70,8 +70,8 @@ class ModelConfig:
         }
     }
 
-    # Modello di default (Ministral 3B - function calling nativo, context 256K, ottimo italiano)
-    DEFAULT_MODEL = "ministral"
+    # Modello di default (LLaMA 3.2 3B - veloce, disponibile, buon italiano)
+    DEFAULT_MODEL = "llama3.2"
 
     @classmethod
     def get_model_name(cls, model_key: str = None) -> str:
@@ -103,9 +103,10 @@ class ModelConfig:
         return cls.AVAILABLE_MODELS
 
 class LLMBackendConfig:
-    """Configurazione backend LLM (Ollama vs Llama.cpp)"""
+    """Configurazione backend LLM (Ollama, Llama.cpp, OpenAI, Anthropic, OpenAI-Compatible)"""
 
-    VALID_BACKENDS = ["ollama", "llamacpp"]
+    VALID_BACKENDS = ["ollama", "llamacpp", "openai", "anthropic", "openai_compat"]
+    EXTERNAL_BACKENDS = ["openai", "anthropic", "openai_compat"]
     DEFAULT_BACKEND = "llamacpp"
 
     @classmethod
@@ -159,6 +160,26 @@ class LLMBackendConfig:
                 "model_name": "Llama-3.2-3B-Instruct-Q6_K_L.gguf",
                 "timeout_seconds": 90
             }
+        elif backend_type == "openai":
+            return {
+                "model": "gpt-4o-mini",
+                "timeout_seconds": 30,
+                "api_key_env": "OPENAI_API_KEY"
+            }
+        elif backend_type == "anthropic":
+            return {
+                "model": "claude-sonnet-4-20250514",
+                "timeout_seconds": 30,
+                "api_key_env": "ANTHROPIC_API_KEY"
+            }
+        elif backend_type == "openai_compat":
+            return {
+                "host": "https://api.mistral.ai",
+                "api_endpoint": "/v1/chat/completions",
+                "model": "mistral-medium-latest",
+                "timeout_seconds": 30,
+                "api_key_env": "MISTRAL_API_KEY"
+            }
         else:  # ollama
             return {
                 "host": "http://localhost:11434",
@@ -176,6 +197,35 @@ class LLMBackendConfig:
     def is_llamacpp(cls) -> bool:
         """Ritorna True se il backend è Llama.cpp"""
         return cls.get_backend_type() == "llamacpp"
+
+    @classmethod
+    def is_external_provider(cls) -> bool:
+        """Ritorna True se il backend invia dati a server esterni"""
+        return cls.get_backend_type() in cls.EXTERNAL_BACKENDS
+
+    @classmethod
+    def get_api_key(cls) -> str:
+        """
+        Ottiene la API key per il backend configurato dalla variabile ambiente.
+        Ritorna None se non trovata o se il backend e' locale.
+        """
+        backend_type = cls.get_backend_type()
+        if backend_type not in cls.EXTERNAL_BACKENDS:
+            return None
+
+        backend_config = cls.get_backend_config()
+        api_key_env = backend_config.get("api_key_env")
+        if api_key_env:
+            return os.getenv(api_key_env)
+
+        # Fallback env var names
+        fallbacks = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "openai_compat": "GIAS_LLM_API_KEY",
+        }
+        env_name = fallbacks.get(backend_type)
+        return os.getenv(env_name) if env_name else None
 
 
 class RiskPredictorConfig:

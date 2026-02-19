@@ -763,6 +763,10 @@ async def webhook_stream(message: RasaMessage):
                 _session_store.pop(message.sender, None)
                 workflow_context = None
 
+            # Recupera dialogue_state da sessione (come endpoint sincrono)
+            session_valid_for_ds = sender_session and time.time() - session_timestamp <= SESSION_TTL
+            dialogue_state_from_session = sender_session.get("dialogue_state") if session_valid_for_ds else None
+
             # NON injettiamo event_callback nel metadata!
             # Invece, lo passiamo direttamente al graph che lo userà internamente
 
@@ -775,7 +779,8 @@ async def webhook_stream(message: RasaMessage):
                         metadata=metadata,
                         detail_context=detail_context,
                         workflow_context=workflow_context,  # NUOVO parametro validato
-                        event_callback=event_callback
+                        event_callback=event_callback,
+                        dialogue_state=dialogue_state_from_session,
                     )
                     result_container["result"] = result
                     # Signal completion
@@ -887,6 +892,8 @@ async def webhook_stream(message: RasaMessage):
                 existing["timestamp"] = time.time()
                 if "detail_context" not in existing:
                     existing["detail_context"] = {}
+                # Aggiorna dialogue_state (come endpoint sincrono)
+                existing["dialogue_state"] = result.get("dialogue_state")
                 # NUOVO: Aggiorna workflow_context
                 if result.get("workflow_id"):
                     existing["workflow_context"] = {
@@ -1091,6 +1098,8 @@ async def status():
 
     # Check actual LLM availability
     llm_model = AppConfig.get_model_name()
+    llm_model_key = AppConfig.LLM_MODEL
+    llm_backend = AppConfig.LLM_BACKEND
     try:
         test_client = LLMClient()
         llm_mode = "real" if test_client.use_real_llm else "stub"
@@ -1108,7 +1117,9 @@ async def status():
             "osa_mai_controllati": len(osa_mai_controllati_df)
         },
         "framework": "LangGraph",
-        "llm": llm_status
+        "llm": llm_status,
+        "llm_model_key": llm_model_key,
+        "llm_backend": llm_backend
     }
 
 
@@ -1543,6 +1554,126 @@ async def chat_log_timeline(days: int = 7, granularity: str = "hour"):
             }
     except Exception as e:
         logger.error(f"[ChatLogAPI] Error in timeline: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat-log/user-conversations")
+async def chat_log_user_conversations(codice_fiscale: str = None, limit: int = 50, offset: int = 0):
+    """
+    Lista conversazioni di un utente, raggruppate per session_id.
+
+    Query params:
+        codice_fiscale: codice fiscale utente (required)
+        limit: max conversazioni (default: 50)
+        offset: offset per paginazione (default: 0)
+    """
+    if not codice_fiscale:
+        raise HTTPException(status_code=400, detail="codice_fiscale obbligatorio")
+
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            # Conteggio totale conversazioni
+            count_query = text("""
+                SELECT COUNT(DISTINCT session_id)
+                FROM chat_log
+                WHERE who LIKE '%' || :cf
+                  AND session_id IS NOT NULL
+            """)
+            total = conn.execute(count_query, {"cf": codice_fiscale}).scalar() or 0
+
+            # Lista conversazioni con prima domanda come titolo
+            query = text("""
+                SELECT
+                    session_id,
+                    MIN(ask) FILTER (WHERE ask IS NOT NULL) AS title,
+                    COUNT(*) AS message_count,
+                    MIN("when") AS started_at,
+                    MAX("when") AS ended_at,
+                    MAX(asl) AS asl
+                FROM chat_log
+                WHERE who LIKE '%' || :cf
+                  AND session_id IS NOT NULL
+                GROUP BY session_id
+                ORDER BY MAX("when") DESC
+                LIMIT :limit OFFSET :offset
+            """)
+            rows = conn.execute(query, {"cf": codice_fiscale, "limit": limit, "offset": offset}).fetchall()
+
+            return {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "conversations": [
+                    {
+                        "session_id": r[0],
+                        "title": r[1] or "(senza titolo)",
+                        "message_count": r[2],
+                        "started_at": r[3] if isinstance(r[3], str) else (r[3].isoformat() if r[3] else None),
+                        "ended_at": r[4] if isinstance(r[4], str) else (r[4].isoformat() if r[4] else None),
+                        "asl": r[5],
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in user-conversations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat-log/conversation/{session_id}")
+async def chat_log_conversation(session_id: str, codice_fiscale: str = None):
+    """
+    Messaggi di una singola conversazione.
+
+    Path params:
+        session_id: ID sessione
+    Query params:
+        codice_fiscale: codice fiscale utente (per verifica ownership)
+    """
+    if not codice_fiscale:
+        raise HTTPException(status_code=400, detail="codice_fiscale obbligatorio")
+
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT id, ask, answer, "when", intent, tool, response_time_ms, error
+                FROM chat_log
+                WHERE session_id = :sid
+                  AND who LIKE '%' || :cf
+                ORDER BY "when" ASC, id ASC
+            """)
+            rows = conn.execute(query, {"sid": session_id, "cf": codice_fiscale}).fetchall()
+
+            return {
+                "session_id": session_id,
+                "messages": [
+                    {
+                        "id": r[0],
+                        "ask": r[1],
+                        "answer": r[2],
+                        "timestamp": r[3] if isinstance(r[3], str) else (r[3].isoformat() if r[3] else None),
+                        "intent": r[4],
+                        "tool": r[5],
+                        "response_time_ms": r[6],
+                        "error": r[7],
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[ChatLogAPI] Error in conversation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

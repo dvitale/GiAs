@@ -243,6 +243,13 @@ class ConversationGraph:
         metadata = state.get("metadata", {})
         workflow_context = state.get("workflow_context")
 
+        # Passa dialogue_state al router per context-aware classification
+        # (es. skip gibberish detection quando c'è un confirmed_intent con missing_slots)
+        ds_for_router = state.get("dialogue_state")
+        print(f"[Graph DEBUG] classify_node: ds_for_router={ds_for_router is not None}, confirmed_intent={ds_for_router.get('confirmed_intent') if ds_for_router else None}, missing_slots={ds_for_router.get('missing_slots') if ds_for_router else None}")
+        if ds_for_router:
+            metadata = {**metadata, "_dialogue_state": ds_for_router}
+
         if workflow_context:
             classification = self.router.classify_with_context(
                 state["message"], metadata, workflow_context
@@ -326,8 +333,10 @@ class ConversationGraph:
         # nel DialogueState, resetta slots e confirmed_intent per evitare "memory bleed"
         metadata = state.get("metadata", {})
         session_last_intent = metadata.get("_session_last_intent")
-        if session_last_intent and session_last_intent != intent:
+        if session_last_intent and session_last_intent != intent and intent != "fallback":
             # L'utente ha cambiato argomento - reset DialogueState
+            # NON resettare se intent è "fallback": potrebbe essere un messaggio
+            # non riconosciuto (es. indirizzo puro) che è in realtà una risposta a slot mancante
             ds["slots"] = {}
             ds["confirmed_intent"] = None
             ds["confirmed_strategy"] = None

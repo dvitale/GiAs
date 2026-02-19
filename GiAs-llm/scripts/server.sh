@@ -212,9 +212,17 @@ cmd_test_suite() {
         sleep 10
     fi
 
-    # Esegui test runner
+    # Esegui test runner (genera report JSON+HTML di default se non specificato)
     cd "$PROJECT_ROOT"
-    python3 tests/run_all_tests.py "$@"
+    local has_report=false
+    for arg in "$@"; do
+        [ "$arg" = "--report" ] && has_report=true
+    done
+    if [ "$has_report" = false ]; then
+        python3 tests/run_all_tests.py --report both "$@"
+    else
+        python3 tests/run_all_tests.py "$@"
+    fi
 }
 
 cmd_test_quick() {

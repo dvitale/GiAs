@@ -108,7 +108,7 @@ run_case "GiAs-llm: locale -> remoto" "aggiorna_verso_remoto_G.sh" \
   "$REMOTE_USER@$REMOTE_HOST:$GIAS_REMOTE_PATH"
 
 run_case "GiAs-llm: remoto -> locale" "aggiorna_da_remoto_G.sh" \
-  rsync -avzu --delete \
+  rsync -avzu  \
   --exclude=".*" \
   --exclude=".*/" \
   --exclude="runtime/logs/" \
@@ -147,7 +147,7 @@ run_case "gchat: locale -> remoto" "aggiorna_verso_remoto_g.sh" \
   "$REMOTE_USER@$REMOTE_HOST:$GCHAT_REMOTE_PATH"
 
 run_case "gchat: remoto -> locale" "aggiorna_da_remoto_g.sh" \
-  rsync -avzu --delete \
+  rsync -avzu  \
   --exclude=".*" \
   --exclude=".*/" \
   --exclude="runtime/logs/" \

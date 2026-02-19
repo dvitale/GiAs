@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}}</title>
+    <link rel="stylesheet" href="{{.basePath}}/static/css/style.css">
+    <link rel="stylesheet" href="{{.basePath}}/static/css/new-formatting.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container" id="appContainer">
+        <!-- Header identico a index.html -->
+        <header class="app-header" id="appHeader">
+            <div class="header-left">
+                <a href="{{.basePath}}/?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}" title="Torna alla chat">
+                    <img src="{{.basePath}}/static/img/gias.png" alt="GIAS" class="header-logo">
+                </a>
+            </div>
+            <div class="header-center">
+                {{if .user}}
+                <div class="user-info">
+                    <span class="user-name">{{.user.namefirst}} {{.user.namelast}}</span>
+                    {{if .user.asl}}<span class="user-asl">ASL {{.user.asl}}</span>{{end}}
+                    {{if .user.hierarchy}}
+                    <div class="user-hierarchy">{{.user.hierarchy}}</div>
+                    {{end}}
+                </div>
+                {{else}}
+                <span class="header-title">{{.title}}</span>
+                {{end}}
+            </div>
+            <div class="header-right">
+                <a href="{{.basePath}}/history?user_id={{.queryParams.user_id}}&asl_id={{.queryParams.asl_id}}&asl_name={{.queryParams.asl_name}}&codice_fiscale={{.queryParams.codice_fiscale}}&username={{.queryParams.username}}" class="header-nav-link active" title="Cronologia">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </a>
+                <button class="theme-toggle" id="themeToggle" aria-label="Cambia tema">
+                    <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+                <img src="{{.basePath}}/static/img/logo-reg.png" alt="Regione Campania" class="header-logo">
+            </div>
+        </header>
+
+        <!-- Layout a due colonne -->
+        <div class="history-layout">
+            <!-- Sidebar -->
+            <aside class="history-sidebar" id="historySidebar">
+                <div class="sidebar-header">
+                    <h2 class="sidebar-title">Conversazioni</h2>
+                    <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="Chiudi sidebar">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div class="sidebar-search">
+                    <input type="text" class="search-input" id="searchInput" placeholder="Cerca conversazioni...">
+                </div>
+                <div class="conversation-list" id="conversationList">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <div class="load-more-container" id="loadMoreContainer" style="display:none;">
+                    <button class="load-more-btn" id="loadMoreBtn">Carica altre</button>
+                </div>
+            </aside>
+
+            <!-- Mobile toggle button -->
+            <button class="sidebar-toggle-btn" id="sidebarToggleBtn" aria-label="Apri lista conversazioni">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+
+            <!-- Area principale -->
+            <main class="history-main" id="historyMain">
+                <div class="history-empty-state" id="emptyState">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <p>Seleziona una conversazione dalla lista</p>
+                </div>
+                <div class="conversation-view hidden" id="conversationView">
+                    <div class="conversation-header" id="conversationHeader">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    <div class="conversation-messages" id="conversationMessages">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Sidebar overlay per mobile -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    </div>
+
+    <script>
+        window.basePath = "{{.basePath}}";
+        window.backendUrl = "{{.backendUrl}}";
+        window.queryParams = {
+            asl_id: {{if .queryParams.asl_id}}{{.queryParams.asl_id | json}}{{else}}null{{end}},
+            asl_name: {{if .queryParams.asl_name}}{{.queryParams.asl_name | json}}{{else}}null{{end}},
+            user_id: {{if .queryParams.user_id}}{{.queryParams.user_id | json}}{{else}}null{{end}},
+            codice_fiscale: {{if .queryParams.codice_fiscale}}{{.queryParams.codice_fiscale | json}}{{else}}null{{end}},
+            username: {{if .queryParams.username}}{{.queryParams.username | json}}{{else}}null{{end}}
+        };
+    </script>
+    <script src="{{.basePath}}/static/js/history.js?v=1"></script>
+</body>
+
+</html>

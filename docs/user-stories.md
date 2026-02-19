@@ -224,7 +224,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-05: Ricerca piani per argomento
+## US-04: Ricerca piani per argomento
 
 **Intent:** `search_piani_by_topic`
 
@@ -261,7 +261,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-06: Stabilimenti prioritari da controllare
+## US-05: Stabilimenti prioritari da controllare
 
 **Intent:** `ask_priority_establishment`
 
@@ -299,7 +299,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-07: Stabilimenti ad alto rischio (predizione NC)
+## US-06: Stabilimenti ad alto rischio (predizione NC)
 
 **Intent:** `ask_risk_based_priority`
 
@@ -341,7 +341,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-08: Stabilimenti mai controllati
+## US-07: Stabilimenti mai controllati
 
 **Intent:** `ask_suggest_controls`
 
@@ -374,7 +374,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-09: Classifica attivita' piu' rischiose
+## US-08: Classifica attivita' piu' rischiose
 
 **Intent:** `ask_top_risk_activities`
 
@@ -410,7 +410,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-10: Piani di controllo in ritardo
+## US-09: Piani di controllo in ritardo
 
 **Intent:** `ask_delayed_plans`
 
@@ -448,7 +448,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-11: Verifica ritardo di un piano specifico
+## US-10: Verifica ritardo di un piano specifico
 
 **Intent:** `check_if_plan_delayed`
 
@@ -485,7 +485,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-12: Storico controlli di uno stabilimento
+## US-11: Storico controlli di uno stabilimento
 
 **Intent:** `ask_establishment_history`
 
@@ -522,7 +522,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-13: Analisi non conformita' per categoria
+## US-12: Analisi non conformita' per categoria
 
 **Intent:** `analyze_nc_by_category`
 
@@ -559,7 +559,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-14: Informazioni su procedure operative
+## US-13: Informazioni su procedure operative
 
 **Intent:** `info_procedure`
 
@@ -611,7 +611,7 @@ L'assistente GISA-AI non interroga mai un solo dataset in isolamento. Le rispost
 
 ---
 
-## US-15: Stabilimenti da controllare per prossimita' geografica
+## US-14: Stabilimenti da controllare per prossimita' geografica
 
 **Intent:** `ask_nearby_priority`
 

@@ -96,8 +96,8 @@ info_procedure - procedure operative, come si fa, passi per
 analyze_nc_by_category(categoria) - analisi NC per categoria
 
 [Base]
-greet - SOLO saluti brevi (ciao/salve/buongiorno), MAI domande
-goodbye - commiato
+greet - saluti e convenevoli (ciao, salve, buongiorno, buonasera, buonanotte, buon pomeriggio, ehilà, come stai, ecc.), MAI domande operative
+goodbye - commiato (arrivederci, tanti saluti, alla prossima, ci vediamo, a domani, ecc.)
 ask_help - aiuto, cosa puoi fare
 confirm_show_details - sì/ok/mostrami (in risposta a offerta dettagli)
 decline_show_details - no/basta (in risposta a offerta dettagli)
@@ -110,10 +110,11 @@ REGOLE DISAMBIGUAZIONE:
 2. "ATTIVITÀ rischiose" / "classifica attività" → ask_top_risk_activities (NON ask_risk_based_priority)
 3. "piani in ritardo" (plurale/generico) → ask_delayed_plans
 4. "il piano X è in ritardo" (specifico) → check_if_plan_delayed
-5. greet SOLO se messaggio è SOLO saluto, altrimenti altro intent
+5. greet se messaggio è saluto/convenevole SENZA domande operative; goodbye se è commiato
 6. Slot mancante per intent che lo richiede → needs_clarification:true
 7. confidence: 0.95+ per match esatto, 0.70-0.90 per inferenza, <0.70 se incerto
 8. CAMBIO TOPIC: Se il messaggio è chiaramente un NUOVO ARGOMENTO (es. "attività rischiose" dopo aver parlato di "piani"), IGNORA la sessione precedente e classifica il messaggio in isolamento
+9. "PIANI controllare per primi" → ask_delayed_plans (priorità PIANI); "STABILIMENTI controllare per primi" → ask_priority_establishment (priorità STABILIMENTI)
 
 ESEMPI CRITICI (coppie confuse):
 "stabilimenti a rischio" → {"reasoning":"chiede stabilimenti con alto rischio","intent":"ask_risk_based_priority","slots":{},"needs_clarification":false,"confidence":0.95}
@@ -126,6 +127,8 @@ ESEMPI CRITICI (coppie confuse):
 "piani su latte" → {"reasoning":"cerca piani tema latte","intent":"search_piani_by_topic","slots":{"topic":"latte"},"needs_clarification":false,"confidence":0.95}
 "chi devo controllare" → {"reasoning":"priorità generica","intent":"ask_priority_establishment","slots":{},"needs_clarification":false,"confidence":0.90}
 "chi devo controllare secondo la programmazione" → {"reasoning":"priorità per programmazione","intent":"ask_priority_establishment","slots":{},"needs_clarification":false,"confidence":0.95}
+"quali piani devo controllare per primi" → {"reasoning":"priorità PIANI, non stabilimenti","intent":"ask_delayed_plans","slots":{},"needs_clarification":false,"confidence":0.95}
+"quali stabilimenti devo controllare per primi" → {"reasoning":"priorità STABILIMENTI","intent":"ask_priority_establishment","slots":{},"needs_clarification":false,"confidence":0.95}
 "mai controllati" → {"reasoning":"stabilimenti mai controllati","intent":"ask_suggest_controls","slots":{},"needs_clarification":false,"confidence":0.90}
 "vicino a Napoli" → {"reasoning":"controlli vicino indirizzo","intent":"ask_nearby_priority","slots":{"location":"Napoli"},"needs_clarification":false,"confidence":0.90}
 "entro 5 km da Via Roma" → {"reasoning":"raggio specifico","intent":"ask_nearby_priority","slots":{"location":"Via Roma","radius_km":5},"needs_clarification":false,"confidence":0.95}
@@ -133,6 +136,10 @@ ESEMPI CRITICI (coppie confuse):
 "procedura ispezione" → {"reasoning":"come si fa ispezione","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.90}
 "storico IT 2287" → {"reasoning":"storico stabilimento","intent":"ask_establishment_history","slots":{"num_registrazione":"IT 2287"},"needs_clarification":false,"confidence":0.95}
 "ciao" → {"reasoning":"saluto","intent":"greet","slots":{},"needs_clarification":false,"confidence":0.99}
+"buonanotte" → {"reasoning":"saluto serale","intent":"greet","slots":{},"needs_clarification":false,"confidence":0.99}
+"come stai" → {"reasoning":"convenevole","intent":"greet","slots":{},"needs_clarification":false,"confidence":0.95}
+"tanti saluti" → {"reasoning":"commiato","intent":"goodbye","slots":{},"needs_clarification":false,"confidence":0.95}
+"alla prossima" → {"reasoning":"commiato","intent":"goodbye","slots":{},"needs_clarification":false,"confidence":0.95}
 "ciao cosa puoi fare" → {"reasoning":"non solo saluto, chiede help","intent":"ask_help","slots":{},"needs_clarification":false,"confidence":0.95}
 "sì mostrami" → {"reasoning":"conferma offerta dettagli","intent":"confirm_show_details","slots":{},"needs_clarification":false,"confidence":0.95}
 "no grazie" → {"reasoning":"rifiuto dettagli","intent":"decline_show_details","slots":{},"needs_clarification":false,"confidence":0.95}
@@ -255,12 +262,14 @@ OUTPUT:"""
     # =========================================================================
 
     GREET_PATTERNS = re.compile(
-        r'^(ciao|salve|buongiorno|buonasera|hey|hi|hello|saluti)\b',
+        r'^(ciao|salve|buongiorno|buonasera|buondì|buon\s*pomeriggio|buonanotte|'
+        r'hey|hi|hello|saluti|ehilà|ehi|ben\s*trovato|ben\s*tornato|eccomi)\b',
         re.IGNORECASE
     )
 
     GOODBYE_PATTERNS = re.compile(
-        r'\b(arrivederci|bye|addio|a\s*presto|buon\s*lavoro)\b',
+        r'\b(arrivederci|bye|addio|a\s*presto|buon\s*lavoro|'
+        r'alla\s*prossima|ci\s*vediamo|a\s*domani|tanti\s*saluti|stammi?\s*bene)\b',
         re.IGNORECASE
     )
 
@@ -302,6 +311,7 @@ OUTPUT:"""
 
     # Piani in ritardo (generico PLURALE, senza piano specifico)
     # Match solo forme plurali/generiche: "piani in ritardo", "quali piani", "ritardo piani"
+    # NOTE: "piani controllare per primi" NON è qui - disambiguato dall'LLM (regola 9)
     DELAYED_PATTERNS = re.compile(
         r'\b(piani\s+(in\s*|sono\s+(in\s*)?)?ritardo|ritardo\s+piani|quali\s+piani\s+(sono\s+)?(in\s+)?ritardo)\b',
         re.IGNORECASE
@@ -321,8 +331,9 @@ OUTPUT:"""
     )
 
     # Mai controllati - allow "stati" between "mai" and "controllati"
+    # "da controllare per primi/primo" è priorità, NON mai controllati → escluso con lookahead
     NEVER_CONTROLLED_PATTERNS = re.compile(
-        r'\b(mai\s*(stati\s*)?controllat[io]|non\s*(sono\s*(stati\s*)?)?controllat[io]|da\s*controllare)\b',
+        r'\b(mai\s*(stati\s*)?controllat[io]|non\s*(sono\s*(stati\s*)?)?controllat[io]|da\s*controllare(?!\s+per\s+prim))\b',
         re.IGNORECASE
     )
 
@@ -346,14 +357,14 @@ OUTPUT:"""
         re.IGNORECASE
     )
 
-    # Priorità controlli
+    # Priorità controlli (solo pattern con soggetto esplicito)
+    # "controllare per primi" SENZA soggetto è ambiguo → delegato all'LLM (regola 9)
     PRIORITY_PATTERNS = re.compile(
-        r'\b(chi\s*(devo\s*)?(controllare|ispezionare)(\s*per\s*prim[oa])?|'
+        r'\b(chi\s*(devo\s*)?(controllare|ispezionare)(\s*per\s*prim[oia])?|'
         r'priorit[aà]|'
         r'cosa\s*(devo\s*)?fare\s*oggi|'
         r'da\s*chi\s*inizi[oa]|'
-        r'controllare\s*per\s*prim[oa]|'
-        r'quali\s*stabiliment[io]\s*controllare)\b',
+        r'quali\s*stabiliment[io]\s*(devo\s+)?controllare(\s+per\s+prim[oia])?)\b',
         re.IGNORECASE
     )
 
@@ -440,6 +451,17 @@ OUTPUT:"""
         r'\b(storic[ao]\s*(dei\s*)?(controll[io]?|stabilimento)|'
         r'storia\s*(dei\s*)?(controll[io]?|stabilimento)|'
         r'controll[io]\s*(per|dello)\s*(stabilimento|partita\s*iva))\b',
+        re.IGNORECASE
+    )
+
+    # Pattern sociali ampi: saluti, commiati e convenevoli che NON devono essere bloccati dal gibberish detector.
+    # Questi messaggi passano all'LLM per classificazione corretta (greet, goodbye, o fallback).
+    SOCIAL_PATTERNS = re.compile(
+        r'\b(buonanotte|buondì|buon\s*pomeriggio|tanti\s*saluti|'
+        r'ben\s*trovato|ben\s*tornato|come\s*(stai|va|andiamo)|'
+        r'ehilà|ehi|eccomi|alla\s*prossima|ci\s*vediamo|a\s*domani|'
+        r'stammi?\s*bene|grazie|piacere|bentornato|bentrovato|'
+        r'buona\s*(giornata|serata|notte)|a\s*dopo|ciao\s*ciao)\b',
         re.IGNORECASE
     )
 
@@ -612,15 +634,24 @@ OUTPUT:"""
         if has_pending_slots:
             pending_missing = dialogue_state.get("missing_slots", [])
             confirmed_intent = dialogue_state.get("confirmed_intent")
+
+            # Prima di slot-filling, verifica se il messaggio è un nuovo intent
+            # (topic change). Se l'heuristic matcha un intent diverso, non fare
+            # slot filling e lascia procedere la classificazione normale.
+            heuristic_check = self._try_heuristics(message, has_detail_context=False)
+            if heuristic_check and heuristic_check.get("intent") != confirmed_intent:
+                has_pending_slots = None  # bypass slot filling
+                # Non fare return qui, prosegui con LAYER 2+
+
             extracted_slots = self._extract_slots(message)
 
-            if "location" in pending_missing:
+            if has_pending_slots and "location" in pending_missing:
                 # Usa LLM per estrarre indirizzo da linguaggio naturale.
                 # Fallback automatico a regex se LLM fallisce.
                 cleaned_location = self._extract_location_with_llm(message)
                 if cleaned_location and len(cleaned_location) > 2:
                     extracted_slots["location"] = cleaned_location
-            elif "location" not in extracted_slots:
+            elif has_pending_slots and "location" not in extracted_slots:
                 # Fallback: usa messaggio intero per slot non-location pendenti
                 for slot_name in pending_missing:
                     if slot_name not in extracted_slots:
@@ -630,7 +661,7 @@ OUTPUT:"""
 
             # Se abbiamo estratto slot pendenti, ritorna con il confirmed_intent
             # senza passare dall'LLM (che potrebbe misclassificare un indirizzo puro)
-            if extracted_slots and confirmed_intent:
+            if has_pending_slots and extracted_slots and confirmed_intent:
                 filled_pending = [s for s in pending_missing if extracted_slots.get(s)]
                 if filled_pending:
                     return {
@@ -799,7 +830,7 @@ OUTPUT:"""
             return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "con_sanzioni"}, "needs_clarification": False, "confidence": 0.99}
 
         # Saluti iniziali (solo se brevi)
-        if len(msg_lower) < 20 and self.GREET_PATTERNS.match(message):
+        if len(msg_lower) < 30 and self.GREET_PATTERNS.match(message):
             return {"intent": "greet", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # Saluti finali (può essere più lungo, es. "grazie e arrivederci")
@@ -849,6 +880,11 @@ OUTPUT:"""
             is_info_request = self.DI_COSA_TRATTA_PATTERN.search(message) or self.INFO_SU_PATTERN.search(message)
             if not (is_info_request and has_piano):
                 return {"intent": "info_procedure", "slots": {}, "needs_clarification": False, "confidence": 0.99}
+
+        # Establishment history (storico, storia controlli, controlli per partita iva)
+        # Essenziale per topic change detection quando pending_slots attivo
+        if self.ESTABLISHMENT_HISTORY_PATTERNS.search(message):
+            return {"intent": "ask_establishment_history", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
         # =====================================================================
         # HEURISTICS ESTESE (solo quando MINIMAL_HEURISTICS=False)
@@ -1173,6 +1209,8 @@ OUTPUT:"""
                 normalized[key] = value.upper()
             elif key == "asl" and isinstance(value, str):
                 normalized[key] = value.upper()
+            elif key == "categoria" and isinstance(value, str):
+                normalized[key] = value.upper()
             else:
                 normalized[key] = value
         return normalized
@@ -1300,7 +1338,11 @@ OUTPUT:"""
         msg_lower = message.lower().strip()
 
         # Saluti brevi sono OK
-        if len(msg_lower) < 20 and self.GREET_PATTERNS.match(message):
+        if len(msg_lower) < 30 and self.GREET_PATTERNS.match(message):
+            return False
+
+        # Espressioni sociali (saluti, commiati, convenevoli) → lasciali passare all'LLM
+        if self.SOCIAL_PATTERNS.search(message):
             return False
 
         # Conferme/rifiuti sono OK

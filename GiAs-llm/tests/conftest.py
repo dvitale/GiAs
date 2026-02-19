@@ -217,13 +217,19 @@ def metadata_napoli() -> Dict:
 # ============================================================
 
 @pytest.fixture
-def api_client(webhook_url) -> Callable:
+def api_client(webhook_url, diagnostic_ctx) -> Callable:
     """
     Client per chiamate API webhook con timeout frontend-aligned.
     Ritorna una funzione che accetta (message, sender, metadata).
+
+    Include automaticamente tracciamento diagnostico per arricchire
+    i report di fallimento con request/response context.
     """
     def call(message: str, sender: str, metadata: Dict = None) -> Dict:
         """Chiama webhook e ritorna prima risposta."""
+        # Traccia request per diagnostica
+        diagnostic_ctx.set_request(message, sender, metadata)
+
         payload = {
             "sender": sender,
             "message": message
@@ -240,9 +246,12 @@ def api_client(webhook_url) -> Callable:
         resp.raise_for_status()
 
         data = resp.json()
-        if not data:
-            return {"text": "", "custom": {}}
-        return data[0]
+        result = data[0] if data else {"text": "", "custom": {}}
+
+        # Traccia response per diagnostica
+        diagnostic_ctx.set_response(result)
+
+        return result
 
     return call
 
@@ -401,3 +410,248 @@ def ctx():
         )
     except ImportError:
         pytest.skip("TestContext non disponibile")
+
+
+# ============================================================
+# Diagnostic helpers per report fallimenti
+# ============================================================
+
+class DiagnosticContext:
+    """
+    Contesto diagnostico per tracciare request/response durante i test.
+    Usato per arricchire i report di fallimento.
+    """
+
+    def __init__(self):
+        self.last_request = None
+        self.last_response = None
+        self.metadata = {}
+
+    def set_request(self, query: str, sender: str, metadata: Dict = None):
+        """Registra l'ultima request effettuata."""
+        self.last_request = {
+            "query": query,
+            "sender": sender,
+            "metadata": metadata or {}
+        }
+
+    def set_response(self, response: Dict):
+        """Registra l'ultima response ricevuta."""
+        self.last_response = response
+
+    def add_metadata(self, key: str, value):
+        """Aggiunge metadata diagnostici."""
+        self.metadata[key] = value
+
+    def format_failure_message(self, test_name: str, error_msg: str) -> str:
+        """Formatta messaggio di errore con contesto diagnostico completo."""
+        lines = [
+            "",
+            "=" * 70,
+            f"TEST FAILURE: {test_name}",
+            "=" * 70,
+        ]
+
+        if self.last_request:
+            lines.extend([
+                "",
+                "REQUEST:",
+                f"  Query: {self.last_request['query']}",
+                f"  Sender: {self.last_request['sender']}",
+            ])
+            if self.last_request['metadata']:
+                lines.append(f"  Metadata: {self.last_request['metadata']}")
+
+        if self.last_response:
+            lines.extend([
+                "",
+                "RESPONSE:",
+                f"  Text: {self.last_response.get('text', 'N/A')[:500]}",
+            ])
+            if 'custom' in self.last_response:
+                custom = self.last_response['custom']
+                lines.append(f"  Intent: {custom.get('intent', 'N/A')}")
+                lines.append(f"  Confidence: {custom.get('confidence', 'N/A')}")
+                if 'session_id' in custom:
+                    lines.append(f"  Session: {custom['session_id']}")
+
+        if self.metadata:
+            lines.extend([
+                "",
+                "DIAGNOSTIC METADATA:",
+            ])
+            for k, v in self.metadata.items():
+                lines.append(f"  {k}: {v}")
+
+        lines.extend([
+            "",
+            "ERROR:",
+            f"  {error_msg}",
+            "=" * 70,
+        ])
+
+        return "\n".join(lines)
+
+    def clear(self):
+        """Resetta il contesto."""
+        self.last_request = None
+        self.last_response = None
+        self.metadata = {}
+
+
+# Contesto diagnostico globale per la sessione
+_diagnostic_context = DiagnosticContext()
+
+
+@pytest.fixture
+def diagnostic_ctx():
+    """Fixture per accedere al contesto diagnostico."""
+    return _diagnostic_context
+
+
+@pytest.fixture
+def api_client_diagnostic(webhook_url, diagnostic_ctx) -> Callable:
+    """
+    Client API che traccia automaticamente request/response per diagnosi.
+    Usa questo invece di api_client per avere report dettagliati in caso di fallimento.
+    """
+    def call(message: str, sender: str, metadata: Dict = None) -> Dict:
+        # Traccia request
+        diagnostic_ctx.set_request(message, sender, metadata)
+
+        payload = {
+            "sender": sender,
+            "message": message
+        }
+        if metadata:
+            payload["metadata"] = metadata
+
+        resp = requests.post(
+            webhook_url,
+            json=payload,
+            timeout=TIMEOUT_DEFAULT,
+            headers={"Content-Type": "application/json"}
+        )
+        resp.raise_for_status()
+
+        data = resp.json()
+        result = data[0] if data else {"text": "", "custom": {}}
+
+        # Traccia response
+        diagnostic_ctx.set_response(result)
+
+        return result
+
+    return call
+
+
+@pytest.fixture(autouse=True)
+def clear_diagnostic_context(diagnostic_ctx):
+    """Pulisce il contesto diagnostico prima di ogni test."""
+    diagnostic_ctx.clear()
+    yield
+    # Non pulire dopo per permettere accesso nel report
+
+
+# ============================================================
+# Pytest hooks per report fallimenti
+# ============================================================
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """
+    Hook per arricchire report di fallimento con contesto diagnostico.
+    Cattura automaticamente info su request/response in caso di errore.
+    """
+    outcome = yield
+    report = outcome.get_result()
+
+    # Solo per fallimenti in fase di call (non setup/teardown)
+    if report.when == "call" and report.failed:
+        # Aggiungi contesto diagnostico se disponibile
+        if _diagnostic_context.last_request or _diagnostic_context.last_response:
+            extra_info = []
+
+            if _diagnostic_context.last_request:
+                req = _diagnostic_context.last_request
+                extra_info.append(f"\n--- Last Request ---")
+                extra_info.append(f"Query: {req['query']}")
+                extra_info.append(f"Sender: {req['sender']}")
+                if req['metadata']:
+                    extra_info.append(f"Metadata: {req['metadata']}")
+
+            if _diagnostic_context.last_response:
+                resp = _diagnostic_context.last_response
+                extra_info.append(f"\n--- Last Response ---")
+                extra_info.append(f"Text: {resp.get('text', 'N/A')[:300]}...")
+                if 'custom' in resp:
+                    extra_info.append(f"Intent: {resp['custom'].get('intent', 'N/A')}")
+                    extra_info.append(f"Confidence: {resp['custom'].get('confidence', 'N/A')}")
+
+            if extra_info:
+                report.longrepr = str(report.longrepr) + "\n" + "\n".join(extra_info)
+
+
+# ============================================================
+# Assert helpers per messaggi diagnostici
+# ============================================================
+
+def assert_intent(response: Dict, expected_intent: str, query: str = None):
+    """
+    Assert su intent con messaggio diagnostico completo.
+
+    Usage:
+        assert_intent(response, "ask_delayed_plans", query="piani in ritardo")
+    """
+    actual_intent = response.get("custom", {}).get("intent", "N/A")
+    confidence = response.get("custom", {}).get("confidence", "N/A")
+    text = response.get("text", "")[:300]
+
+    assert actual_intent == expected_intent, (
+        f"\nIntent classification failed:"
+        f"\n  Query: {query or 'N/A'}"
+        f"\n  Expected: {expected_intent}"
+        f"\n  Actual: {actual_intent}"
+        f"\n  Confidence: {confidence}"
+        f"\n  Response: {text}..."
+    )
+
+
+def assert_patterns(response: Dict, patterns: list, min_matches: int = 1, query: str = None):
+    """
+    Assert su pattern presenti nella risposta con contesto diagnostico.
+
+    Usage:
+        assert_patterns(response, ["ritard", "piano"], min_matches=1, query="piani in ritardo")
+    """
+    text = response.get("text", "").lower()
+    found = [p for p in patterns if p.lower() in text]
+    missing = [p for p in patterns if p.lower() not in text]
+
+    assert len(found) >= min_matches, (
+        f"\nPattern matching failed:"
+        f"\n  Query: {query or 'N/A'}"
+        f"\n  Expected patterns: {patterns}"
+        f"\n  Found: {found} ({len(found)}/{len(patterns)})"
+        f"\n  Missing: {missing}"
+        f"\n  Min required: {min_matches}"
+        f"\n  Response: {text[:300]}..."
+    )
+
+
+def assert_response_valid(response: Dict, query: str = None):
+    """
+    Assert che la response sia valida e non vuota.
+
+    Usage:
+        assert_response_valid(response, query="piani in ritardo")
+    """
+    assert response is not None, f"Response is None for query: {query or 'N/A'}"
+    assert "text" in response, f"Response missing 'text' for query: {query or 'N/A'}"
+
+    text = response.get("text", "")
+    assert len(text) > 0, (
+        f"\nEmpty response:"
+        f"\n  Query: {query or 'N/A'}"
+        f"\n  Intent: {response.get('custom', {}).get('intent', 'N/A')}"
+    )

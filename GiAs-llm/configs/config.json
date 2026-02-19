@@ -1,14 +1,20 @@
 {
   "current_year": 2025,
   "llm_backend": {
-    "type": "ollama",
+    "type": "openai_compat",
     "options": [
       "ollama",
-      "llamacpp"
+      "llamacpp",
+      "openai",
+      "anthropic",
+      "openai_compat"
     ],
     "description": {
       "ollama": "Ollama server (porta 11434, API /api/chat)",
-      "llamacpp": "Llama.cpp server (porta 11435, API OpenAI-compatible /v1/chat/completions)"
+      "llamacpp": "Llama.cpp server (porta 11435, API OpenAI-compatible /v1/chat/completions)",
+      "openai": "OpenAI API (GPT-4o, GPT-4o-mini). API key via OPENAI_API_KEY env var",
+      "anthropic": "Anthropic API (Claude). API key via ANTHROPIC_API_KEY env var",
+      "openai_compat": "Endpoint generico OpenAI-compatible (Mistral, Groq, Together, etc.). API key via env var configurabile"
     },
     "ollama": {
       "host": "http://localhost:11434",
@@ -23,7 +29,28 @@
       "health_endpoint": "/health",
       "model_name": "Llama-3.2-3B-Instruct-Q6_K_L.gguf",
       "timeout_seconds": 90
+    },
+    "openai": {
+      "model": "gpt-4o-mini",
+      "timeout_seconds": 30,
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    "anthropic": {
+      "model": "claude-sonnet-4-20250514",
+      "timeout_seconds": 30,
+      "api_key_env": "ANTHROPIC_API_KEY"
+    },
+    "openai_compat": {
+      "host": "https://api.mistral.ai",
+      "api_endpoint": "/v1/chat/completions",
+      "model": "mistral-medium-latest",
+      "timeout_seconds": 30,
+      "api_key_env": "MISTRAL_API_KEY"
     }
+  },
+  "gdpr": {
+    "allow_external_llm": true,
+    "notice": "Quando attivo, i dati delle query vengono inviati a server esterni. Verificare conformita' GDPR con le normative della Regione Campania prima di attivare."
   },
   "risk_predictor": {
     "type": "statistical",
@@ -60,7 +87,7 @@
     },
     "postgresql": {
       "enabled": true,
-      "host": "GIAS",
+      "host": "localhost",
       "port": 5432,
       "database": "gias_db",
       "user": "gisa_owner",

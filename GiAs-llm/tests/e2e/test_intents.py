@@ -64,6 +64,10 @@ INTENT_TESTS = [
     # NC analysis (1)
     ("analizza le non conformità HACCP", "analyze_nc_by_category",
      ["conformit", "HACCP", "NC", "analisi"]),
+
+    # Nearby priority (1)
+    ("stabilimenti vicino a Benevento", "ask_nearby_priority",
+     ["stabil", "vicin", "km", "benevento"]),
 ]
 
 
@@ -77,58 +81,118 @@ class TestIntentsComplete:
         """Test singolo intent con payload frontend completo."""
         response = api_client(query, unique_sender, complete_metadata)
 
-        assert "text" in response, f"Response senza 'text' per intent {expected_intent}"
-        text = response["text"].lower()
+        # Verifica base risposta
+        assert "text" in response, (
+            f"Response senza 'text'"
+            f"\n  Query: {query}"
+            f"\n  Expected intent: {expected_intent}"
+            f"\n  Response: {response}"
+        )
 
-        # Verifica che almeno uno dei pattern sia presente
-        found = any(p.lower() in text for p in patterns)
-        assert found, (
-            f"Intent {expected_intent}: nessun pattern trovato.\n"
-            f"Patterns: {patterns}\n"
-            f"Response: {text[:300]}..."
+        text = response["text"].lower()
+        actual_intent = response.get("custom", {}).get("intent", "N/A")
+        confidence = response.get("custom", {}).get("confidence", "N/A")
+
+        # Verifica pattern
+        found_patterns = [p for p in patterns if p.lower() in text]
+        missing_patterns = [p for p in patterns if p.lower() not in text]
+
+        assert len(found_patterns) > 0, (
+            f"\n{'='*60}"
+            f"\nINTENT TEST FAILURE"
+            f"\n{'='*60}"
+            f"\nQuery: {query}"
+            f"\nExpected intent: {expected_intent}"
+            f"\nActual intent: {actual_intent}"
+            f"\nConfidence: {confidence}"
+            f"\n{'='*60}"
+            f"\nPattern analysis:"
+            f"\n  Expected: {patterns}"
+            f"\n  Found: {found_patterns}"
+            f"\n  Missing: {missing_patterns}"
+            f"\n{'='*60}"
+            f"\nResponse (first 400 chars):"
+            f"\n{text[:400]}..."
+            f"\n{'='*60}"
         )
 
     @pytest.mark.e2e
     def test_greet_response_quality(self, api_client, unique_sender, complete_metadata):
         """Test qualita' risposta saluto."""
-        response = api_client("buongiorno", unique_sender, complete_metadata)
+        query = "buongiorno"
+        response = api_client(query, unique_sender, complete_metadata)
 
         text = response["text"]
         # Risposta deve essere cordiale e offrire aiuto
-        assert len(text) > 20, "Risposta troppo breve"
-        assert any(w in text.lower() for w in ["posso", "aiuto", "domand"])
+        assert len(text) > 20, (
+            f"Risposta troppo breve"
+            f"\n  Query: {query}"
+            f"\n  Response length: {len(text)}"
+            f"\n  Response: {text}"
+        )
+        assert any(w in text.lower() for w in ["posso", "aiuto", "domand"]), (
+            f"Risposta non offre aiuto"
+            f"\n  Query: {query}"
+            f"\n  Response: {text[:300]}..."
+        )
 
     @pytest.mark.e2e
     def test_help_lists_capabilities(self, api_client, unique_sender, complete_metadata):
         """Test che help elenchi le funzionalita'."""
-        response = api_client("cosa puoi fare", unique_sender, complete_metadata)
+        query = "cosa puoi fare"
+        response = api_client(query, unique_sender, complete_metadata)
 
         text = response["text"].lower()
         # Deve menzionare almeno alcune funzionalita'
         capabilities = ["piano", "controlli", "rischio", "stabiliment"]
-        found = sum(1 for c in capabilities if c in text)
-        assert found >= 2, f"Help menziona solo {found}/4 funzionalita'"
+        found = [c for c in capabilities if c in text]
+        assert len(found) >= 2, (
+            f"Help non elenca funzionalita'"
+            f"\n  Query: {query}"
+            f"\n  Expected capabilities: {capabilities}"
+            f"\n  Found: {found} ({len(found)}/4)"
+            f"\n  Response: {text[:400]}..."
+        )
 
     @pytest.mark.e2e
     def test_piano_description_has_content(self, api_client, unique_sender,
                                             complete_metadata):
         """Test che descrizione piano abbia contenuto reale."""
-        response = api_client("di cosa tratta il piano A1", unique_sender, complete_metadata)
+        query = "di cosa tratta il piano A1"
+        response = api_client(query, unique_sender, complete_metadata)
 
         text = response["text"]
         # Deve avere contenuto sostanziale
-        assert len(text) > 50, "Descrizione piano troppo breve"
+        assert len(text) > 50, (
+            f"Descrizione piano troppo breve"
+            f"\n  Query: {query}"
+            f"\n  Response length: {len(text)}"
+            f"\n  Response: {text}"
+        )
         # Deve menzionare il piano
-        assert "A1" in text or "piano" in text.lower()
+        assert "A1" in text or "piano" in text.lower(), (
+            f"Risposta non menziona piano"
+            f"\n  Query: {query}"
+            f"\n  Response: {text[:300]}..."
+        )
 
     @pytest.mark.e2e
     def test_delayed_plans_format(self, api_client, unique_sender, complete_metadata):
         """Test formato risposta piani in ritardo."""
-        response = api_client("piani in ritardo", unique_sender, complete_metadata)
+        query = "piani in ritardo"
+        response = api_client(query, unique_sender, complete_metadata)
 
         text = response["text"].lower()
+        expected_keywords = ["ritard", "programm", "eseguit", "piano"]
+        found = [w for w in expected_keywords if w in text]
         # Deve menzionare ritardo o programmazione
-        assert any(w in text for w in ["ritard", "programm", "eseguit", "piano"])
+        assert len(found) > 0, (
+            f"Risposta non pertinente"
+            f"\n  Query: {query}"
+            f"\n  Expected keywords: {expected_keywords}"
+            f"\n  Found: {found}"
+            f"\n  Response: {text[:400]}..."
+        )
 
 
 class TestIntentSlotExtraction:
@@ -171,8 +235,8 @@ class TestIntentCoverage:
         # Intent testati in altri file
         tested_intents.add("confirm_show_details")   # test_two_phase.py
         tested_intents.add("decline_show_details")   # test_two_phase.py
-        tested_intents.add("info_procedure")         # richiede RAG
-        tested_intents.add("ask_nearby_priority")    # richiede geocoding
+        tested_intents.add("info_procedure")         # integration/test_rag_consistency.py
+        # ask_nearby_priority: ora coperto in INTENT_TESTS
         tested_intents.add("fallback")               # test_fallback.py
 
         # Verifica

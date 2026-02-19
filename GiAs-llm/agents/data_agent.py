@@ -144,29 +144,79 @@ class DataRetriever:
             diff_prog_eseg_df['descrizione_uoc'].str.contains(uoc_name, case=False, na=False)
         ]
 
+    @staticmethod
+    def search_piani_by_db(query: str) -> List[Dict[str, Any]]:
+        """
+        Cerca piani per keyword direttamente sul DataFrame piani_monitoraggio in memoria.
+        Equivalente a SQL ILIKE '%query%' su colonne descrizione e descrizione-2.
+
+        Args:
+            query: Termine di ricerca (es. "scrofe", "bovini", "latte")
+
+        Returns:
+            Lista di dict con chiavi: sezione, alias, alias_indicatore, descrizione, descrizione_2, campionamento
+        """
+        if piani_df.empty or not query or not query.strip():
+            return []
+
+        search_term = query.strip()
+
+        # Cerca in descrizione e descrizione-2 (case-insensitive)
+        mask_desc = piani_df['descrizione'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+
+        desc2_col = 'descrizione-2' if 'descrizione-2' in piani_df.columns else 'descrizione_2'
+        mask_desc2 = piani_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+
+        matched = piani_df[mask_desc | mask_desc2]
+
+        if matched.empty:
+            return []
+
+        # Deduplica per (alias, alias_indicatore) per mostrare tutti i sottopiani
+        seen_keys = set()
+        results = []
+        for _, row in matched.iterrows():
+            alias = row.get('alias', '')
+            alias_ind = row.get('alias_indicatore', '')
+            dedup_key = (alias, alias_ind)
+            if dedup_key in seen_keys:
+                continue
+            seen_keys.add(dedup_key)
+            # Campo campionamento: True/False/None
+            camp_raw = row.get('campionamento', None)
+            if pd.notna(camp_raw):
+                campionamento = bool(camp_raw)
+            else:
+                campionamento = None
+            results.append({
+                'sezione': row.get('sezione', ''),
+                'alias': alias,
+                'alias_indicatore': alias_ind,
+                'descrizione': row.get('descrizione', ''),
+                'descrizione_2': row.get(desc2_col, ''),
+                'campionamento': campionamento,
+            })
+
+        return results
+
     @classmethod
     def _initialize_qdrant(cls):
-        """Lazy initialization di Qdrant + embedding model"""
+        """Lazy initialization di Qdrant + embedding model (singleton condiviso)"""
         if cls._qdrant_client is not None:
             return
 
         try:
-            from qdrant_client import QdrantClient
+            from agents.qdrant_singleton import get_qdrant_client
             from agents.embedding_singleton import get_embedding_model
 
-            qdrant_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "data", "qdrant_storage"
-            )
-
-            if not os.path.exists(qdrant_path):
-                print(f"⚠️  Qdrant storage not found: {qdrant_path}")
+            client = get_qdrant_client()
+            if client is None:
+                print("⚠️  Qdrant storage not found")
                 print("   Run: python3 tools/indexing/build_qdrant_index.py")
                 cls._qdrant_available = False
                 return
 
-            cls._qdrant_client = QdrantClient(path=qdrant_path)
-
+            cls._qdrant_client = client
             cls._embedding_model = get_embedding_model()
 
             try:
@@ -484,19 +534,21 @@ class DataRetriever:
         if not controlli_df.empty:
             filters_controlli = []
 
-            # approval_number (numero riconoscimento) - normalizzato
+            # approval_number (numero riconoscimento) - normalizzato, prefix match
             if numero_riconoscimento and 'approval_number' in controlli_df.columns:
                 num_norm = numero_riconoscimento.upper().replace(" ", "")
                 filters_controlli.append(
-                    controlli_df['approval_number'].fillna('').str.upper().str.replace(" ", "", regex=False) == num_norm
+                    controlli_df['approval_number'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
                 )
 
-            # num_registrazione - normalizzato
+            # num_registrazione - normalizzato (cerca in num_registrazione E approval_number con contains)
             if numero_registrazione:
                 num_norm = numero_registrazione.upper().replace(" ", "")
-                filters_controlli.append(
-                    controlli_df['num_registrazione'].fillna('').str.upper().str.replace(" ", "", regex=False) == num_norm
-                )
+                reg_filter = controlli_df['num_registrazione'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
+                if 'approval_number' in controlli_df.columns:
+                    appr_filter = controlli_df['approval_number'].fillna('').str.upper().str.replace(" ", "", regex=False).str.contains(num_norm, na=False, regex=False)
+                    reg_filter = reg_filter | appr_filter
+                filters_controlli.append(reg_filter)
 
             # partita_iva - ricerca parziale
             if partita_iva:
@@ -527,19 +579,30 @@ class DataRetriever:
         if not ocse_df.empty:
             filters_ocse = []
 
-            # numero_riconoscimento - normalizzato
+            # numero_riconoscimento - normalizzato, prefix match
             if numero_riconoscimento and 'numero_riconoscimento' in ocse_df.columns:
                 num_norm = numero_riconoscimento.upper().replace(" ", "")
                 filters_ocse.append(
-                    ocse_df['numero_riconoscimento'].fillna('').str.upper().str.replace(" ", "", regex=False) == num_norm
+                    ocse_df['numero_riconoscimento'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
                 )
 
-            # numero_registrazione - normalizzato
-            if numero_registrazione and 'numero_registrazione' in ocse_df.columns:
+            # numero_registrazione - normalizzato (cerca anche in numero_riconoscimento con contains)
+            if numero_registrazione:
                 num_norm = numero_registrazione.upper().replace(" ", "")
-                filters_ocse.append(
-                    ocse_df['numero_registrazione'].fillna('').str.upper().str.replace(" ", "", regex=False) == num_norm
-                )
+                reg_filter_parts = []
+                if 'numero_registrazione' in ocse_df.columns:
+                    reg_filter_parts.append(
+                        ocse_df['numero_registrazione'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
+                    )
+                if 'numero_riconoscimento' in ocse_df.columns:
+                    reg_filter_parts.append(
+                        ocse_df['numero_riconoscimento'].fillna('').str.upper().str.replace(" ", "", regex=False).str.contains(num_norm, na=False, regex=False)
+                    )
+                if reg_filter_parts:
+                    combined = reg_filter_parts[0]
+                    for part in reg_filter_parts[1:]:
+                        combined = combined | part
+                    filters_ocse.append(combined)
 
             if filters_ocse:
                 combined_filter = filters_ocse[0]
@@ -765,6 +828,9 @@ class DataRetriever:
         if ocse_df.empty:
             return pd.DataFrame()
 
+        # Normalizzazione case-insensitive
+        categoria = categoria.upper()
+
         # Validazione categoria
         if categoria not in VALID_NC_CATEGORIES:
             return pd.DataFrame()
@@ -797,6 +863,9 @@ class DataRetriever:
         """
         if ocse_df.empty:
             return pd.DataFrame()
+
+        # Normalizzazione case-insensitive
+        categoria = categoria.upper()
 
         # Validazione categoria
         if categoria not in VALID_NC_CATEGORIES:
@@ -1514,6 +1583,9 @@ class RiskAnalyzer:
         """
         if ocse_df.empty:
             return pd.DataFrame()
+
+        # Normalizzazione case-insensitive
+        categoria = categoria.upper()
 
         # Validazione categoria
         if categoria not in VALID_NC_CATEGORIES:

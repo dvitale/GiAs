@@ -48,10 +48,12 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
 - **statics/**: Asset statici (CSS, JavaScript, immagini)
   - `css/style.css`: Stili UI con supporto tema light/dark, palette oro, responsive
   - `js/chat.js`: Logica chat, gestione tema, download conversazioni, retry logic
+  - `js/history.js`: Logica pagina cronologia chat (caricamento conversazioni, ricerca, paginazione)
   - `img/`: Immagini (logo GIAS, logo Regione)
 
 - **template/**: Template HTML con supporto Go template engine
   - `index.html`: Interfaccia chatbot principale
+  - `history.html`: Pagina cronologia chat (layout sidebar + area messaggi)
 
 - **config/**: File di configurazione
   - `config.json`: Configurazione server, Rasa, logging, UI

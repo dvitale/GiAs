@@ -69,17 +69,17 @@ class FewShotRetriever:
             return self._available
 
         try:
-            from qdrant_client import QdrantClient
+            from agents.qdrant_singleton import get_qdrant_client
             from agents.embedding_singleton import get_embedding_model
 
-            # Verifica esistenza storage
-            if not os.path.exists(self.QDRANT_PATH):
-                logger.warning(f"[FewShot] Qdrant storage non trovato: {self.QDRANT_PATH}")
+            # Init client (singleton condiviso con DataRetriever)
+            client = get_qdrant_client()
+            if client is None:
+                logger.warning(f"[FewShot] Qdrant storage non disponibile")
                 self._available = False
                 return False
 
-            # Init client
-            self._qdrant_client = QdrantClient(path=self.QDRANT_PATH)
+            self._qdrant_client = client
 
             # Verifica collection
             collections = self._qdrant_client.get_collections().collections

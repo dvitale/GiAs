@@ -405,6 +405,9 @@ def analyze_nc_by_category(categoria: str, asl: Optional[str] = None) -> Dict[st
         # Importa qui per evitare errori circolari
         from agents.data_agent import VALID_NC_CATEGORIES
 
+        # Normalizzazione case-insensitive
+        categoria = categoria.upper()
+
         # Validazione categoria
         if categoria not in VALID_NC_CATEGORIES:
             categorie_list = '\n'.join([f"  • {cat}" for cat in VALID_NC_CATEGORIES])

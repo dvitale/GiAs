@@ -1,0 +1,1929 @@
+{
+  "timestamp": "2026-02-16T15:56:15.661123",
+  "server_url": "http://localhost:5005",
+  "server_status": "ok",
+  "server_version": "1.0.0",
+  "environment": {
+    "hostname": "vmi3035044",
+    "platform": "Linux",
+    "platform_version": "#1 SMP Debian 5.10.234-1 (2025-02-24)",
+    "platform_release": "5.10.0-34-cloud-amd64",
+    "architecture": "x86_64",
+    "python_version": "3.10.13",
+    "python_implementation": "CPython",
+    "working_directory": "/opt/lang-env/GiAs-llm",
+    "test_directory": "/opt/lang-env/GiAs-llm/tests",
+    "execution_time": "2026-02-16T15:56:15.656609",
+    "timezone": "CET",
+    "ip_address": "5.189.160.238",
+    "llm_model": "ministral-3:3b (real)",
+    "llm_model_key": "ministral",
+    "llm_backend": "ollama",
+    "llm_description": "LLaMA 3.2 3B - Velocissimo, ottimo per hardware limitato (2GB VRAM)",
+    "user": "root",
+    "llm_mode": "real"
+  },
+  "suites": [
+    {
+      "name": "test_api_endpoints.py",
+      "path": "e2e/test_api_endpoints.py",
+      "tests": [
+        {
+          "name": "test_health_check_available",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.982892",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_health_check_version",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.982938",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_health_check_model_loaded",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.982955",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_status_available",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.982970",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_status_data_loaded",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.982984",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_status_framework",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.982998",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_config_available",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983011",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_config_data_source",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983025",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_parse_simple",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983039",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_parse_with_slot",
+          "status": "failed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983052",
+          "query": "",
+          "expected_intent": "",
+          "message": "tests/e2e/test_api_endpoints.py::TestParseEndpoint::test_parse_with_slot FAILED [ 62%]",
+          "traceback": ""
+        },
+        {
+          "name": "test_parse_with_metadata",
+          "status": "failed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983067",
+          "query": "",
+          "expected_intent": "",
+          "message": "tests/e2e/test_api_endpoints.py::TestParseEndpoint::test_parse_with_metadata FAILED [ 68%]",
+          "traceback": ""
+        },
+        {
+          "name": "test_parse_confidence",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983081",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_tracker_new_session",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983094",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_parse_empty_text",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983108",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_webhook_malformed_json",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983122",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_webhook_missing_message",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983136",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "FAILED",
+          "status": "failed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983449",
+          "query": "",
+          "expected_intent": "",
+          "message": "FAILED tests/e2e/test_api_endpoints.py::TestParseEndpoint::test_parse_with_slot",
+          "traceback": ""
+        },
+        {
+          "name": "FAILED",
+          "status": "failed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:17.983464",
+          "query": "",
+          "expected_intent": "",
+          "message": "FAILED tests/e2e/test_api_endpoints.py::TestParseEndpoint::test_parse_with_metadata",
+          "traceback": ""
+        }
+      ],
+      "passed": 14,
+      "failed": 4,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 62.308812856674194,
+      "start_time": "2026-02-16T15:56:15.665742",
+      "end_time": "2026-02-16T15:57:17.974585"
+    },
+    {
+      "name": "test_api_webhook.py",
+      "path": "e2e/test_api_webhook.py",
+      "tests": [
+        {
+          "name": "test_webhook_greet",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751233",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_webhook_help",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751259",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_webhook_goodbye",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751271",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_webhook_all_metadata_fields",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751282",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_webhook_minimal_metadata",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751292",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_webhook_no_metadata",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751303",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_sender_frontend_format",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751313",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_sender_uniqueness",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751323",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_response_is_list",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751334",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_response_has_text",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751344",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_response_custom_field",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751354",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_complex_query_timeout",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T15:57:33.751364",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 15.762396812438965,
+      "start_time": "2026-02-16T15:57:17.983879",
+      "end_time": "2026-02-16T15:57:33.746304"
+    },
+    {
+      "name": "test_intents.py",
+      "path": "e2e/test_intents.py",
+      "tests": [
+        {
+          "name": "test_intent_response[ciao-greet-patterns0]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.786540",
+          "query": "ciao",
+          "expected_intent": "greet",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[arrivederci-goodbye-patterns1]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.786557",
+          "query": "arrivederci",
+          "expected_intent": "goodbye",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[aiuto-ask_help-patterns2]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.786567",
+          "query": "aiuto",
+          "expected_intent": "ask_help",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[di",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.791927",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[stabilimenti",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.791953",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[attivit\\xe0",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.791968",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[statistiche",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.791981",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[quali",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.791993",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[piani",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792005",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[chi",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792016",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[quale",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792029",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[stabilimenti",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792041",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[sulla",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792053",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[suggerisci",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792066",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[piani",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792078",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[il",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792091",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[storico",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792106",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[attivit\\xe0",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792119",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_intent_response[analizza",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792131",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_greet_response_quality",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792142",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_help_lists_capabilities",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792153",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_piano_description_has_content",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792163",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_delayed_plans_format",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792173",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_piano_code_extraction",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792183",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_topic_extraction",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792193",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_all_valid_intents_defined",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792203",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_high_confidence_greet",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792213",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_moderate_confidence_complex",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792224",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_delayed_vs_check_delayed",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792234",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_priority_vs_risk",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:01:26.792244",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 233.0349564552307,
+      "start_time": "2026-02-16T15:57:33.751491",
+      "end_time": "2026-02-16T16:01:26.786469"
+    },
+    {
+      "name": "test_metadata.py",
+      "path": "e2e/test_metadata.py",
+      "tests": [
+        {
+          "name": "test_asl_name_priority_over_id",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857850",
+          "query": "chi devo controllare",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_asl_id_fallback",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857876",
+          "query": "piani in ritardo",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_uoc_resolution_from_user_id",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857889",
+          "query": "stabilimenti prioritari",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_explicit_uoc_preserved",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857900",
+          "query": "chi devo controllare",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_all_frontend_fields",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857910",
+          "query": "piani in ritardo",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_metadata_napoli",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857921",
+          "query": "stabilimenti prioritari",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_metadata_avellino",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857931",
+          "query": "suggerisci controlli",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_no_metadata_greet",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857942",
+          "query": "ciao",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_no_metadata_help",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857953",
+          "query": "aiuto",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_no_asl_data_query",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857965",
+          "query": "piani in ritardo",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_invalid_asl_name",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857984",
+          "query": "stabilimenti prioritari",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_empty_metadata_fields",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.857995",
+          "query": "ciao",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_user_id_defaults_to_sender",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:03:33.858005",
+          "query": "ciao",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 127.06264448165894,
+      "start_time": "2026-02-16T16:01:26.792365",
+      "end_time": "2026-02-16T16:03:33.855032"
+    },
+    {
+      "name": "test_sessions.py",
+      "path": "e2e/test_sessions.py",
+      "tests": [
+        {
+          "name": "test_different_senders_isolated",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891451",
+          "query": "sì, mostrami i dettagli",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_parallel_sessions",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891476",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_session_remembers_context",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891489",
+          "query": "quali sono",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_session_slot_carryforward",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891500",
+          "query": "e gli stabilimenti",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_topic_change_resets_context",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891510",
+          "query": "stabilimenti ad alto rischio",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_frontend_sender_format",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891521",
+          "query": "aiuto",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_simple_sender_works",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891532",
+          "query": "ciao",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_rapid_requests_same_sender",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891542",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_memory_not_shared",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:22.891553",
+          "query": "e gli stabilimenti di questo piano",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 109.0299243927002,
+      "start_time": "2026-02-16T16:03:33.858132",
+      "end_time": "2026-02-16T16:05:22.888078"
+    },
+    {
+      "name": "test_two_phase.py",
+      "path": "e2e/test_two_phase.py",
+      "tests": [
+        {
+          "name": "test_confirm_after_summary",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748398",
+          "query": "sì",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_confirm_si_grazie",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748423",
+          "query": "sì grazie",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_confirm_mostrami",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748435",
+          "query": "mostrami i dettagli",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_confirm_procedi",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748446",
+          "query": "procedi",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_decline_after_summary",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748456",
+          "query": "no grazie",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_decline_no_semplice",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748467",
+          "query": "no",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_decline_basta_cosi",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748477",
+          "query": "basta così",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_confirm_isolated_between_sessions",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748487",
+          "query": "sì",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_confirm_without_context",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748498",
+          "query": "sì",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_decline_without_context",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748508",
+          "query": "no grazie",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_multiple_queries_then_confirm",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748519",
+          "query": "sì",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_confirm_then_new_query",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:05:54.748529",
+          "query": "stabilimenti ad alto rischio",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 31.853593349456787,
+      "start_time": "2026-02-16T16:05:22.891669",
+      "end_time": "2026-02-16T16:05:54.745285"
+    },
+    {
+      "name": "test_fallback.py",
+      "path": "e2e/test_fallback.py",
+      "tests": [
+        {
+          "name": "test_fallback_gibberish",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861301",
+          "query": "asdfghjkl qwerty xyz123",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_fallback_empty_meaningful",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861326",
+          "query": "cosa",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_recovery_after_fallback",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861339",
+          "query": "piani in ritardo",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_greet_after_fallback",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861349",
+          "query": "ciao",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_fallback_offers_suggestions",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861360",
+          "query": "xyz123 nonsense",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_fallback_category_menu",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861371",
+          "query": "qrs nonsense 3",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_multiple_fallbacks_escalate",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861381",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_fallback_preserves_session",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861392",
+          "query": "mostrami i dettagli",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_numeric_selection_after_menu",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861402",
+          "query": "1",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_very_long_query_fallback",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861413",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_special_characters_fallback",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861423",
+          "query": "@#$%^&*()!?",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_numbers_only_fallback",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:06:07.861434",
+          "query": "12345 67890",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 13.10909914970398,
+      "start_time": "2026-02-16T16:05:54.748655",
+      "end_time": "2026-02-16T16:06:07.857780"
+    },
+    {
+      "name": "test_router_real.py",
+      "path": "integration/test_router_real.py",
+      "tests": [
+        {
+          "name": "test_classify_greet",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959791",
+          "query": "ciao",
+          "expected_intent": "greet",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_goodbye",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959816",
+          "query": "arrivederci",
+          "expected_intent": "goodbye",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_help",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959829",
+          "query": "cosa puoi fare",
+          "expected_intent": "ask_help",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_piano_with_slot",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959840",
+          "query": "di cosa tratta il piano A1",
+          "expected_intent": "ask_piano_description",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_piano_complex_code",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959850",
+          "query": "descrizione piano A11_F",
+          "expected_intent": "ask_piano_description",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_search_topic",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959861",
+          "query": "quali piani riguardano bovini",
+          "expected_intent": "search_piani_by_topic",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_delayed_plans",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959871",
+          "query": "piani in ritardo",
+          "expected_intent": "ask_delayed_plans",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_check_specific_plan_delayed",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959882",
+          "query": "il piano B47 è in ritardo",
+          "expected_intent": "check_if_plan_delayed",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_priority",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959892",
+          "query": "chi devo controllare per primo",
+          "expected_intent": "ask_priority_establishment|ask_risk_based_priority",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_risk",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959903",
+          "query": "stabilimenti ad alto rischio",
+          "expected_intent": "ask_risk_based_priority",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_suggest_controls",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959913",
+          "query": "suggerisci controlli",
+          "expected_intent": "ask_suggest_controls",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_empty_returns_fallback",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959923",
+          "query": "",
+          "expected_intent": "fallback",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_classify_nonsense_returns_fallback",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959934",
+          "query": "xyz123 asdfgh qwerty",
+          "expected_intent": "fallback",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_high_confidence_clear_intent",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959944",
+          "query": "ciao",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_confidence_in_range",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959954",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_extract_piano_code",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959965",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_extract_topic",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959975",
+          "query": "piani che riguardano bovini",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_heuristic_greet_short",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959985",
+          "query": "",
+          "expected_intent": "greet",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_heuristic_help",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:08:20.959995",
+          "query": "",
+          "expected_intent": "ask_help",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 133.09418487548828,
+      "start_time": "2026-02-16T16:06:07.861563",
+      "end_time": "2026-02-16T16:08:20.955770"
+    },
+    {
+      "name": "test_tools_real.py",
+      "path": "integration/test_tools_real.py",
+      "tests": [
+        {
+          "name": "test_get_piano_description_real",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025860",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_get_piano_description_not_found",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025885",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_get_piano_description_empty_code",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025898",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_piano_tool_description_action",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025909",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_piano_tool_stabilimenti_action",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025919",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_piano_tool_invalid_action",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025930",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_piani_by_topic_real",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025941",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_piani_empty_query",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025951",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_piani_no_results",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025962",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_tool_router",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025972",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_get_priority_establishment_real",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.025991",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_get_priority_missing_asl",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.026001",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_get_delayed_plans_real",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.026011",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_suggest_controls_real",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.026022",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_get_risk_based_priority_real",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.026032",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_risk_tool_router",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.026042",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_get_establishment_history",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.026052",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_data_retriever_piani",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.026062",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_data_retriever_controlli",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:03.026073",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 42.061973094940186,
+      "start_time": "2026-02-16T16:08:20.960131",
+      "end_time": "2026-02-16T16:09:03.022132"
+    },
+    {
+      "name": "test_search_real.py",
+      "path": "integration/test_search_real.py",
+      "tests": [
+        {
+          "name": "test_search_simple_keyword",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893613",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_complex_query",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893638",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_exact_code",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893651",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_results_structure",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893662",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_vector_search_simple",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893672",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_semantic_search_complex",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893683",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_various_topics[bovini]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893698",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_various_topics[suini]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893710",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_various_topics[allevamenti]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893722",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_various_topics[sicurezza",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893734",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_various_topics[igiene]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893746",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_various_topics[latte]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893757",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_various_topics[carni]",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893769",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_search_formatted_response",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:40.893779",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 37.865055322647095,
+      "start_time": "2026-02-16T16:09:03.026207",
+      "end_time": "2026-02-16T16:09:40.891290"
+    },
+    {
+      "name": "test_streaming.py",
+      "path": "e2e/test_streaming.py",
+      "tests": [
+        {
+          "name": "test_streaming_available",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:59.472289",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_streaming_receives_events",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:59.472314",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_streaming_event_format",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:59.472326",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_streaming_metadata_passed",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:59.472337",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_streaming_long_query",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:09:59.472348",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 18.57499384880066,
+      "start_time": "2026-02-16T16:09:40.893911",
+      "end_time": "2026-02-16T16:09:59.468933"
+    },
+    {
+      "name": "test_ml_predictor_real.py",
+      "path": "integration/test_ml_predictor_real.py",
+      "tests": [
+        {
+          "name": "test_predictor_loads",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497161",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_predictor_predict_asl",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497187",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_predictor_predict_with_piano",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497200",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_predictor_risky_establishments_format",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497211",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_ml_prediction_tool",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497222",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_ml_vs_statistical_comparison",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497233",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_predictor_config_loaded",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497243",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_predictor_type_check",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497254",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_model_file_exists",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497264",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_training_data_exists",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497275",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        },
+        {
+          "name": "test_taxonomy_map_exists",
+          "status": "passed",
+          "duration": 0,
+          "timestamp": "2026-02-16T16:10:38.497285",
+          "query": "",
+          "expected_intent": "",
+          "message": "",
+          "traceback": ""
+        }
+      ],
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 39.02108144760132,
+      "start_time": "2026-02-16T16:09:59.472473",
+      "end_time": "2026-02-16T16:10:38.493584"
+    }
+  ],
+  "total_passed": 170,
+  "total_failed": 4,
+  "total_skipped": 0,
+  "total_errors": 0,
+  "total_duration": 862.7787160873413
+}

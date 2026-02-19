@@ -103,6 +103,7 @@ class TestRouter:
             "piani in ritardo",
             "quali sono i piani in ritardo",
             "quali piani sono in ritardo",
+            # NOTE: "quali piani controllare per primi" → delegato all'LLM (regola 9)
         ]
         for phrase in test_cases:
             mock_llm.reset_mock()

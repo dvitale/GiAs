@@ -17,6 +17,7 @@ class ChatBot {
         this.chatMessages = document.getElementById('chatMessages');
         this.chatMessageInput = document.getElementById('chatMessageInput');
         this.chatSendButton = document.getElementById('chatSendButton');
+        this.chatQuickActions = document.getElementById('chatQuickActions');
 
         // DOM Elements - Shared
         this.appContainer = document.getElementById('appContainer');
@@ -154,6 +155,13 @@ class ChatBot {
         this.appContainer.classList.add('chat-mode');
         this.welcomeScreen.classList.add('hidden');
         this.chatScreen.classList.remove('hidden');
+
+        // Move quick action buttons to chat screen
+        if (this.quickActions && this.chatQuickActions) {
+            while (this.quickActions.firstChild) {
+                this.chatQuickActions.appendChild(this.quickActions.firstChild);
+            }
+        }
 
         // Focus on chat input
         setTimeout(() => {

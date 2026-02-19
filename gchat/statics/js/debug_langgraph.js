@@ -41,6 +41,9 @@ class LangGraphDebugChatBot {
 
         this.messageInput.addEventListener('input', () => {
             this.sendButton.disabled = this.messageInput.value.trim() === '';
+            // Auto-resize textarea
+            this.messageInput.style.height = 'auto';
+            this.messageInput.style.height = Math.min(this.messageInput.scrollHeight, 150) + 'px';
         });
 
         this.sendButton.disabled = true;

@@ -30,6 +30,18 @@ class ResponseFormatter:
     }
 
     @staticmethod
+    def _is_attivita(indicator: str) -> bool:
+        """Controlla se l'indicatore ha prefisso ATT (case-insensitive)."""
+        if not indicator:
+            return False
+        return str(indicator).strip().upper().startswith('ATT')
+
+    @staticmethod
+    def _label_for_indicator(indicator: str) -> str:
+        """Restituisce 'Attività' se ATT-prefixed, altrimenti 'Sottopiano'."""
+        return "Attività" if ResponseFormatter._is_attivita(indicator) else "Sottopiano"
+
+    @staticmethod
     def format_piano_description(
         piano_id: str,
         unique_descriptions: Dict[str, Any],
@@ -75,14 +87,25 @@ class ResponseFormatter:
             # Sottopiani (usa nuova struttura, con fallback per retrocompatibilità)
             sottopiani = info.get('sottopiani') or info.get('descrizione-2', [])
             if sottopiani:
-                response += f"**Sottopiani ({len(sottopiani)}):**\n\n"
+                # Header dinamico: conta ATT vs non-ATT
+                n_att = sum(1 for s in sottopiani if ResponseFormatter._is_attivita(
+                    s.get('alias_indicatore') or s.get('alias_ind', '')))
+                n_sotto = len(sottopiani) - n_att
+                if n_att == len(sottopiani):
+                    header_label = f"**Attività ({n_att}):**"
+                elif n_att == 0:
+                    header_label = f"**Sottopiani ({n_sotto}):**"
+                else:
+                    header_label = f"**Sottopiani ({n_sotto}) e Attività ({n_att}):**"
+                response += f"{header_label}\n\n"
                 for idx, sottopiano in enumerate(sottopiani, 1):
                     # Supporta sia nuova struttura che vecchia per retrocompatibilità
                     alias_ind = sottopiano.get('alias_indicatore') or sottopiano.get('alias_ind', '')
                     desc_sotto = sottopiano.get('descrizione_sottopiano') or sottopiano.get('text', '')
                     camp_sotto = sottopiano.get('campionamento')
 
-                    response += f"{idx}. **Sottopiano {alias_ind}**\n"
+                    label = ResponseFormatter._label_for_indicator(alias_ind)
+                    response += f"{idx}. **{label} {alias_ind}**\n"
                     response += f"   {desc_sotto}\n"
 
                     # Mostra tipo attività sottopiano se diverso o specificato
@@ -180,22 +203,51 @@ class ResponseFormatter:
         max_display: int = 10
     ) -> str:
         """
-        Formatta risultati ricerca piani.
+        Formatta risultati ricerca piani con tutti i dettagli:
+        Sezione, alias, descrizione, alias_indicatore, descrizione-2, campionamento.
         """
         response = f"**Piani trovati per: '{search_term}'**\n\n"
-        response += f"**Trovati {len(matches)} piani rilevanti:**\n\n"
+        response += f"**Trovati {len(matches)} risultati rilevanti:**\n\n"
 
         for idx, piano_info in enumerate(matches[:max_display], 1):
-            # Handle NaN/None descriptions safely
+            sezione = piano_info.get('sezione', '')
+            alias = piano_info.get('alias', '')
+            alias_ind = piano_info.get('alias_indicatore', '')
             desc = piano_info.get('descrizione', '') or ''
-            desc_truncated = desc[:150] if desc else 'Descrizione non disponibile'
-            if len(desc) > 150:
-                desc_truncated += "..."
-            # Format on single line: "1. SEZIONE - Piano | descrizione | rilevanza"
-            response += f"{idx}. **{piano_info['sezione']}** - Piano **{piano_info['alias']}** | {desc_truncated} | Rilevanza: {piano_info['similarity']:.0%}\n\n"
+            desc2 = piano_info.get('descrizione_2', '') or ''
+            campionamento = piano_info.get('campionamento')
+
+            # Campionamento: Si/No/N.D.
+            if campionamento is True:
+                camp_label = "Si"
+            elif campionamento is False:
+                camp_label = "No"
+            else:
+                camp_label = "N.D."
+
+            # Sezione con descrizione PRISCAV
+            sezione_letter = sezione.replace('SEZIONE', '').strip().upper() if sezione else ''
+            sezione_desc = ResponseFormatter.SEZIONE_DESCRIZIONI.get(sezione_letter, '')
+            if sezione_desc:
+                sezione_display = f"{sezione} ({sezione_desc})"
+            else:
+                sezione_display = sezione
+
+            response += f"{idx}. **Sezione:** {sezione_display}\n"
+            response += f"   **Piano:** {alias} — {desc}\n"
+            if alias_ind:
+                label = ResponseFormatter._label_for_indicator(alias_ind)
+                response += f"   **{label}:** {alias_ind}"
+                if desc2:
+                    response += f" — {desc2}"
+                response += "\n"
+            response += f"   **Campionamento:** {camp_label}"
+            if 'similarity' in piano_info and piano_info['similarity'] is not None:
+                response += f" | Rilevanza: {piano_info['similarity']:.0%}"
+            response += "\n\n"
 
         if len(matches) > max_display:
-            response += f"... e altri {len(matches) - max_display} piani.\n\n"
+            response += f"... e altri {len(matches) - max_display} risultati.\n\n"
 
         return response
 
@@ -207,19 +259,29 @@ class ResponseFormatter:
     ) -> str:
         """
         Formatta sintesi risultati ricerca piani (fase 1 del sistema 2-fasi).
-        Mostra solo i primi N risultati con nome piano e rilevanza (senza descrizione).
+        Mostra i primi N risultati con sezione, piano, alias_indicatore e campionamento.
         """
-        response = f"**🔎 Risultati per: '{search_term}'**\n\n"
-        response += f"**Trovati {len(matches)} piani rilevanti.**\n\n"
+        response = f"**Risultati per: '{search_term}'**\n\n"
+        response += f"**Trovati {len(matches)} risultati rilevanti.**\n\n"
 
         response += f"**Top {min(limit, len(matches))} risultati:**\n\n"
 
         for idx, piano_info in enumerate(matches[:limit], 1):
+            alias_ind = piano_info.get('alias_indicatore', '')
+            campionamento = piano_info.get('campionamento')
+            camp_label = "Si" if campionamento is True else ("No" if campionamento is False else "N.D.")
+
             response += f"{idx}. **{piano_info['sezione']}** - Piano **{piano_info['alias']}**"
-            response += f" (rilevanza: {piano_info['similarity']:.0%})\n"
+            if alias_ind:
+                label = ResponseFormatter._label_for_indicator(alias_ind)
+                response += f" | {label}: {alias_ind}"
+            response += f" | Camp.: {camp_label}"
+            if 'similarity' in piano_info and piano_info['similarity'] is not None:
+                response += f" | Ril.: {piano_info['similarity']:.0%}"
+            response += "\n"
 
         if len(matches) > limit:
-            response += f"\n... e altri {len(matches) - limit} piani.\n"
+            response += f"\n... e altri {len(matches) - limit} risultati.\n"
 
         return response
 
@@ -491,7 +553,8 @@ class ResponseFormatter:
 
             percentuale = (eseguiti / programmati * 100) if programmati > 0 else 0
 
-            response += f"{idx}. **Piano {piano_id}** - Ritardo: {ritardo}\n"
+            label = "Attività" if ResponseFormatter._is_attivita(piano_id) else "Piano"
+            response += f"{idx}. **{label} {piano_id}** - Ritardo: {ritardo}\n"
             response += f"   Completamento: {percentuale:.0f}% ({eseguiti}/{programmati})\n\n"
 
         response += "**Raccomandazione:** Prioritizzare i piani con maggior ritardo.\n"
@@ -530,7 +593,8 @@ class ResponseFormatter:
 
             percentuale_eseguita = (eseguiti / programmati * 100) if programmati > 0 else 0
 
-            response += f"**{idx + 1}. Piano {piano_id}**\n"
+            label = "Attività" if ResponseFormatter._is_attivita(piano_id) else "Piano"
+            response += f"**{idx + 1}. {label} {piano_id}**\n"
             response += f"   {descrizione}\n"
             response += f"   Programmati: {programmati} | Eseguiti: {eseguiti} | Ritardo: {ritardo}\n"
             response += f"   Completamento: {percentuale_eseguita:.1f}%\n\n"
@@ -546,7 +610,8 @@ class ResponseFormatter:
 
         detail_response = None
         if worst_plan_details is not None and worst_plan_id and not worst_plan_details.empty:
-            detail_response = f"\n**Dettaglio strutture per Piano {worst_plan_id}:**\n"
+            detail_label = "Attività" if ResponseFormatter._is_attivita(worst_plan_id) else "Piano"
+            detail_response = f"\n**Dettaglio strutture per {detail_label} {worst_plan_id}:**\n"
 
             for detail in worst_plan_details.itertuples(index=False):
                 uoc = getattr(detail, 'descrizione_uoc', '')
@@ -594,10 +659,20 @@ class ResponseFormatter:
 
         if sottopiani:
             if len(sottopiani) > 1:
-                response += f"**Sottopiani in ritardo:** {', '.join(sottopiani)}\n\n"
+                att_list = [s for s in sottopiani if ResponseFormatter._is_attivita(s)]
+                sotto_list = [s for s in sottopiani if not ResponseFormatter._is_attivita(s)]
+                parts = []
+                if sotto_list:
+                    parts.append(f"**Sottopiani in ritardo:** {', '.join(sotto_list)}")
+                if att_list:
+                    parts.append(f"**Attività in ritardo:** {', '.join(att_list)}")
+                response += "\n".join(parts) + "\n\n"
                 response += f"**Dettagli aggregati:**\n"
             else:
-                response += f"**Piano specifico:** {sottopiani[0]}\n\n"
+                label = ResponseFormatter._label_for_indicator(sottopiani[0])
+                # Accordo grammaticale: "specifico" vs "specifica"
+                spec = "specifica" if label == "Attività" else "specifico"
+                response += f"**{label} {spec}:** {sottopiani[0]}\n\n"
                 response += f"**Dettagli:**\n"
         else:
             response += f"**Dettagli:**\n"

@@ -326,6 +326,81 @@
         .chat-input {
             grid-column: 1;
             grid-row: 3;
+            padding: 12px;
+        }
+
+        .input-container {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            background: #ffffff;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 8px 12px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .input-container:focus-within {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+
+        #messageInput {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 0.95rem;
+            font-family: inherit;
+            padding: 8px 4px;
+            min-height: 44px;
+            max-height: 150px;
+            resize: none;
+            line-height: 1.5;
+            background: transparent;
+            color: #1f2937;
+        }
+
+        #messageInput::placeholder {
+            color: #9ca3af;
+        }
+
+        #sendButton {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s ease, transform 0.1s ease;
+            white-space: nowrap;
+        }
+
+        #sendButton:hover {
+            opacity: 0.9;
+        }
+
+        #sendButton:active {
+            transform: scale(0.97);
+        }
+
+        body.dark-theme .input-container {
+            background: #0f172a;
+            border-color: #475569;
+        }
+
+        body.dark-theme .input-container:focus-within {
+            border-color: #818cf8;
+            box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
+        }
+
+        body.dark-theme #messageInput {
+            color: #f1f5f9;
+        }
+
+        body.dark-theme #messageInput::placeholder {
+            color: #64748b;
         }
 
         @media (max-width: 1200px) {
@@ -444,7 +519,7 @@
 
         <div class="chat-input">
             <div class="input-container">
-                <input type="text" id="messageInput" placeholder="Scrivi il tuo messaggio..." autocomplete="off">
+                <textarea id="messageInput" placeholder="Scrivi il tuo messaggio..." autocomplete="off" rows="2"></textarea>
                 <button id="sendButton">Invia</button>
             </div>
         </div>

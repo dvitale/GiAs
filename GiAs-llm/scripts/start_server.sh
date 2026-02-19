@@ -47,22 +47,34 @@ fi
 echo ""
 echo "🤖 Verifica backend LLM..."
 
-# Configurazione backend (default: ollama)
-export GIAS_LLM_BACKEND="${GIAS_LLM_BACKEND:-ollama}"
-echo "   📌 Backend LLM configurato: $GIAS_LLM_BACKEND"
-
-# Configurazione Ollama host (env var > config.json > default localhost)
-if [ -z "$OLLAMA_HOST" ]; then
+# Configurazione backend (priorita': env var > config.json > default ollama)
+if [ -z "$GIAS_LLM_BACKEND" ]; then
     CONFIG_FILE="$PROJECT_ROOT/configs/config.json"
     if [ -f "$CONFIG_FILE" ]; then
-        OLLAMA_HOST=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('llm_backend', {}).get('ollama', {}).get('host', 'localhost'))" 2>/dev/null)
-        OLLAMA_HOST="${OLLAMA_HOST:-localhost}"
+        CONFIG_BACKEND=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('llm_backend', {}).get('type', 'ollama'))" 2>/dev/null)
+        export GIAS_LLM_BACKEND="${CONFIG_BACKEND:-ollama}"
     else
-        OLLAMA_HOST="localhost"
+        export GIAS_LLM_BACKEND="ollama"
     fi
+else
+    export GIAS_LLM_BACKEND
 fi
-export OLLAMA_HOST
-echo "   📌 Ollama host: $OLLAMA_HOST"
+echo "   📌 Backend LLM configurato: $GIAS_LLM_BACKEND"
+
+# Configurazione Ollama host (solo per backend locali)
+if [ "$GIAS_LLM_BACKEND" = "ollama" ] || [ "$GIAS_LLM_BACKEND" = "llamacpp" ]; then
+    if [ -z "$OLLAMA_HOST" ]; then
+        CONFIG_FILE="$PROJECT_ROOT/configs/config.json"
+        if [ -f "$CONFIG_FILE" ]; then
+            OLLAMA_HOST=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('llm_backend', {}).get('ollama', {}).get('host', 'localhost'))" 2>/dev/null)
+            OLLAMA_HOST="${OLLAMA_HOST:-localhost}"
+        else
+            OLLAMA_HOST="localhost"
+        fi
+    fi
+    export OLLAMA_HOST
+    echo "   📌 Ollama host: $OLLAMA_HOST"
+fi
 
 # Funzione per selezione interattiva del modello
 select_model_interactive() {
@@ -102,7 +114,45 @@ select_model_interactive() {
     echo ""
 }
 
-if [ "$GIAS_LLM_BACKEND" = "llamacpp" ]; then
+if [ "$GIAS_LLM_BACKEND" = "openai" ] || [ "$GIAS_LLM_BACKEND" = "anthropic" ] || [ "$GIAS_LLM_BACKEND" = "openai_compat" ]; then
+    # ═══════════════════════════════════════════════════════
+    # Provider LLM esterno (OpenAI, Anthropic, Mistral, etc.)
+    # ═══════════════════════════════════════════════════════
+    CONFIG_FILE="$PROJECT_ROOT/configs/config.json"
+
+    # Leggi modello e host dal config.json
+    EXTERNAL_MODEL=$(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(c.get('llm_backend',{}).get('$GIAS_LLM_BACKEND',{}).get('model','N/A'))" 2>/dev/null)
+    EXTERNAL_HOST=$(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(c.get('llm_backend',{}).get('$GIAS_LLM_BACKEND',{}).get('host','API cloud'))" 2>/dev/null)
+    API_KEY_ENV=$(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(c.get('llm_backend',{}).get('$GIAS_LLM_BACKEND',{}).get('api_key_env',''))" 2>/dev/null)
+
+    echo "   🌐 Provider esterno: $GIAS_LLM_BACKEND"
+    echo "   🤖 Modello: ${EXTERNAL_MODEL:-N/A}"
+    [ -n "$EXTERNAL_HOST" ] && [ "$EXTERNAL_HOST" != "API cloud" ] && echo "   🔌 Host: $EXTERNAL_HOST"
+
+    # Verifica API key
+    if [ -n "$API_KEY_ENV" ]; then
+        API_KEY_VALUE=$(eval echo "\$$API_KEY_ENV")
+        if [ -n "$API_KEY_VALUE" ]; then
+            # Mostra solo i primi 8 caratteri
+            MASKED_KEY="${API_KEY_VALUE:0:8}..."
+            echo "   🔑 API Key ($API_KEY_ENV): $MASKED_KEY"
+        else
+            echo "   ⚠️  API Key non trovata! Impostare la variabile ambiente: export $API_KEY_ENV=sk-..."
+            echo "   ⏸️  Continuo comunque l'avvio (fallback su stub mode)"
+        fi
+    fi
+
+    # Verifica GDPR gate
+    GDPR_ALLOWED=$(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(c.get('gdpr',{}).get('allow_external_llm',False))" 2>/dev/null)
+    if [ "$GDPR_ALLOWED" = "True" ]; then
+        echo "   ✅ GDPR gate: autorizzato (allow_external_llm=true)"
+    else
+        echo "   ⛔ GDPR gate: BLOCCATO (allow_external_llm=false in config.json)"
+        echo "   💡 Impostare gdpr.allow_external_llm a true per usare provider esterni"
+        echo "   ⏸️  Continuo comunque l'avvio (il backend Python gestira' l'errore)"
+    fi
+
+elif [ "$GIAS_LLM_BACKEND" = "llamacpp" ]; then
     # Llama.cpp backend
     LLAMACPP_PORT=11435
     LLAMACPP_HOST="http://localhost:$LLAMACPP_PORT"
@@ -249,8 +299,11 @@ if ps -p "$API_PID" > /dev/null 2>&1; then
     if [ "$GIAS_LLM_BACKEND" = "ollama" ]; then
         echo "   - Ollama host: $OLLAMA_HOST"
         echo "   - Ollama model: ${OLLAMA_MODEL:-$GIAS_LLM_MODEL}"
-    else
+    elif [ "$GIAS_LLM_BACKEND" = "llamacpp" ]; then
         echo "   - Llama.cpp host: $LLAMACPP_HOST"
+    else
+        echo "   - Provider: $GIAS_LLM_BACKEND (esterno)"
+        echo "   - Model: ${EXTERNAL_MODEL:-da config.json}"
     fi
     echo ""
     echo "📝 Log file: $API_LOG"

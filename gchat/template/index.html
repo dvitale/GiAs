@@ -34,6 +34,12 @@
                 {{end}}
             </div>
             <div class="header-right">
+                <a id="historyLink" class="header-nav-link" title="Cronologia">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </a>
                 <button class="theme-toggle" id="themeToggle" aria-label="Cambia tema">
                     <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -64,10 +70,7 @@
                 <!-- Greeting -->
                 <div class="greeting-section">
                     <div class="greeting-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="3" y="3" width="18" height="18" rx="4" fill="#d4a574"/>
-                            <path d="M8 12h8M12 8v8" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
+                        <img src="{{.basePath}}/static/img/l.png" alt="Logo" width="32" height="32">
                     </div>
                     <h1 class="greeting-text" id="greetingText">Ciao</h1>
                 </div>
@@ -105,6 +108,9 @@
             </div>
 
             <div class="chat-input-area">
+                <div class="chat-quick-actions" id="chatQuickActions">
+                    <!-- Quick actions moved here from welcome screen -->
+                </div>
                 <div class="chat-input-container">
                     <textarea
                         id="chatMessageInput"
@@ -160,8 +166,22 @@
             codice_fiscale: {{if .queryParams.codice_fiscale}}{{.queryParams.codice_fiscale | json}}{{else}}null{{end}},
             username: {{if .queryParams.username}}{{.queryParams.username | json}}{{else}}null{{end}}
         };
+
+        // Build history link with current params
+        (function() {
+            var p = window.queryParams;
+            var bp = window.basePath || '';
+            var qs = [];
+            if (p.user_id) qs.push('user_id=' + encodeURIComponent(p.user_id));
+            if (p.asl_id) qs.push('asl_id=' + encodeURIComponent(p.asl_id));
+            if (p.asl_name) qs.push('asl_name=' + encodeURIComponent(p.asl_name));
+            if (p.codice_fiscale) qs.push('codice_fiscale=' + encodeURIComponent(p.codice_fiscale));
+            if (p.username) qs.push('username=' + encodeURIComponent(p.username));
+            var link = document.getElementById('historyLink');
+            if (link) link.href = bp + '/history' + (qs.length ? '?' + qs.join('&') : '');
+        })();
     </script>
-    <script src="{{.basePath}}/static/js/chat.js?v=4"></script>
+    <script src="{{.basePath}}/static/js/chat.js?v=5"></script>
 </body>
 
 </html>
