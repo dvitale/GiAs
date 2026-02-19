@@ -295,11 +295,15 @@ def get_nearby_priority(
     # Formatta risposta con indirizzo pulito (senza warning interno)
     center_coords = (center_lat, center_lon)
 
-    # Pulisci l'indirizzo dal warning per il formatter
+    # Pulisci l'indirizzo dai warning interni per il formatter
     import re
     display_address = resolved_address
     display_address = re.sub(r'⚠️ ATTENZIONE:\s*', '', display_address)
     display_address = re.sub(r'\s*\(NON è nel comune di[^)]+\)', '', display_address)
+    # Pulisci warning "CENTRO CITTÀ" → mostra solo "via X, Comune"
+    centro_match = re.search(r"Indirizzo '(.+?)' non trovato in ([^.]+)", display_address)
+    if centro_match and "⚠️ CENTRO CITTÀ:" in display_address:
+        display_address = f"{centro_match.group(1)}, {centro_match.group(2)}"
     display_address = display_address.strip()
 
     formatted_response = ResponseFormatter.format_nearby_priority(
@@ -314,7 +318,7 @@ def get_nearby_priority(
     if resolved_address and "⚠️ CENTRO CITTÀ:" in resolved_address:
         # Estrai l'indirizzo non trovato dal warning
         import re
-        match = re.search(r"Indirizzo '([^']+)' non trovato in (\w+)", resolved_address)
+        match = re.search(r"Indirizzo '(.+?)' non trovato in ([^.]+)", resolved_address)
         if match:
             addr_not_found = match.group(1)
             city_name = match.group(2)
