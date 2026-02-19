@@ -9,17 +9,18 @@ GISA-AI e' un assistente virtuale per i servizi veterinari delle ASL della Regio
 ## Architettura
 
 ```
-Browser --> gchat (Go, :8080) --> GiAs-llm (Python, :5005) --> Ollama (:11434)
+Browser --> gchat (Go, :8080) --> GiAs-llm (Python, :5005) --> LLM Provider
                                         |                         |
                                         v                         v
-                                   PostgreSQL (GIAS)        llama3.2:3b
-                                   Qdrant (vector search)
+                                   PostgreSQL (GIAS)        Ollama / llama.cpp /
+                                   Qdrant (vector search)   OpenAI / Anthropic /
+                                                            OpenAI-compat (Mistral, Groq)
 ```
 
 ### Backend - GiAs-llm/
 - **Framework**: FastAPI + Uvicorn
 - **Orchestrazione**: LangGraph (workflow ad agenti)
-- **LLM**: Ollama (default llama3.2:3b) oppure llama.cpp
+- **LLM**: Ollama (local, default llama3.2) | llama.cpp | OpenAI | Anthropic | OpenAI-compat (Mistral, Groq)
 - **ML**: PyTorch, XGBoost (modello rischio v4)
 - **Embeddings**: sentence-transformers
 - **Database**: PostgreSQL (psycopg2), Qdrant (ricerca semantica)
@@ -29,12 +30,13 @@ Browser --> gchat (Go, :8080) --> GiAs-llm (Python, :5005) --> Ollama (:11434)
 ### Frontend - gchat/
 - **Server**: Go 1.21+ con Gin framework
 - **UI**: HTML/CSS/JS vanilla (tema light/dark, responsive)
-- **Comunicazione**: POST JSON verso backend, compatibile protocollo Rasa
+- **Sessioni**: Cookie-based (gin-contrib/sessions), TTL 5 min, priorita' POST > Query > Session
+- **Comunicazione**: POST JSON verso backend, compatibile protocollo Rasa; proxy CORS per API chat-log
 - **Dettagli**: vedere `gchat/CLAUDE.md`
 
 ### Database
-- **PostgreSQL** (host: GIAS, db: gias_db) - tabelle: piani_monitoraggio, masterlist, cu_eseguiti, osa_mai_controllati, ocse_isp_semp, personale
-- **Qdrant** - storage vettoriale locale per ricerca semantica
+- **PostgreSQL** (host: GIAS, db: gias_db) - tabelle: piani_monitoraggio, masterlist, cu_eseguiti, osa_mai_controllati, ocse_isp_semp, personale, chat_log, intents
+- **Qdrant** - storage vettoriale locale per ricerca semantica (singleton condiviso tra DataRetriever e FewShotRetriever)
 
 ## Comandi
 
@@ -71,12 +73,20 @@ GIAS_LLM_BACKEND=openai_compat MISTRAL_API_KEY=sk-xxx scripts/server.sh start
 ### Test
 
 ```bash
-# Test backend
+# Test backend (usa pytest.ini in tests/ - esegue e2e + integration + unit)
 cd GiAs-llm && scripts/server.sh test
 
+# Test per categoria
+cd GiAs-llm && python -m pytest tests/unit/ -v
+cd GiAs-llm && python -m pytest tests/e2e/ -v
+cd GiAs-llm && python -m pytest tests/integration/ -v
+
+# Test legacy (esclusi da pytest.ini per default)
+cd GiAs-llm && python -m pytest tests/legacy/ -v
+
 # Singolo test
-cd GiAs-llm && python -m pytest tests/test_graph.py -v
-cd GiAs-llm && python -m pytest tests/test_graph.py::TestGIASGraph::test_help_tool -v
+cd GiAs-llm && python -m pytest tests/e2e/test_intents.py -v
+cd GiAs-llm && python -m pytest tests/e2e/test_intents.py::TestIntents::test_help -v
 
 # Test API manuale
 curl -X POST http://localhost:5005/webhooks/rest/webhook \
@@ -90,20 +100,28 @@ curl -X POST http://localhost:5005/webhooks/rest/webhook \
 |----------|--------|-------------|
 | `localhost:5005/` | GET | Health check backend |
 | `localhost:5005/webhooks/rest/webhook` | POST | Chat principale |
+| `localhost:5005/webhooks/rest/webhook/stream` | POST | Chat streaming (SSE) |
 | `localhost:5005/status` | GET | Stato + dati caricati |
 | `localhost:5005/model/parse` | POST | Parsing NLU |
 | `localhost:5005/api/chat-log/user-conversations` | GET | Lista conversazioni utente (per codice_fiscale) |
 | `localhost:5005/api/chat-log/conversation/{sid}` | GET | Messaggi di una conversazione |
 | `localhost:8080/gias/webchat/` | GET | UI chat |
 | `localhost:8080/gias/webchat/chat` | POST | Invio messaggio |
+| `localhost:8080/gias/webchat/chat/stream` | POST | Invio messaggio streaming (SSE) |
 | `localhost:8080/gias/webchat/history` | GET | Pagina cronologia chat |
+| `localhost:8080/gias/webchat/api/chat-log/*` | GET | Proxy API chat-log (evita CORS) |
+| `localhost:8080/gias/webchat/debug` | GET | Debug mode (intent/entity/slot) |
+| `localhost:8080/gias/webchat/debug/langgraph` | GET | LangGraph workflow visualizer |
+| `localhost:8080/gias/webchat/analytics` | GET | Dashboard analytics chat |
+| `localhost:8080/gias/webchat/monitor` | GET | Monitor qualita' conversazioni |
 
 ## Convenzioni codice
 
 - **Lingua**: codice in inglese, commenti/log/UI in italiano
-- **Logging**: prefissi strutturati (CHAT_, BACKEND_, USER_, INDEX_)
-- **Pattern backend**: Factory (data sources), Singleton (graph + dati globali), lazy loading
-- **Sessioni**: TTL 5 minuti, state in memoria (dict in api.py)
+- **Logging**: prefissi strutturati (CHAT_, LLM_, USER_, INDEX_, CHATLOG_PROXY_, HISTORY_, ANALYTICS_, MONITOR_)
+- **Pattern backend**: Factory (data sources), Singleton (graph + dati globali + Qdrant + embedding), lazy loading
+- **Sessioni frontend**: cookie-based (gin-contrib/sessions), TTL 5 min, merge POST > Query > Session
+- **Sessioni backend**: TTL 5 minuti, state in memoria (dict in api.py)
 - **Config**: JSON in `configs/config.json` (backend) e `config/config.json` (frontend)
 - **Base path**: `/gias/webchat` per reverse proxy
 - **Script shell**: non modificare gli .sh esistenti nella root di gchat
@@ -113,10 +131,11 @@ curl -X POST http://localhost:5005/webhooks/rest/webhook \
 ## Note per sviluppo
 
 - **`./all.sh`** e' il comando per compilare e riavviare gchat. Usare sempre questo.
-- **Ollama obbligatorio**: il backend richiede Ollama su localhost:11434 con il modello precaricato.
+- **LLM obbligatorio**: con Ollama locale (default), richiede Ollama su localhost:11434. Con provider esterni, richiede API key via env var e `gdpr.allow_external_llm=true`.
 - **Dati precaricati**: al primo avvio il backend carica tutti i dati da PostgreSQL/CSV in memoria. Il primo request puo' essere lento.
 - **Protocollo Rasa**: l'API webhook mantiene compatibilita' con il formato Rasa (`sender`, `message`, `metadata`) anche se il backend usa LangGraph.
-- **Metadata utente**: passati via query string URL -> template JS -> POST body -> backend state. Il campo `asl` (nome) ha priorita' su `asl_id`.
+- **Metadata utente**: passati via query string URL -> session cookie -> template JS -> POST body -> backend state. Il campo `asl` (nome) ha priorita' su `asl_id`. Il campo `uoc` viene recuperato automaticamente da personale.csv.
+- **CORS proxy**: le API chat-log (`/api/chat-log/*`) sono proxate dal server Go per evitare errori CORS cross-origin dal browser.
 - **Config duplicata**: backend e frontend hanno ciascuno il proprio `config.json` con impostazioni indipendenti.
 - **LLM provider esterni**: il backend supporta provider LLM esterni (OpenAI, Anthropic, Mistral via openai_compat) oltre ai locali (Ollama, llama.cpp). Configurazione in `config.json` sezione `llm_backend.type`. API key solo via env var. GDPR gate (`gdpr.allow_external_llm`) blocca provider esterni per default.
 - **Timeout chain**: JS (75s) > Go (60s) > Backend streaming (120s). Il client deve avere timeout maggiore del server.

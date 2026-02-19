@@ -149,6 +149,8 @@ Uses `formatted_response` from `ResponseFormatter` when available, falls back to
 - **Vector Index**: Qdrant storage con 2 collection:
   - `piani_monitoraggio`: 730 vettori (384 dim) per ricerca semantica piani
   - `intent_examples`: ~150 vettori (384 dim) per few-shot intent classification
+- **Qdrant Singleton** (`agents/qdrant_singleton.py`): Qdrant in local (file-based) mode acquisisce un lock esclusivo sulla directory. `get_qdrant_client()` fornisce una singola istanza `QdrantClient` condivisa tra `DataRetriever` e `FewShotRetriever`. Lazy-initialized, ritorna `None` se storage non disponibile.
+- **Embedding Singleton** (`agents/embedding_singleton.py`): `get_embedding_model()` fornisce un'istanza condivisa del modello sentence-transformers per evitare caricamento multiplo in memoria.
 - **Rebuild index**: `python tools/indexing/build_intent_examples_index.py` (ricostruire quando cambiano intent o esempi)
 
 ## Key Concepts
@@ -214,6 +216,8 @@ GiAs-llm/
 │   ├── data_agent.py          # DataRetriever, BusinessLogic, RiskAnalyzer
 │   ├── response_agent.py      # ResponseFormatter, SuggestionGenerator
 │   ├── cached_data_agent.py   # Caching layer
+│   ├── qdrant_singleton.py    # Singleton QdrantClient condiviso (evita file-lock conflict)
+│   ├── embedding_singleton.py # Singleton sentence-transformers embedding model
 │   ├── data.py                # Data loading utilities
 │   └── utils.py               # Shared utilities
 ├── app/                        # FastAPI server (unchanged)
@@ -286,15 +290,31 @@ GiAs-llm/
 │   └── qdrant_storage/        # Vector database storage (3.3 MB)
 ├── runtime/                    # Runtime files
 │   └── logs/                  # Application logs
-├── tests/                      # Comprehensive pytest test suite (100% intent coverage)
-│   ├── test_graph.py          # LangGraph workflow testing
-│   ├── test_router.py         # Intent classification + heuristics testing
-│   ├── test_tools.py          # Tool integration testing
-│   ├── test_nc_categories.py  # NC categories + analyze_nc_by_category testing
-│   ├── test_nearby_priority.py # Proximity search (ask_nearby_priority) testing
-│   ├── test_server.py         # API server testing
-│   ├── test_hybrid_search.py  # Hybrid search testing
-│   └── test_followup_suggestions.py # Follow-up suggestions testing
+├── tests/                      # Test suite v4.0 (pytest.ini in tests/)
+│   ├── pytest.ini             # Config: testpaths = e2e integration unit (esclude legacy)
+│   ├── conftest.py            # Fixture condivise (server_url, asl, session, http_client)
+│   ├── run_all_tests.py       # Test runner script con report HTML/JSON
+│   ├── unit/                  # Unit test con mock, no server richiesto
+│   │   ├── test_greeting_recognition.py  # Pattern greeting/goodbye
+│   │   └── test_llm_providers.py         # Test provider system multi-backend
+│   ├── integration/           # Test con componenti reali, no server running
+│   │   ├── test_ml_predictor_real.py     # ML predictor XGBoost
+│   │   ├── test_rag_consistency.py       # Consistenza RAG/vector search
+│   │   ├── test_router_real.py           # Router con LLM reale
+│   │   ├── test_search_real.py           # Hybrid search reale
+│   │   └── test_tools_real.py            # Tool con dati reali
+│   ├── e2e/                   # End-to-end, richiedono server :5005 attivo
+│   │   ├── test_api_endpoints.py         # Endpoint API
+│   │   ├── test_api_webhook.py           # Webhook Rasa-compat
+│   │   ├── test_fallback.py              # Fallback recovery
+│   │   ├── test_intents.py               # Copertura 20/20 intent
+│   │   ├── test_metadata.py              # Metadata utente
+│   │   ├── test_sessions.py              # Gestione sessioni
+│   │   ├── test_streaming.py             # SSE streaming
+│   │   └── test_two_phase.py             # Two-phase flow
+│   └── legacy/                # Test vecchi, esclusi da pytest.ini
+│       ├── test_graph.py, test_router.py, test_tools.py, ...
+│       └── (12 file legacy mantenuti per riferimento)
 ├── scripts/                    # Shell scripts + utility Python scripts
 │   ├── start_server.sh        # Server startup script
 │   ├── stop_server.sh         # Server stop script
@@ -467,27 +487,32 @@ The system supports two risk prediction strategies for the `ask_risk_based_prior
 
 ## Testing Infrastructure
 
-**Comprehensive Test Suite** (22 file, 100% intent coverage):
-- `pytest` framework with proper project structure
-- **Intent coverage**: 20/20 intent testati (100%)
-- Integration tests for hybrid search system
-- Component tests for all tools and workflow
-- Heuristics tests per pattern essenziali + confidence validation
-- Test prompt token budget (< 600 parole)
-- Test parsing confidence (valid, invalid, missing, clamped)
-- Performance benchmarking capabilities
-- 100% accuracy validation on veterinary domain
+**Test Suite v4.0** - struttura a 4 directory con `pytest.ini` in `tests/`:
 
-**Test File per Intent**:
-| Intent Category | Test File |
-|----------------|-----------|
-| Router heuristics (all) | `test_router.py` |
-| `ask_nearby_priority` | `test_nearby_priority.py` |
-| `analyze_nc_by_category` | `test_nc_categories.py` |
-| `ask_top_risk_activities` | `test_top_risk_intent.py` |
-| `search_piani_by_topic` | `test_hybrid_search.py` |
-| `info_procedure` | `test_procedure_tools.py` |
-| API integration (all) | `test_server.py` |
+### Struttura
+- **`unit/`**: Test con mock, nessun server richiesto (2 file)
+- **`integration/`**: Test con componenti reali, no server running (5 file)
+- **`e2e/`**: End-to-end, richiedono server :5005 attivo (8 file)
+- **`legacy/`**: Test vecchi esclusi da `pytest.ini` (12 file, mantenuti per riferimento)
+
+### Configurazione (`tests/pytest.ini`)
+- `testpaths = e2e integration unit` (legacy escluso via `norecursedirs`)
+- Markers: `e2e`, `integration`, `unit`, `slow`, `streaming`, `rag`
+- Timeout default: 120s
+- Report: JUnit XML + HTML (`tests/reports/`)
+
+### Copertura Intent
+- **20/20 intent testati** (100%) in `e2e/test_intents.py`
+- Heuristics test per pattern essenziali + confidence validation
+
+### Comandi
+```bash
+python -m pytest tests/ -v                  # Tutti (e2e + integration + unit)
+python -m pytest tests/unit/ -v             # Solo unit
+python -m pytest tests/e2e/ -v              # Solo e2e (richiede server)
+python -m pytest tests/integration/ -v      # Solo integration
+python -m pytest tests/legacy/ -v           # Solo legacy (esclusi per default)
+```
 
 ## Production Deployment
 
@@ -583,12 +608,12 @@ When writing prompts or responses, use correct Italian veterinary terms:
 - Vector database with 730 indexed plans + collection `intent_examples` per few-shot retrieval
 - 20-intent classification LLM-first con confidence reale e few-shot dinamico
 - **NLU migliorato**: prompt V2 con disambiguazione, `MINIMAL_HEURISTICS=True`, `FewShotRetriever` Qdrant
-- Comprehensive testing and monitoring (42 test, 100% intent coverage)
+- Test suite v4.0: unit/integration/e2e/legacy (100% intent coverage)
 - FastAPI deployment with Rasa compatibility
 - 323,146 veterinary records processed
 - **Configurable risk predictor** (ML or statistical) via `GIAS_RISK_PREDICTOR`
 
-**Last Updated**: February 2026 (NLU refactoring: prompt V2, confidence reale, few-shot dinamico, heuristics minimali)
+**Last Updated**: February 2026 (LLM multi-provider, singleton Qdrant/embedding, test suite v4.0, CORS proxy chat-log)
 
 ## Regole di manutenzione
 

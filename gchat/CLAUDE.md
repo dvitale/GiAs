@@ -40,20 +40,28 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
 
 - **app/**: Sorgenti Go dell'applicazione
   - `main.go`: Entry point, routing HTTP (Gin), gestione template e parametri query
-  - `llm_client.go`: Client HTTP per comunicazione con backend LLM
+  - `llm_client.go`: Client HTTP per comunicazione con backend LLM + `ProxyChatLogAPI` (proxy CORS)
   - `config.go`: Gestione configurazione JSON
   - `personale.go`: Caricamento dati CSV del personale
+  - `session.go`: Session middleware cookie-based (gin-contrib/sessions), `SessionMiddleware()`, `MergeSessionParams()`
   - `transcribe.go`: Trascrizione audio (speech-to-text)
+  - `config_test.go`: Test configurazione
 
 - **statics/**: Asset statici (CSS, JavaScript, immagini)
-  - `css/style.css`: Stili UI con supporto tema light/dark, palette oro, responsive
+  - `css/style.css`: Stili UI con supporto tema light/dark, palette oro, responsive, stili history page
   - `js/chat.js`: Logica chat, gestione tema, download conversazioni, retry logic
   - `js/history.js`: Logica pagina cronologia chat (caricamento conversazioni, ricerca, paginazione)
+  - `js/debug_langgraph.js`: Debug panel LangGraph
+  - `js/debug_langgraph_visualizer.js`: Renderer grafo LangGraph
   - `img/`: Immagini (logo GIAS, logo Regione)
 
 - **template/**: Template HTML con supporto Go template engine
   - `index.html`: Interfaccia chatbot principale
   - `history.html`: Pagina cronologia chat (layout sidebar + area messaggi)
+  - `debug.html`: Debug mode (visualizzazione intent/entity/slot)
+  - `debug_langgraph.html`: LangGraph workflow visualizer
+  - `analytics.html`: Dashboard analytics chat
+  - `monitor.html`: Monitor qualita' conversazioni
 
 - **config/**: File di configurazione
   - `config.json`: Configurazione server, Rasa, logging, UI
@@ -70,6 +78,7 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
 ## Dipendenze Go
 
 - **gin-gonic/gin v1.9.1**: Framework web HTTP
+- **gin-contrib/sessions**: Session management cookie-based (TTL 5 min)
 - Go 1.21+
 
 ## Interfaccia Go ↔ Backend Chatbot
@@ -96,9 +105,9 @@ Gli endpoint sono configurabili in `config/config.json`:
 
 ### 2. Strutture Dati per Comunicazione con Backend
 
-#### Request a Backend (app/llm_client.go:15-19)
+#### Request a Backend (app/llm_client.go)
 ```go
-type RasaMessage struct {
+type LLMMessage struct {
     Sender   string                 `json:"sender"`
     Message  string                 `json:"message"`
     Metadata map[string]interface{} `json:"metadata,omitempty"`
@@ -107,36 +116,37 @@ type RasaMessage struct {
 
 - **sender**: Identificatore sessione utente (default: "user")
 - **message**: Testo messaggio utente
-- **metadata**: Contesto utente (ASL, user_id, codice_fiscale, username, asl_id)
+- **metadata**: Contesto utente (ASL, user_id, codice_fiscale, username, asl_id, uoc)
 
-#### Response da Backend (app/llm_client.go:21-23)
+#### Response da Backend (app/llm_client.go)
 ```go
-type RasaResponse struct {
-    Text string `json:"text"`
+type LLMResponse struct {
+    Text   string                 `json:"text"`
+    Custom map[string]interface{} `json:"custom,omitempty"`
 }
 ```
 
-Il backend restituisce array di risposte: `[]RasaResponse`
+Il backend restituisce array di risposte: `[]LLMResponse`. Il campo `Custom` contiene dati strutturati opzionali (`full_data`, `data_type`, `suggestions`, `execution_path`, `node_timings`).
 
 ### 3. Flusso di Comunicazione
 
-#### A. Health Check (app/llm_client.go:106-129)
+#### A. Health Check (app/llm_client.go)
 ```
-CheckRasaHealth() → GET {BACKEND_URL}
+CheckLLMServerHealth() → GET {BACKEND_URL}
 ```
-- Verifica disponibilità backend prima di ogni richiesta
-- Timeout configurabile (default: 30s)
-- Log dettagliato: `RASA_HEALTH_CHECK`, `RASA_HEALTH_ERROR`, `RASA_HEALTH_OK`
+- Verifica disponibilita' backend prima di ogni richiesta
+- Cache health status: 30s (successo), 5s (fallimento)
+- Log dettagliato: `LLM_HEALTH_CHECK`, `LLM_HEALTH_ERROR`, `LLM_HEALTH_OK`, `LLM_HEALTH_CACHE`
 
-#### B. Invio Messaggio (app/llm_client.go:41-104)
+#### B. Invio Messaggio (app/llm_client.go)
 ```
-SendToRasa(message, sender, rasaURL, timeout, context) → []RasaResponse
+SendToLLM(message, sender, llmServerURL, timeout, context) → []LLMResponse
 ```
 
 **Processo**:
-1. Costruisce `RasaMessage` con messaggio, sender e metadata
+1. Costruisce `LLMMessage` con messaggio, sender e metadata
 2. Serializza JSON
-3. POST a `{RASA_URL}/webhooks/rest/webhook`
+3. POST a `{LLM_URL}/webhooks/rest/webhook`
 4. Timeout HTTP configurabile
 5. Parsing response JSON
 6. Logging completo di ogni fase
@@ -166,15 +176,19 @@ type ChatRequest struct {
     UserID        string `json:"user_id,omitempty"`
     CodiceFiscale string `json:"codice_fiscale,omitempty"`
     Username      string `json:"username,omitempty"`
+    UOC           string `json:"uoc,omitempty"`   // Unita' Operativa Complessa (auto da personale.csv)
 }
 ```
 
 **Response**:
 ```go
 type ChatResponse struct {
-    Message string `json:"message"`
-    Status  string `json:"status"`
-    Error   string `json:"error,omitempty"`
+    Message     string                   `json:"message"`
+    Status      string                   `json:"status"`
+    Error       string                   `json:"error,omitempty"`
+    FullData    interface{}              `json:"full_data,omitempty"`    // Dati strutturati completi
+    DataType    string                   `json:"data_type,omitempty"`    // Tipo dati (table, list, etc.)
+    Suggestions []map[string]interface{} `json:"suggestions,omitempty"`  // Suggerimenti follow-up
 }
 ```
 
@@ -207,7 +221,14 @@ Dati passati a JavaScript via template per invio con richieste chat.
 
 ### 5. Gestione Contesto Utente
 
-**Metadata inviata a backend** (app/llm_client.go:156-170):
+**Session Management** (`app/session.go`):
+- Cookie-based sessions via `gin-contrib/sessions`
+- TTL: 5 minuti (`SessionTTL`)
+- `SessionMiddleware()`: salva parametri query/POST nella sessione
+- `MergeSessionParams()`: merge con priorita' POST body > Query string > Session cookie
+- Cookie path: `/gias/webchat`, HttpOnly, SameSite=Lax
+
+**Metadata inviata a backend** (app/llm_client.go):
 ```go
 context := map[string]interface{}{
     "asl":            req.ASL,           // Nome ASL (prioritario)
@@ -215,6 +236,7 @@ context := map[string]interface{}{
     "user_id":        req.UserID,
     "codice_fiscale": req.CodiceFiscale,
     "username":       req.Username,
+    "uoc":            uoc,               // Unita' Operativa (auto da personale.csv)
 }
 ```
 
@@ -223,6 +245,22 @@ Il backend utilizza questi metadati per:
 - Slot filling automatico
 - Routing conversazionale contestuale
 - Accesso a dati specifici ASL/utente
+
+### 5b. Proxy CORS per API Chat-Log
+
+**Funzione**: `ProxyChatLogAPI()` in `app/llm_client.go`
+
+Le API `/api/chat-log/*` del backend Python non sono raggiungibili direttamente dal browser (CORS cross-origin `:8080` → `:5005`). Il server Go fa da proxy:
+
+```
+Browser (:8080) → Go /gias/webchat/api/chat-log/* → Python :5005/api/chat-log/*
+```
+
+Route registrate in `main.go`:
+- `GET /gias/webchat/api/chat-log/user-conversations` → proxy
+- `GET /gias/webchat/api/chat-log/conversation/:sessionId` → proxy
+
+Usate da `history.js` per caricare la cronologia chat.
 
 ### 6. Caricamento Dati Utente
 
@@ -303,10 +341,19 @@ Fallback a configurazione default se file mancante o malformato.
 
 Logging strutturato con prefissi:
 - **CHAT_**: Eventi handler chat HTTP
-- **BACKEND_**: Comunicazione con backend
+- **CHAT_STREAM_**: Eventi streaming SSE
+- **LLM_**: Comunicazione con backend LLM
+- **LLM_STREAM_**: Streaming SSE con backend
+- **LLM_HEALTH_**: Health check backend (con cache)
 - **USER_**: Caricamento dati utente
 - **INDEX_**: Richieste pagina principale
+- **HISTORY_**: Richieste pagina cronologia
+- **ANALYTICS_**: Richieste dashboard analytics
+- **MONITOR_**: Richieste monitor qualita'
+- **LANGGRAPH_DEBUG_**: Richieste debugger LangGraph
+- **CHATLOG_PROXY_**: Proxy API chat-log verso backend
 - **PREDEFINED_QUESTIONS_**: Richieste domande
+- **DEBUG_CHAT_**: Handler debug chat
 
 Include: IP client, session ID, durata operazioni, parametri richiesta/response.
 
@@ -315,12 +362,10 @@ Include: IP client, session ID, durata operazioni, parametri richiesta/response.
 Quando viene invocato `http://localhost:8080/gias/webchat/?asl_id=202&user_id=6448&codice_fiscale=ZZIBRD65R11A783K&asl_name=BENEVENTO`:
 
 ### 1. **Browser → Go Server** (GET `/gias/webchat/`)
-Query string parsata in `app/main.go:19-72`:
+Parametri mergiati da Session + Query + POST (priorita': POST > Query > Session):
 ```go
-asl_id := c.Query("asl_id")           // "202"
-user_id := c.Query("user_id")         // "6448"
-codice_fiscale := c.Query("codice_fiscale")  // "ZZIBRD65R11A783K"
-asl_name := c.Query("asl_name")       // "BENEVENTO"
+userIDStr, aslID, aslName, codiceFiscale, username := MergeSessionParams(c)
+// Risultato: asl_id="202", user_id="6448", codice_fiscale="ZZIBRD65R11A783K", asl_name="BENEVENTO"
 ```
 
 ### 2. **Go Server → Caricamento Dati Utente**
@@ -406,17 +451,17 @@ Backend → Go Server → JavaScript → DOM Update
 ## Flusso Dati Query String → Metadata Backend
 
 ```
-Query String URL
+Query String URL / POST body
     ↓
-Go Server (main.go) - parsing query params
+Go Server (session.go) - MergeSessionParams (POST > Query > Session cookie)
     ↓
 Template HTML (index.html) - injection in window.queryParams
     ↓
-JavaScript (chat.js) - read queryParams, add to POST body
+JavaScript (chat.js) - read queryParams, add to POST body (+ UOC auto)
     ↓
-Go Handler /chat (llm_client.go) - extract from JSON, build metadata map
+Go Handler /chat (llm_client.go) - extract from JSON, build metadata map, lookup UOC da personale.csv
     ↓
-Backend API webhook - receive metadata field
+Backend API webhook - receive metadata field (asl, asl_id, user_id, codice_fiscale, username, uoc)
     ↓
 LangGraph State - auto-populate state from metadata
     ↓
@@ -946,3 +991,6 @@ Quando modifichi gchat, aggiorna questo file se tocchi:
 - Configurazione timeout → aggiornare sezione "Gestione Timeout"
 - Funzionalita' JavaScript → aggiornare sezione "Funzionalita' JavaScript"
 - Endpoint API → aggiornare sezione "Endpoint API Supportati" e la tabella in `../CLAUDE.md`
+- Template HTML → aggiornare sezione "Struttura del Progetto" (template/)
+- Route proxy → aggiornare sezione "Proxy CORS per API Chat-Log"
+- Session/parametri → aggiornare sezione "Gestione Contesto Utente"
