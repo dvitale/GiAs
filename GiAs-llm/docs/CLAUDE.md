@@ -116,6 +116,12 @@ User Message
 - `analyze_nc_by_category`: `[categoria]`
 - `ask_nearby_priority`: `[location]` (obbligatorio), `[radius_km]` (opzionale, default 5)
 
+**Slot fill location via LLM** (`_extract_location_with_llm`):
+- Quando il sistema chiede "Dove ti trovi?" (LAYER 1 pending slot fill), l'estrazione usa una chiamata LLM dedicata (`temperature=0.0, max_tokens=150, json_mode=True, timeout=10s`)
+- Output JSON: `{"address": "Via Colombo, Sant'Angelo a Cupolo"}` o `{"address": null}`
+- Fallback automatico a regex (`_clean_location_from_message`) se LLM fallisce
+- Impatto performance: +1 chiamata LLM solo nel percorso slot fill, non nel flusso normale
+
 ### Response Generation
 
 **Prompt structure** (`_build_response_prompt`):
@@ -169,16 +175,36 @@ This codebase migrates from **Rasa** to **LangGraph**. Key changes:
 
 ## LLM Client
 
-**Implementation**: `llm/client.py` contains `LLMClient` with Ollama integration.
+**Implementation**: `llm/client.py` contiene `LLMClient` con Strategy Pattern per delegare a provider backends.
 
-**Multi-Model Configuration**:
-- **Default Model**: Almawave/Velvet:latest (14B parameters, GDPR-compliant)
-- **Alternative Models**: mistral-nemo:latest, llama3.1:8b
-- **Configuration**: Via `GIAS_LLM_MODEL` environment variable, `config.py`, or `config.json`
-- **Performance Profiles**: Velvet: 4.2s avg (7.2GB VRAM), Mistral: 3.8s avg (6.1GB), LLaMA: 1.9s avg (4.8GB)
-- **Temperature Settings**: Classification: 0.1, Response Generation: 0.3
-- **Accuracy**: All models achieve 100% on veterinary domain intent classification
-- **Keep-Alive Management**: Configurable via `OLLAMA_KEEP_ALIVE` (-1 = persistent)
+**Architettura Provider** (`llm/`):
+- `provider_base.py`: ABC con interfaccia `query()`, `query_stream()`, `ping()`
+- `providers.py`: 5 implementazioni (Ollama, LlamaCpp, OpenAI, Anthropic, OpenAICompat)
+- `client.py`: Facade pubblica invariata, delega internamente al provider selezionato
+- `client_stub.py`: Stub per testing (pattern matching rule-based)
+
+**Backend supportati** (`config.json` -> `llm_backend.type`):
+- `ollama`: Ollama locale (API nativa `/api/chat`)
+- `llamacpp`: llama.cpp locale (OpenAI-compatible `/v1/chat/completions`)
+- `openai`: OpenAI API via SDK (GPT-4o, GPT-4o-mini). Richiede `pip install openai`
+- `anthropic`: Anthropic API via SDK (Claude). Richiede `pip install anthropic`
+- `openai_compat`: Endpoint generico OpenAI-compatible (Mistral, Groq, Together, etc.). Zero dipendenze aggiuntive
+
+**Switching backend**: `GIAS_LLM_BACKEND` env var > `config.json` type > default. API key via env var (mai in config.json).
+
+**GDPR gate**: Per provider esterni, `gdpr.allow_external_llm` in `config.json` deve essere `true`. Default: `false` (hard block).
+
+**Modelli locali**:
+- **Default**: Almawave/Velvet:latest (14B, GDPR-compliant)
+- **Alternative**: mistral-nemo:latest, llama3.1:8b, llama3.2:3b, ministral-3:3b
+- **Performance**: Velvet: 4.2s avg (7.2GB VRAM), LLaMA 3.2: 0.8s avg (2GB VRAM)
+- **Temperature**: Classification: 0.1, Response Generation: 0.3
+- **Keep-Alive**: Configurabile via `OLLAMA_KEEP_ALIVE` (-1 = persistent)
+
+**Variabili ambiente provider esterni**:
+- `OPENAI_API_KEY`: per backend `openai`
+- `ANTHROPIC_API_KEY`: per backend `anthropic`
+- `MISTRAL_API_KEY` / `GIAS_LLM_API_KEY`: per backend `openai_compat`
 
 ## File Organization
 
@@ -232,9 +258,11 @@ GiAs-llm/
 │       ├── build_intent_examples_index.py  # Indexing esempi intent per few-shot retrieval
 │       ├── build_docs_index.py    # Indexing documenti procedure (RAG)
 │       └── doc_chunker.py         # Chunker documenti (PDF/DOCX/TXT)
-├── llm/                        # LLM client (unchanged)
-│   ├── client.py              # LLMClient with Ollama integration
-│   └── client_stub.py         # Fallback implementation
+├── llm/                        # LLM client con Strategy Pattern multi-provider
+│   ├── client.py              # LLMClient facade (delega a provider)
+│   ├── provider_base.py       # ABC per provider backends
+│   ├── providers.py           # Implementazioni: Ollama, LlamaCpp, OpenAI, Anthropic, OpenAICompat
+│   └── client_stub.py         # Fallback implementation (pattern matching)
 ├── predictor_ml/               # ML predictor (unchanged)
 │   ├── predictor.py           # MLRiskPredictor class (XGBoost)
 │   ├── production_assets/     # Trained model and data
@@ -499,14 +527,16 @@ class SimpleRequestsAdapter(BaseSyncAdapter):
         self.session.mount('https://', adapter)
 ```
 
-### Capoluoghi Campani (coordinate hardcoded)
+### Strategia City-First (geocodifica)
 
-Se la geocodifica fallisce per un capoluogo, il sistema usa coordinate pre-definite:
-- Napoli: (40.8518, 14.2681)
-- Salerno: (40.6824, 14.7681)
-- Caserta: (41.0725, 14.3311)
-- Avellino: (40.9146, 14.7906)
-- Benevento: (41.1297, 14.7826)
+La geocodifica usa una strategia "city-first" a 2 livelli:
+
+1. **Capoluoghi** (coordinate hardcoded): Napoli, Salerno, Caserta, Avellino, Benevento → usa coordinate pre-definite come centro, poi cerca la via con viewbox
+2. **Comuni generici**: per indirizzi tipo "Via X, Comune Y", splitta sulla virgola, geocodifica prima il comune via Nominatim, poi cerca la via con viewbox centrato sul comune. Se la via non si trova, usa il centro del comune come fallback con warning
+
+Questo risolve la geocodifica per comuni piccoli (Sant'Angelo a Cupolo, Montesarchio, etc.) che prima fallivano con la ricerca Nominatim generica.
+
+**Attenzione apostrofi**: i nomi di comuni con apostrofo (Sant'Angelo, Sant'Agata, etc.) sono gestiti correttamente nel parsing del warning di fallback (`proximity_tools.py`)
 
 ## Follow-up Suggestions
 
