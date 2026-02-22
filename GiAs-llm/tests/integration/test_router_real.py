@@ -185,7 +185,7 @@ class TestRouterSlotExtraction:
 
 
 class TestRouterHeuristics:
-    """Test heuristics del Router."""
+    """Test heuristics minimali del Router (solo confirm/decline/risk)."""
 
     @pytest.fixture
     def router(self):
@@ -194,8 +194,8 @@ class TestRouterHeuristics:
         return Router(LLMClient())
 
     @pytest.mark.integration
-    def test_heuristic_greet_short(self, router):
-        """Test heuristic per saluti brevi."""
+    def test_greet_via_llm_or_fallback(self, router):
+        """Test saluti brevi (via LLM o LAYER 6 fallback)."""
         short_greets = ["ciao", "hey", "salve"]
 
         for greet in short_greets:
@@ -203,8 +203,8 @@ class TestRouterHeuristics:
             assert result["intent"] == "greet", f"Failed for '{greet}'"
 
     @pytest.mark.integration
-    def test_heuristic_help(self, router):
-        """Test heuristic per aiuto."""
+    def test_help_via_llm_or_fallback(self, router):
+        """Test aiuto (via LLM o LAYER 6 fallback)."""
         help_queries = ["aiuto", "help", "cosa puoi fare"]
 
         for query in help_queries:

@@ -99,7 +99,7 @@ class TestConfigEndpoint:
 
 
 class TestParseEndpoint:
-    """Test endpoint /model/parse (NLU)."""
+    """Test endpoint /api/v1/parse (NLU)."""
 
     @pytest.mark.e2e
     def test_parse_simple(self, parse_url):
@@ -113,8 +113,7 @@ class TestParseEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert "intent" in data
-        assert "name" in data["intent"]
-        assert data["intent"]["name"] == "greet"
+        assert data["intent"] == "greet"
 
     @pytest.mark.e2e
     def test_parse_with_slot(self, parse_url):
@@ -128,7 +127,7 @@ class TestParseEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert "intent" in data
-        assert data["intent"]["name"] == "ask_piano_description"
+        assert data["intent"] == "ask_piano_description"
         # Verifica slot estratto
         assert "slots" in data
         assert data["slots"].get("piano_code") == "A1"
@@ -148,9 +147,6 @@ class TestParseEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert "intent" in data
-        # metadata deve essere propagato
-        if "metadata" in data:
-            assert data["metadata"].get("asl") == complete_metadata["asl"]
 
     @pytest.mark.e2e
     def test_parse_confidence(self, parse_url):
@@ -164,27 +160,10 @@ class TestParseEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert "intent" in data
-        assert "confidence" in data["intent"]
+        assert "confidence" in data
         # Confidence deve essere tra 0 e 1
-        conf = data["intent"]["confidence"]
+        conf = data["confidence"]
         assert 0 <= conf <= 1
-
-
-class TestTrackerEndpoint:
-    """Test endpoint /conversations/{id}/tracker."""
-
-    @pytest.mark.e2e
-    def test_tracker_new_session(self, server_url, unique_sender):
-        """Test tracker per nuova sessione."""
-        resp = requests.get(
-            f"{server_url}/conversations/{unique_sender}/tracker",
-            timeout=10
-        )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "sender_id" in data
-        assert data["sender_id"] == unique_sender
 
 
 class TestErrorHandling:

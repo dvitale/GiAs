@@ -81,8 +81,7 @@ def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = N
 
         priority_df_display, all_data = RiskAnalyzer.find_priority_establishments(
             delayed_plans_df=delayed_piani,
-            osa_df=osa_filtered_by_asl,
-            limit=15
+            osa_df=osa_filtered_by_asl
         )
 
         if not all_data:
@@ -112,7 +111,7 @@ def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = N
             "delayed_plans_count": len(delayed_piani),
             "total_establishments": len(all_data),
             "total_found": len(all_data),
-            "priority_establishments": all_data[:15],
+            "priority_establishments": all_data,
             "formatted_response": response
         }
 

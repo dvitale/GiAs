@@ -173,11 +173,13 @@ class LLMClient:
             )
         except requests.exceptions.Timeout:
             print(f"❌ LLM query timeout after {self.timeout}s")
-            return self._fallback_stub(prompt)
+            fallback_prompt = '\n'.join(m.get('content', '') for m in effective_messages) if effective_messages else (prompt or '')
+            return self._fallback_stub(fallback_prompt)
         except Exception as e:
             print(f"❌ LLM query error: {e}")
             print(f"Falling back to stub for this request")
-            return self._fallback_stub(prompt)
+            fallback_prompt = '\n'.join(m.get('content', '') for m in effective_messages) if effective_messages else (prompt or '')
+            return self._fallback_stub(fallback_prompt)
 
     def _fallback_stub(self, prompt: str) -> str:
         """
@@ -224,7 +226,7 @@ class LLMClient:
                 "needs_clarification": False
             })
 
-        if any(word in user_message for word in ["aiuto", "help", "che domande", "cosa sai", "cosa posso", "come posso", "come puoi"]):
+        if any(word in user_message for word in ["aiuto", "help", "che domande", "cosa sai", "cosa posso", "come posso", "come puoi", "cosa puoi"]):
             return json.dumps({
                 "intent": "ask_help",
                 "slots": {},
@@ -293,6 +295,14 @@ class LLMClient:
                 "needs_clarification": False
             })
 
+        # Top attività rischiose (PRIMA di rischio generico)
+        if any(word in user_message for word in ["attività rischiose", "attività più rischiose", "top attività", "classifica attività"]):
+            return json.dumps({
+                "intent": "ask_top_risk_activities",
+                "slots": {},
+                "needs_clarification": False
+            })
+
         if any(word in user_message for word in ["rischio", "non conformità", "nc", "pericolosi", "alto rischio"]):
             return json.dumps({
                 "intent": "ask_risk_based_priority",
@@ -300,9 +310,52 @@ class LLMClient:
                 "needs_clarification": False
             })
 
+        if any(word in user_message for word in ["mai controllati", "non controllati", "suggerisci controll", "da controllare"]):
+            return json.dumps({
+                "intent": "ask_suggest_controls",
+                "slots": {},
+                "needs_clarification": False
+            })
+
         if any(word in user_message for word in ["ritardo", "ritardi", "programmati", "in ritardo"]):
             return json.dumps({
                 "intent": "ask_delayed_plans",
+                "slots": {},
+                "needs_clarification": False
+            })
+
+        if any(word in user_message for word in ["vicino", "dintorni", "pressi", "entro km", "vicinanze"]):
+            return json.dumps({
+                "intent": "ask_nearby_priority",
+                "slots": {},
+                "needs_clarification": False
+            })
+
+        if any(word in user_message for word in ["storico", "storia dei controlli", "storia controlli"]):
+            return json.dumps({
+                "intent": "ask_establishment_history",
+                "slots": {},
+                "needs_clarification": False
+            })
+
+        if any(word in user_message for word in ["procedura", "come si fa", "come si esegue", "passi per", "istruzioni per"]):
+            return json.dumps({
+                "intent": "info_procedure",
+                "slots": {},
+                "needs_clarification": False
+            })
+
+        if any(word in user_message for word in ["statistiche", "frequenza piani", "quanti piani"]):
+            return json.dumps({
+                "intent": "ask_piano_statistics",
+                "slots": {},
+                "needs_clarification": False
+            })
+
+        # Analisi NC per categoria
+        if ("nc" in user_message or "non conformità" in user_message) and any(word in user_message for word in ["categoria", "haccp", "igiene", "struttur", "analizza"]):
+            return json.dumps({
+                "intent": "analyze_nc_by_category",
                 "slots": {},
                 "needs_clarification": False
             })

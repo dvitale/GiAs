@@ -24,7 +24,7 @@ from pathlib import Path
 # Configurazione
 TEST_DIR = Path(__file__).parent.parent  # tests/ (YAML e' nella root dei test)
 YAML_PATH = TEST_DIR / "rag_test_cases.yaml"
-API_URL = "http://localhost:5005/webhooks/rest/webhook"
+API_URL = "http://localhost:5005/api/v1/chat"
 STATUS_URL = "http://localhost:5005/status"
 TIMEOUT = 60
 
@@ -98,11 +98,13 @@ class TestRAGConsistency:
         resp = requests.post(API_URL, json=payload, timeout=TIMEOUT)
         resp.raise_for_status()
 
-        responses = resp.json()
-        if not responses:
+        data = resp.json()
+        if not data or "result" not in data:
             return {"text": "", "custom": {}}
 
-        return responses[0]
+        result = data["result"]
+        # Compatibilita': esponi text e custom come prima
+        return {"text": result.get("text", ""), "custom": result}
 
     def _check_keywords(self, text: str, keywords: List[str]) -> List[str]:
         """Verifica quali keyword sono presenti nel testo (case insensitive)."""
@@ -208,8 +210,11 @@ class TestRAGMetrics:
         payload = {"sender": "test_rag_metrics", "message": query}
         resp = requests.post(API_URL, json=payload, timeout=TIMEOUT)
         resp.raise_for_status()
-        responses = resp.json()
-        return responses[0] if responses else {"text": "", "custom": {}}
+        data = resp.json()
+        if not data or "result" not in data:
+            return {"text": "", "custom": {}}
+        result = data["result"]
+        return {"text": result.get("text", ""), "custom": result}
 
     @pytest.mark.slow
     def test_overall_keyword_coverage(self):
@@ -284,8 +289,11 @@ class TestIndividualCases:
         payload = {"sender": "test_individual", "message": query}
         resp = requests.post(API_URL, json=payload, timeout=TIMEOUT)
         resp.raise_for_status()
-        responses = resp.json()
-        return responses[0] if responses else {"text": "", "custom": {}}
+        data = resp.json()
+        if not data or "result" not in data:
+            return {"text": "", "custom": {}}
+        result = data["result"]
+        return {"text": result.get("text", ""), "custom": result}
 
     def test_controllo_ufficiale_base(self):
         """Test base: inserimento controllo ufficiale."""

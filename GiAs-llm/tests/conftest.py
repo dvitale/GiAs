@@ -35,9 +35,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 SERVER_URL = os.environ.get("GIAS_SERVER_URL", "http://localhost:5005")
 FRONTEND_URL = os.environ.get("GIAS_FRONTEND_URL", "http://localhost:8080")
-WEBHOOK_URL = f"{SERVER_URL}/webhooks/rest/webhook"
-STREAM_URL = f"{SERVER_URL}/webhooks/rest/webhook/stream"
-PARSE_URL = f"{SERVER_URL}/model/parse"
+WEBHOOK_URL = f"{SERVER_URL}/api/v1/chat"
+STREAM_URL = f"{SERVER_URL}/api/v1/chat/stream"
+PARSE_URL = f"{SERVER_URL}/api/v1/parse"
 STATUS_URL = f"{SERVER_URL}/status"
 
 # Timeout allineati al frontend (JS: 75s, Go: 60s)
@@ -216,17 +216,42 @@ def metadata_napoli() -> Dict:
 # API Client fixtures
 # ============================================================
 
+def _v1_to_compat(data: Dict) -> Dict:
+    """
+    Mappa risposta V1 {result: {text, intent, slots, ...}, sender}
+    al formato compatibile con i test esistenti {text, custom: {intent, slots, ...}}.
+    """
+    result = data.get("result", {})
+    # Costruisci "custom" compatibile con i test che leggono response["custom"]["intent"]
+    custom = {
+        "intent": result.get("intent", ""),
+        "slots": result.get("slots", {}),
+        "suggestions": result.get("suggestions", []),
+        "execution_path": (result.get("execution", {}) or {}).get("execution_path", []),
+        "node_timings": (result.get("execution", {}) or {}).get("node_timings", {}),
+        "total_execution_ms": (result.get("execution", {}) or {}).get("total_execution_ms"),
+    }
+    return {
+        "text": result.get("text", ""),
+        "custom": custom,
+        # Campi V1 diretti (per test nuovi)
+        "intent": result.get("intent", ""),
+        "slots": result.get("slots", {}),
+        "suggestions": result.get("suggestions", []),
+    }
+
+
 @pytest.fixture
 def api_client(webhook_url, diagnostic_ctx) -> Callable:
     """
-    Client per chiamate API webhook con timeout frontend-aligned.
+    Client per chiamate API V1 chat con timeout frontend-aligned.
     Ritorna una funzione che accetta (message, sender, metadata).
 
     Include automaticamente tracciamento diagnostico per arricchire
     i report di fallimento con request/response context.
     """
     def call(message: str, sender: str, metadata: Dict = None) -> Dict:
-        """Chiama webhook e ritorna prima risposta."""
+        """Chiama /api/v1/chat e ritorna risposta compatibile."""
         # Traccia request per diagnostica
         diagnostic_ctx.set_request(message, sender, metadata)
 
@@ -246,7 +271,7 @@ def api_client(webhook_url, diagnostic_ctx) -> Callable:
         resp.raise_for_status()
 
         data = resp.json()
-        result = data[0] if data else {"text": "", "custom": {}}
+        result = _v1_to_compat(data)
 
         # Traccia response per diagnostica
         diagnostic_ctx.set_response(result)
@@ -259,9 +284,9 @@ def api_client(webhook_url, diagnostic_ctx) -> Callable:
 @pytest.fixture
 def api_client_raw(webhook_url) -> Callable:
     """
-    Client che ritorna response completa (lista di risposte).
+    Client che ritorna response V1 completa.
     """
-    def call(message: str, sender: str, metadata: Dict = None) -> list:
+    def call(message: str, sender: str, metadata: Dict = None) -> Dict:
         payload = {
             "sender": sender,
             "message": message
@@ -283,7 +308,7 @@ def api_client_raw(webhook_url) -> Callable:
 
 @pytest.fixture
 def parse_client(parse_url) -> Callable:
-    """Client per endpoint /model/parse (NLU)."""
+    """Client per endpoint /api/v1/parse (NLU)."""
     def call(text: str, metadata: Dict = None) -> Dict:
         payload = {"text": text}
         if metadata:
@@ -535,7 +560,7 @@ def api_client_diagnostic(webhook_url, diagnostic_ctx) -> Callable:
         resp.raise_for_status()
 
         data = resp.json()
-        result = data[0] if data else {"text": "", "custom": {}}
+        result = _v1_to_compat(data)
 
         # Traccia response
         diagnostic_ctx.set_response(result)

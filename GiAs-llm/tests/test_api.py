@@ -63,22 +63,22 @@ def test_webhook_greet():
     try:
         print(f"Request: {json.dumps(payload, indent=2)}")
         response = requests.post(
-            f"{BASE_URL}/webhooks/rest/webhook",
+            f"{BASE_URL}/api/v1/chat",
             json=payload,
             headers={"Content-Type": "application/json"}
         )
         print(f"\nStatus Code: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), indent=2)}")
-        return response.status_code == 200 and len(response.json()) > 0
+        return response.status_code == 200 and "result" in response.json()
     except Exception as e:
         print(f"❌ Errore: {e}")
         return False
 
 
 def test_webhook_piano_description():
-    """Test webhook con richiesta descrizione piano"""
+    """Test chat con richiesta descrizione piano"""
     print("\n" + "=" * 60)
-    print("TEST 4: Webhook - Descrizione Piano A1")
+    print("TEST 4: Chat V1 - Descrizione Piano A1")
     print("=" * 60)
 
     payload = {
@@ -93,16 +93,15 @@ def test_webhook_piano_description():
     try:
         print(f"Request: {json.dumps(payload, indent=2)}")
         response = requests.post(
-            f"{BASE_URL}/webhooks/rest/webhook",
+            f"{BASE_URL}/api/v1/chat",
             json=payload,
             headers={"Content-Type": "application/json"}
         )
         print(f"\nStatus Code: {response.status_code}")
         result = response.json()
-        print(f"Response Array Length: {len(result)}")
 
-        if len(result) > 0:
-            text = result[0].get("text", "")
+        if "result" in result:
+            text = result["result"].get("text", "")
             print(f"Response Text (primi 300 caratteri):\n{text[:300]}...")
             return "A1" in text or "piano" in text.lower()
         return False
@@ -112,9 +111,9 @@ def test_webhook_piano_description():
 
 
 def test_webhook_search():
-    """Test webhook con ricerca semantica"""
+    """Test chat con ricerca semantica"""
     print("\n" + "=" * 60)
-    print("TEST 5: Webhook - Ricerca Piani (bovini)")
+    print("TEST 5: Chat V1 - Ricerca Piani (bovini)")
     print("=" * 60)
 
     payload = {
@@ -128,15 +127,15 @@ def test_webhook_search():
     try:
         print(f"Request: {json.dumps(payload, indent=2)}")
         response = requests.post(
-            f"{BASE_URL}/webhooks/rest/webhook",
+            f"{BASE_URL}/api/v1/chat",
             json=payload,
             headers={"Content-Type": "application/json"}
         )
         print(f"\nStatus Code: {response.status_code}")
         result = response.json()
 
-        if len(result) > 0:
-            text = result[0].get("text", "")
+        if "result" in result:
+            text = result["result"].get("text", "")
             print(f"Response Text (primi 300 caratteri):\n{text[:300]}...")
             return True
         return False
@@ -160,7 +159,7 @@ def test_parse():
     try:
         print(f"Request: {json.dumps(payload, indent=2)}")
         response = requests.post(
-            f"{BASE_URL}/model/parse",
+            f"{BASE_URL}/api/v1/parse",
             json=payload,
             headers={"Content-Type": "application/json"}
         )
@@ -172,36 +171,39 @@ def test_parse():
         return False
 
 
-def test_rasa_compatibility():
-    """Test formato compatibilità Rasa"""
+def test_v1_format():
+    """Test formato V1 nativo"""
     print("\n" + "=" * 60)
-    print("TEST 7: Compatibilità Formato Rasa")
+    print("TEST 7: Formato API V1")
     print("=" * 60)
 
     payload = {
-        "sender": "rasa_test",
+        "sender": "v1_test",
         "message": "help"
     }
 
     try:
         response = requests.post(
-            f"{BASE_URL}/webhooks/rest/webhook",
+            f"{BASE_URL}/api/v1/chat",
             json=payload
         )
 
         result = response.json()
 
-        is_array = isinstance(result, list)
-        print(f"✓ Response è array: {is_array}")
+        is_dict = isinstance(result, dict)
+        print(f"✓ Response è dict: {is_dict}")
 
-        if is_array and len(result) > 0:
-            has_text = "text" in result[0]
-            print(f"✓ Primo elemento ha campo 'text': {has_text}")
+        if is_dict and "result" in result:
+            has_text = "text" in result["result"]
+            print(f"✓ result ha campo 'text': {has_text}")
 
-            has_recipient = "recipient_id" in result[0]
-            print(f"✓ Primo elemento ha campo 'recipient_id': {has_recipient}")
+            has_intent = "intent" in result["result"]
+            print(f"✓ result ha campo 'intent': {has_intent}")
 
-            return is_array and has_text
+            has_sender = "sender" in result
+            print(f"✓ Response ha campo 'sender': {has_sender}")
+
+            return has_text and has_intent
         return False
 
     except Exception as e:
@@ -212,7 +214,7 @@ def test_rasa_compatibility():
 def main():
     print("\n" + "=" * 60)
     print("   TEST CLIENT API GiAs-llm")
-    print("   Compatibilità con Rasa REST Channel")
+    print("   API V1 Nativa")
     print("=" * 60)
 
     results = []
@@ -231,11 +233,11 @@ def main():
 
     results.append(("Health Check", test_health()))
     results.append(("Status Endpoint", test_status()))
-    results.append(("Webhook - Saluto", test_webhook_greet()))
-    results.append(("Webhook - Piano A1", test_webhook_piano_description()))
-    results.append(("Webhook - Ricerca", test_webhook_search()))
-    results.append(("Parse NLU", test_parse()))
-    results.append(("Compatibilità Rasa", test_rasa_compatibility()))
+    results.append(("Chat V1 - Saluto", test_webhook_greet()))
+    results.append(("Chat V1 - Piano A1", test_webhook_piano_description()))
+    results.append(("Chat V1 - Ricerca", test_webhook_search()))
+    results.append(("Parse V1 NLU", test_parse()))
+    results.append(("Formato V1", test_v1_format()))
 
     print("\n" + "=" * 60)
     print("RIEPILOGO TEST")

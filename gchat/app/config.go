@@ -25,9 +25,8 @@ type ServerConfig struct {
 }
 
 type LLMServerConfig struct {
-	URL            string `json:"url"`
-	Timeout        int    `json:"timeout"`
-	StreamEndpoint string `json:"stream_endpoint"`
+	URL     string `json:"url"`
+	Timeout int    `json:"timeout"`
 }
 
 type LogConfig struct {
@@ -142,9 +141,8 @@ func getDefaultConfig() *Config {
 			Host: "localhost",
 		},
 		LLMServer: LLMServerConfig{
-			URL:            "http://localhost:5005",
-			Timeout:        30,
-			StreamEndpoint: "/webhooks/rest/webhook/stream",
+			URL:     "http://localhost:5005",
+			Timeout: 30,
 		},
 		Log: LogConfig{
 			Level:       "info",

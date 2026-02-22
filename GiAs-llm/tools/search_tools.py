@@ -61,7 +61,7 @@ def search_piani_by_topic(query: str, similarity_threshold: float = 0.4) -> Dict
         return {
             "search_term": search_term,
             "total_found": len(matches),
-            "matches": matches[:10],
+            "matches": matches,
             "search_strategy": "db_ilike",
             "formatted_response": response
         }

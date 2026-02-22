@@ -62,6 +62,7 @@ class ConversationState(TypedDict, total=False):
 
     # Classification confidence (P2)
     _classification_confidence: Optional[float]  # 0.0-1.0, dalla classificazione
+    _intent_candidates: Optional[List[Dict[str, Any]]]  # candidati intent dal router
 
     # Dialogue State Tracking (nuovo)
     dialogue_state: Optional[Dict[str, Any]]
@@ -80,6 +81,9 @@ class ConversationState(TypedDict, total=False):
     available_options: Optional[List[Dict[str, Any]]]
     workflow_history: Optional[List[Dict[str, Any]]]
     accumulated_filters: Optional[Dict[str, Any]]
+
+    # Suggestions per follow-up (dal response_node)
+    suggestions: Optional[List[Dict[str, Any]]]
 
     # Fallback recovery (mantenuti)
     fallback_suggestions: Optional[List[Dict[str, Any]]]
@@ -211,6 +215,37 @@ class ConversationGraph:
                 "message": "Analizzando la richiesta..."
             })
 
+        message = state.get("message", "")
+
+        # Gestione selezione da menu disambiguazione intent
+        ds_raw = state.get("dialogue_state")
+        intent_candidates = ds_raw.get("intent_candidates") if ds_raw else None
+        if intent_candidates and len(message.strip()) <= 3:
+            try:
+                choice = int(message.strip())
+                if 1 <= choice <= len(intent_candidates):
+                    selected = intent_candidates[choice - 1]
+                    state["intent"] = selected["intent"]
+                    state["slots"] = selected.get("slots", {})
+                    state["needs_clarification"] = False
+                    state["_classification_confidence"] = selected.get("confidence", 0.85)
+                    state["_intent_candidates"] = [selected]
+                    state["error"] = ""
+                    # Clear intent_candidates dal dialogue_state
+                    ds_raw["intent_candidates"] = None
+                    state["dialogue_state"] = ds_raw
+                    logger.info(f"[Classify] Disambiguazione: utente ha scelto {selected['intent']}")
+
+                    # Tracking execution
+                    node_duration_ms = (time.perf_counter() - node_start) * 1000
+                    if state.get("execution_path") is not None:
+                        state["execution_path"].append("classify")
+                    if state.get("node_timings") is not None:
+                        state["node_timings"]["classify"] = round(node_duration_ms, 2)
+                    return state
+            except ValueError:
+                pass  # Non è un numero, prosegui con classificazione normale
+
         # Gestione selezione da fallback suggestions (legacy)
         if state.get("fallback_suggestions"):
             print(f"[DEBUG] Found {len(state['fallback_suggestions'])} fallback_suggestions, trying to parse: '{state['message']}'")
@@ -265,6 +300,11 @@ class ConversationGraph:
         state["error"] = classification.get("error", "")
         # P2: Salva confidence reale dal router (heuristic o LLM)
         state["_classification_confidence"] = classification.get("confidence", 0.70)
+
+        # Salva candidati per il dialogue_manager (multi-intent dal router)
+        state["_intent_candidates"] = classification.get("_candidates", [
+            {"intent": state["intent"], "confidence": state.get("_classification_confidence", 0.70), "slots": state.get("slots", {})}
+        ])
 
         if self._event_callback and state["intent"]:
             self._event_callback({
@@ -360,9 +400,10 @@ class ConversationGraph:
         source = "router" if classification_confidence is not None else "hardcoded"
         logger.debug(f"[DM] Intent={intent}, confidence={confidence:.3f}, source={source}")
 
-        candidates = [
+        # Usa candidati multipli dal router (se disponibili)
+        candidates = state.get("_intent_candidates", [
             {"intent": intent, "confidence": confidence, "slots": slots}
-        ]
+        ])
 
         # Calcola raw_message_type
         from .dialogue_manager import _is_refinement, _is_oppure, _is_vague
@@ -738,6 +779,9 @@ class ConversationGraph:
                 "error": final_state.get("error", ""),
                 "has_more_details": final_state.get("has_more_details", False),
                 "detail_context": final_state.get("detail_context", {}),
+                # Suggestions e response_context dal response_node
+                "suggestions": final_state.get("suggestions", []),
+                "response_context": final_state.get("response_context"),
                 # Nuovo: Dialogue State
                 "dialogue_state": final_state.get("dialogue_state"),
                 # Legacy workflow fields

@@ -967,8 +967,19 @@ ${cleanAnswer}
                             this.handleSSEEvent(data, thinkingDiv);
 
                             if (data.type === 'final') {
-                                finalContent = data.content;
-                                finalMetadata = data.metadata || {};
+                                if (data.result) {
+                                    // Nuovo formato V1: result contiene ChatResult tipizzato
+                                    finalContent = data.result.text;
+                                    finalMetadata = {
+                                        intent: data.result.intent,
+                                        suggestions: data.result.suggestions,
+                                        needs_clarification: data.result.needs_clarification,
+                                    };
+                                } else {
+                                    // Fallback formato Rasa legacy
+                                    finalContent = data.content;
+                                    finalMetadata = data.metadata || {};
+                                }
                             }
                         } catch (e) {
                             console.error('Failed to parse SSE data:', e);

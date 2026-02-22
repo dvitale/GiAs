@@ -67,7 +67,10 @@ class Router:
     # =========================================================================
 
     CLASSIFICATION_SYSTEM_PROMPT = """Classificatore intent veterinario GIAS. Output JSON esatto:
-{"reasoning":"breve motivazione","intent":"NOME","slots":{},"needs_clarification":false,"confidence":0.85}
+{"reasoning":"breve motivazione","intent":"NOME","slots":{},"needs_clarification":false,"confidence":0.85,"alternatives":[]}
+
+Se sei incerto (confidence < 0.85), aggiungi fino a 2 alternative:
+"alternatives":[{"intent":"ALTRO","confidence":0.70,"reasoning":"perché"}]
 
 INTENT PER CATEGORIA:
 
@@ -115,6 +118,7 @@ REGOLE DISAMBIGUAZIONE:
 7. confidence: 0.95+ per match esatto, 0.70-0.90 per inferenza, <0.70 se incerto
 8. CAMBIO TOPIC: Se il messaggio è chiaramente un NUOVO ARGOMENTO (es. "attività rischiose" dopo aver parlato di "piani"), IGNORA la sessione precedente e classifica il messaggio in isolamento
 9. "PIANI controllare per primi" → ask_delayed_plans (priorità PIANI); "STABILIMENTI controllare per primi" → ask_priority_establishment (priorità STABILIMENTI)
+10. Se la domanda potrebbe corrispondere a 2+ intent con confidence simile, restituisci il migliore come intent principale e gli altri in "alternatives". NON indovinare: è meglio chiedere all'utente che classificare male.
 
 ESEMPI CRITICI (coppie confuse):
 "stabilimenti a rischio" → {"reasoning":"chiede stabilimenti con alto rischio","intent":"ask_risk_based_priority","slots":{},"needs_clarification":false,"confidence":0.95}
@@ -144,6 +148,10 @@ ESEMPI CRITICI (coppie confuse):
 "sì mostrami" → {"reasoning":"conferma offerta dettagli","intent":"confirm_show_details","slots":{},"needs_clarification":false,"confidence":0.95}
 "no grazie" → {"reasoning":"rifiuto dettagli","intent":"decline_show_details","slots":{},"needs_clarification":false,"confidence":0.95}
 "pizza?" → {"reasoning":"fuori dominio","intent":"fallback","slots":{},"needs_clarification":false,"confidence":0.99}
+
+ESEMPI CON ALTERNATIVES (intent ambigui):
+"come funziona il rischio" → {"reasoning":"potrebbe essere procedura o analisi rischio","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.60,"alternatives":[{"intent":"ask_risk_based_priority","confidence":0.55,"reasoning":"potrebbe chiedere stabilimenti a rischio"}]}
+"controlli recenti" → {"reasoning":"potrebbe essere storico o priorità","intent":"ask_establishment_history","slots":{},"needs_clarification":true,"confidence":0.55,"alternatives":[{"intent":"ask_priority_establishment","confidence":0.50,"reasoning":"potrebbe chiedere chi controllare"}]}
 
 CAMBIO TOPIC (ignora sessione precedente):
 SESSIONE: intent=ask_delayed_plans, slots={"piano_code":"A1"}
@@ -225,7 +233,9 @@ OUTPUT:"""
         r'allevament[io]|macellazione|igiene|sicurezza|alimentare|'
         r'descrizione|informazioni|descrivimi|dimmi|mostrami|cerca|'
         r'vicino|dintorni|zona|controllare|controllato|controllati|'
-        r'sanzion[ie]|procedura|procedure|chi|quali|quanti|cosa|come)\b',
+        r'sanzion[ie]|procedura|procedure|chi|quali|quanti|cosa|come|'
+        r'cos[\'\'`\u2019]?[eè]|perch[eé]|quando|dove|quanto|'
+        r'matrix|borsellino|preaccettazione|checklist|aiuto|help)\b',
         re.IGNORECASE
     )
 
@@ -759,56 +769,62 @@ OUTPUT:"""
         try:
             response = self.llm_client.query(messages=messages, temperature=AppConfig.CLASSIFICATION_TEMPERATURE, json_mode=True)
 
-            if not response:
-                result = self._fallback_response("Risposta LLM vuota")
-                result["slots"] = self._normalize_slots(extracted_slots)
-                return self._post_validate(result)
+            if response:
+                result = self._parse_llm_response(response)
 
-            result = self._parse_llm_response(response)
+                if self._validate_result(result):
+                    # Merge pre-parsed slots (LLM ha priorità se fornisce valori)
+                    llm_slots = result.get("slots", {})
+                    merged_slots = {**extracted_slots, **llm_slots}
+                    result["slots"] = self._normalize_slots(merged_slots)
 
-            if not self._validate_result(result):
-                result = self._fallback_response("Validazione fallita")
-                result["slots"] = self._normalize_slots(extracted_slots)
-                return self._post_validate(result)
+                    # Post-validation con correzione semantica
+                    result = self._post_validate(result, message=message)
 
-            # Merge pre-parsed slots (LLM ha priorità se fornisce valori)
-            llm_slots = result.get("slots", {})
-            merged_slots = {**extracted_slots, **llm_slots}
-            result["slots"] = self._normalize_slots(merged_slots)
+                    # Costruisci lista candidati per il dialogue_manager
+                    alternatives = result.pop("alternatives", [])
+                    candidates = [{"intent": result["intent"], "confidence": result.get("confidence", 0.70), "slots": result.get("slots", {})}]
+                    for alt in alternatives[:2]:
+                        alt_intent = alt.get("intent")
+                        if alt_intent and alt_intent in self.VALID_INTENTS:
+                            candidates.append({"intent": alt_intent, "confidence": alt.get("confidence", 0.50), "slots": {}})
+                    result["_candidates"] = candidates
 
-            # Post-validation con correzione semantica
-            result = self._post_validate(result, message=message)
+                    # Cache successful classification
+                    classification_time = (time.time() - classification_start) * 1000
+                    if self.enable_cache and self.intent_cache is not None and result.get("intent") != "fallback":
+                        self.intent_cache.set(cache_key, result)
+                        print(f"[Router] 📦 Cached classification for: {message[:50]}... (took {classification_time:.0f}ms)")
 
-            # Cache successful classification
-            classification_time = (time.time() - classification_start) * 1000
-            if self.enable_cache and self.intent_cache is not None and result.get("intent") != "fallback":
-                self.intent_cache.set(cache_key, result)
-                print(f"[Router] 📦 Cached classification for: {message[:50]}... (took {classification_time:.0f}ms)")
-
-            return result
+                    return result
 
         except Exception as e:
-            result = self._fallback_response(f"Errore classificazione: {str(e)}")
-            result["slots"] = self._normalize_slots(extracted_slots)
-            return self._post_validate(result)
+            print(f"[Router] LLM classification error: {e}")
+
+        # =====================================================================
+        # LAYER 6: Fallback locale per LLM-down
+        # Se arriviamo qui, l'LLM ha fallito (timeout, errore, risposta vuota)
+        # Greet/goodbye/help funzionano senza LLM come fallback minimale.
+        # =====================================================================
+        msg_lower = message.lower().strip()
+        if len(msg_lower) < 30 and self.GREET_PATTERNS.match(message):
+            return {"intent": "greet", "slots": {}, "needs_clarification": False, "confidence": 0.90}
+        if len(msg_lower) < 30 and self.GOODBYE_PATTERNS.search(message):
+            return {"intent": "goodbye", "slots": {}, "needs_clarification": False, "confidence": 0.90}
+        if self.HELP_PATTERNS.search(message):
+            return {"intent": "ask_help", "slots": {}, "needs_clarification": False, "confidence": 0.90}
+
+        result = self._fallback_response("LLM non disponibile")
+        result["slots"] = self._normalize_slots(extracted_slots)
+        return self._post_validate(result)
 
     def _try_heuristics(self, message: str, has_detail_context: bool) -> Optional[Dict[str, Any]]:
         """
-        Tenta classificazione via pattern matching.
-        Ritorna None se non c'è match sicuro.
+        Heuristiche minimali: solo conferme/rifiuti e risposte a menu.
 
-        P3: Quando MINIMAL_HEURISTICS=True, usa solo heuristics essenziali:
-        - confirm/decline (explicit + short con context)
-        - disambiguazione rischio (mai_controllati, con_sanzioni)
-        - greet/goodbye/help (triviali)
-
-        Quando MINIMAL_HEURISTICS=False, usa tutte le heuristics (legacy).
+        Tutto il resto è delegato all'LLM che ha esempi e regole nel prompt.
+        Queste heuristiche gestiscono contesto conversazionale che l'LLM non vede.
         """
-        msg_lower = message.lower().strip()
-
-        # =====================================================================
-        # HEURISTICS ESSENZIALI (sempre attive)
-        # =====================================================================
 
         # Conferme/Rifiuti ESPLICITI (non richiedono detail_context)
         if self.CONFIRM_EXPLICIT_PATTERNS.match(message):
@@ -829,140 +845,7 @@ OUTPUT:"""
         if self.RE_RISK_TYPE_CON_SANZIONI.match(message):
             return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "con_sanzioni"}, "needs_clarification": False, "confidence": 0.99}
 
-        # Saluti iniziali (solo se brevi)
-        if len(msg_lower) < 30 and self.GREET_PATTERNS.match(message):
-            return {"intent": "greet", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Saluti finali (può essere più lungo, es. "grazie e arrivederci")
-        if len(msg_lower) < 30 and self.GOODBYE_PATTERNS.search(message):
-            return {"intent": "goodbye", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Aiuto
-        if self.HELP_PATTERNS.search(message):
-            return {"intent": "ask_help", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Piani in ritardo PLURALE (caso comune, non richiede slot)
-        # Essenziale per evitare confusione LLM con check_if_plan_delayed
-        if self.DELAYED_PATTERNS.search(message) and not self.RE_PIANO_CODE.search(message):
-            return {"intent": "ask_delayed_plans", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Prossimità geografica (caso comune, richiede slot location)
-        # Essenziale per evitare fallback LLM
-        if self.NEARBY_PATTERNS.search(message):
-            return {"intent": "ask_nearby_priority", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Suggerisci controlli / mai controllati (caso comune per LLM inconsistente)
-        # Pattern: "suggerisci controlli", "mai controllati", "non controllati", "da controllare"
-        if self.NEVER_CONTROLLED_PATTERNS.search(message) or re.search(r'\bsuggerisci\s+controll', message, re.IGNORECASE):
-            return {"intent": "ask_suggest_controls", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Priorità controlli (pattern preciso, guardia anti-rischio)
-        # Escludi sia RISK_PATTERNS sia menzione diretta di "rischio" (es. "secondo il rischio storico")
-        if self.PRIORITY_PATTERNS.search(message) and not self.RISK_PATTERNS.search(message) and not re.search(r'\brischio\b', message, re.IGNORECASE):
-            return {"intent": "ask_priority_establishment", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Top attività rischiose (PRIMA di RISK per evitare conflitti)
-        if self.TOP_RISK_PATTERNS.search(message):
-            return {"intent": "ask_top_risk_activities", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Rischio stabilimenti (dopo TOP_RISK per evitare conflitti)
-        if self.RISK_PATTERNS.search(message) and not self.TOP_RISK_PATTERNS.search(message):
-            return {"intent": "ask_risk_based_priority", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # NC per categoria
-        if self.NC_CATEGORY_PATTERNS.search(message):
-            return {"intent": "analyze_nc_by_category", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Procedure operative (RAG) - pattern preciso per "come si fa/inserisce/gestisce"
-        # ECCEZIONE: richieste su "piano" → passa al LLM per ask_piano_description
-        if self.PROCEDURE_PATTERNS.search(message):
-            has_piano = re.search(r'\bpiano\b', message, re.IGNORECASE)
-            is_info_request = self.DI_COSA_TRATTA_PATTERN.search(message) or self.INFO_SU_PATTERN.search(message)
-            if not (is_info_request and has_piano):
-                return {"intent": "info_procedure", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Establishment history (storico, storia controlli, controlli per partita iva)
-        # Essenziale per topic change detection quando pending_slots attivo
-        if self.ESTABLISHMENT_HISTORY_PATTERNS.search(message):
-            return {"intent": "ask_establishment_history", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # =====================================================================
-        # HEURISTICS ESTESE (solo quando MINIMAL_HEURISTICS=False)
-        # =====================================================================
-
-        if self.MINIMAL_HEURISTICS:
-            # P3: Delega tutto il resto all'LLM
-            return None
-
-        # --- Heuristics legacy (disabilitate con MINIMAL_HEURISTICS=True) ---
-
-        # Procedure operative (RAG) - PRIMA di HELP per catturare "come funziona X"
-        # ECCEZIONE: richieste su "piano" → passa a PIANO_DESCRIPTION_PATTERNS
-        if self.PROCEDURE_PATTERNS.search(message):
-            # Se contiene "piano", lascia gestire a PIANO_DESCRIPTION_PATTERNS
-            has_piano = re.search(r'\bpiano\b', message, re.IGNORECASE)
-            is_info_request = self.DI_COSA_TRATTA_PATTERN.search(message) or self.INFO_SU_PATTERN.search(message)
-            if is_info_request and has_piano:
-                pass  # Non tornare qui, lascia proseguire per PIANO_DESCRIPTION_PATTERNS
-            else:
-                return {"intent": "info_procedure", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Ritardo piano specifico (con piano_code → check_if_plan_delayed)
-        if self.CHECK_PLAN_DELAYED_PATTERNS.search(message) and self.RE_PIANO_CODE.search(message):
-            return {"intent": "check_if_plan_delayed", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Singolare "un piano" + ritardo SENZA piano_code → passa a LLM per needs_clarification
-        if self.SINGULAR_PLAN_PATTERN.search(message) and self.CHECK_PLAN_DELAYED_PATTERNS.search(message):
-            if not self.RE_PIANO_CODE.search(message):
-                return None  # Forza passaggio a LLM
-
-        # Mai controllati
-        if self.NEVER_CONTROLLED_PATTERNS.search(message):
-            return {"intent": "ask_suggest_controls", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Top attività rischiose (PRIMA di RISK per evitare conflitti)
-        if self.TOP_RISK_PATTERNS.search(message):
-            return {"intent": "ask_top_risk_activities", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Priorità controlli
-        if self.PRIORITY_PATTERNS.search(message) and not self.RISK_PATTERNS.search(message):
-            return {"intent": "ask_priority_establishment", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # NC per categoria (PRIMA di RISK per evitare "non conformità" → risk)
-        if self.NC_CATEGORY_PATTERNS.search(message):
-            return {"intent": "analyze_nc_by_category", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Rischio (dopo NC e TOP_RISK)
-        if self.RISK_PATTERNS.search(message) and not self.TOP_RISK_PATTERNS.search(message):
-            return {"intent": "ask_risk_based_priority", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Statistiche piani
-        if self.STATISTICS_PATTERNS.search(message):
-            return {"intent": "ask_piano_statistics", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Establishment history (storico, storia controlli, controlli per partita iva)
-        if self.ESTABLISHMENT_HISTORY_PATTERNS.search(message):
-            return {"intent": "ask_establishment_history", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Piano description (di cosa tratta, cosa prevede, descrizione piano)
-        if self.PIANO_DESCRIPTION_PATTERNS.search(message):
-            return {"intent": "ask_piano_description", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Piano stabilimenti (stabilimenti controllati, dove è stato applicato, dimmi del piano, info piano)
-        if self.PIANO_STABILIMENTI_PATTERNS.search(message):
-            return {"intent": "ask_piano_stabilimenti", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Cerca piani per topic
-        if self.SEARCH_PIANI_PATTERNS.search(message):
-            return {"intent": "search_piani_by_topic", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
-        # Catch-all: "piano" + piano_code → ask_piano_stabilimenti
-        # Escludi "ritardo" per non interferire con check_if_plan_delayed
-        if (self.RE_PIANO_CODE.search(message) and
-            re.search(r'\bpiano\b', message, re.IGNORECASE) and
-            not re.search(r'\britard', message, re.IGNORECASE)):
-            return {"intent": "ask_piano_stabilimenti", "slots": {}, "needs_clarification": False, "confidence": 0.99}
-
+        # Tutto il resto → LLM
         return None
 
     def _extract_slots(self, message: str) -> Dict[str, Any]:
@@ -1145,6 +1028,14 @@ OUTPUT:"""
         else:
             parsed["confidence"] = 0.70  # default se non presente
 
+        # FIXUP: Estrai alternatives (lista di candidati alternativi)
+        if "alternatives" in parsed:
+            alts = parsed["alternatives"]
+            if not isinstance(alts, list):
+                parsed["alternatives"] = []
+        else:
+            parsed["alternatives"] = []
+
         return parsed
 
     def _extract_balanced_json(self, text: str) -> str:
@@ -1322,62 +1213,48 @@ OUTPUT:"""
 
     def _is_gibberish(self, message: str) -> bool:
         """
-        Rileva messaggi senza senso (gibberish) per evitare classificazione errata.
+        Rileva messaggi senza senso (gibberish) per evitare LLM call inutili.
 
-        Un messaggio è considerato gibberish se:
-        1. Non contiene parole chiave del dominio GIAS
-        2. Non è un saluto, aiuto, conferma o rifiuto riconosciuto
-        3. Ha almeno 3 caratteri (esclude input brevissimi come "?")
-
-        Returns:
-            True se il messaggio è gibberish, False altrimenti.
+        Approccio permissivo: blocca solo messaggi brevi senza keyword.
+        Messaggi >15 char passano all'LLM che sa distinguere pertinenza.
         """
         if len(message) < 3:
-            return False  # Input troppo breve, lascia decidere ad altri layer
+            return False
 
         msg_lower = message.lower().strip()
 
-        # Saluti brevi sono OK
-        if len(msg_lower) < 30 and self.GREET_PATTERNS.match(message):
+        # Conferme/rifiuti brevi sono OK
+        if self.CONFIRM_SHORT_PATTERNS.match(message) or self.DECLINE_SHORT_PATTERNS.match(message):
+            return False
+        if self.CONFIRM_EXPLICIT_PATTERNS.match(message) or self.DECLINE_EXPLICIT_PATTERNS.match(message):
             return False
 
-        # Espressioni sociali (saluti, commiati, convenevoli) → lasciali passare all'LLM
-        if self.SOCIAL_PATTERNS.search(message):
-            return False
-
-        # Conferme/rifiuti sono OK
-        if self.CONFIRM_EXPLICIT_PATTERNS.match(message):
-            return False
-        if self.DECLINE_EXPLICIT_PATTERNS.match(message):
-            return False
-        if self.CONFIRM_SHORT_PATTERNS.match(message):
-            return False
-        if self.DECLINE_SHORT_PATTERNS.match(message):
-            return False
-
-        # Goodbye pattern sono OK
-        if self.GOODBYE_PATTERNS.search(message):
-            return False
-
-        # Help pattern sono OK
-        if self.HELP_PATTERNS.search(message):
-            return False
-
-        # Disambiguazione rischio sono OK
-        if self.RE_RISK_TYPE_MAI_CONTROLLATI.match(message):
-            return False
-        if self.RE_RISK_TYPE_CON_SANZIONI.match(message):
-            return False
-
-        # Se contiene almeno una parola chiave del dominio, non è gibberish
-        if self.DOMAIN_KEYWORDS.search(message):
-            return False
-
-        # Se contiene numeri italiani comuni (per risposte numeriche)
+        # Risposte numeriche sono OK (selezione da menu)
         if re.match(r'^\s*[0-9]+\s*$', message):
             return False
 
-        # Nessuna parola chiave trovata → gibberish
+        # Se contiene parole del dominio, non è gibberish
+        if self.DOMAIN_KEYWORDS.search(message):
+            return False
+
+        # Espressioni sociali → lasciali passare all'LLM
+        if self.SOCIAL_PATTERNS.search(message):
+            return False
+
+        # Saluti/commiati/help → lasciali passare all'LLM
+        if self.GREET_PATTERNS.match(message):
+            return False
+        if self.GOODBYE_PATTERNS.search(message):
+            return False
+        if self.HELP_PATTERNS.search(message):
+            return False
+
+        # Se il messaggio è lungo abbastanza (>15 char), lascialo passare all'LLM
+        # L'LLM capirà se è pertinente o meno
+        if len(msg_lower) > 15:
+            return False
+
+        # Messaggi brevi senza keyword → gibberish
         return True
 
     def get_cache_stats(self) -> Dict[str, Any]:

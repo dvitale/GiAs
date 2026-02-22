@@ -31,7 +31,7 @@ Browser --> gchat (Go, :8080) --> GiAs-llm (Python, :5005) --> LLM Provider
 - **Server**: Go 1.21+ con Gin framework
 - **UI**: HTML/CSS/JS vanilla (tema light/dark, responsive)
 - **Sessioni**: Cookie-based (gin-contrib/sessions), TTL 5 min, priorita' POST > Query > Session
-- **Comunicazione**: POST JSON verso backend, compatibile protocollo Rasa; proxy CORS per API chat-log
+- **Comunicazione**: POST JSON verso backend (protocollo V1 nativo); proxy CORS per API chat-log
 - **Dettagli**: vedere `gchat/CLAUDE.md`
 
 ### Database
@@ -89,7 +89,7 @@ cd GiAs-llm && python -m pytest tests/e2e/test_intents.py -v
 cd GiAs-llm && python -m pytest tests/e2e/test_intents.py::TestIntents::test_help -v
 
 # Test API manuale
-curl -X POST http://localhost:5005/webhooks/rest/webhook \
+curl -X POST http://localhost:5005/api/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"sender":"test","message":"piani in ritardo","metadata":{"asl":"AVELLINO"}}'
 ```
@@ -99,10 +99,10 @@ curl -X POST http://localhost:5005/webhooks/rest/webhook \
 | Endpoint | Metodo | Descrizione |
 |----------|--------|-------------|
 | `localhost:5005/` | GET | Health check backend |
-| `localhost:5005/webhooks/rest/webhook` | POST | Chat principale |
-| `localhost:5005/webhooks/rest/webhook/stream` | POST | Chat streaming (SSE) |
+| `localhost:5005/api/v1/chat` | POST | Chat principale |
+| `localhost:5005/api/v1/chat/stream` | POST | Chat streaming (SSE) |
 | `localhost:5005/status` | GET | Stato + dati caricati |
-| `localhost:5005/model/parse` | POST | Parsing NLU |
+| `localhost:5005/api/v1/parse` | POST | Parsing NLU |
 | `localhost:5005/api/chat-log/user-conversations` | GET | Lista conversazioni utente (per codice_fiscale) |
 | `localhost:5005/api/chat-log/conversation/{sid}` | GET | Messaggi di una conversazione |
 | `localhost:8080/gias/webchat/` | GET | UI chat |
@@ -121,7 +121,7 @@ curl -X POST http://localhost:5005/webhooks/rest/webhook \
 - **Logging**: prefissi strutturati (CHAT_, LLM_, USER_, INDEX_, CHATLOG_PROXY_, HISTORY_, ANALYTICS_, MONITOR_)
 - **Pattern backend**: Factory (data sources), Singleton (graph + dati globali + Qdrant + embedding), lazy loading
 - **Sessioni frontend**: cookie-based (gin-contrib/sessions), TTL 5 min, merge POST > Query > Session
-- **Sessioni backend**: TTL 5 minuti, state in memoria (dict in api.py)
+- **Sessioni backend**: TTL 5 minuti, gestite da SessionManager (app/session_manager.py)
 - **Config**: JSON in `configs/config.json` (backend) e `config/config.json` (frontend)
 - **Base path**: `/gias/webchat` per reverse proxy
 - **Script shell**: non modificare gli .sh esistenti nella root di gchat
@@ -133,7 +133,7 @@ curl -X POST http://localhost:5005/webhooks/rest/webhook \
 - **`./all.sh`** e' il comando per compilare e riavviare gchat. Usare sempre questo.
 - **LLM obbligatorio**: con Ollama locale (default), richiede Ollama su localhost:11434. Con provider esterni, richiede API key via env var e `gdpr.allow_external_llm=true`.
 - **Dati precaricati**: al primo avvio il backend carica tutti i dati da PostgreSQL/CSV in memoria. Il primo request puo' essere lento.
-- **Protocollo Rasa**: l'API webhook mantiene compatibilita' con il formato Rasa (`sender`, `message`, `metadata`) anche se il backend usa LangGraph.
+- **API V1 nativa**: gli endpoint usano un contratto tipizzato Pydantic (`ChatMessage` → `ChatResponse` con `ChatResult`). Il vecchio protocollo Rasa e' stato rimosso.
 - **Metadata utente**: passati via query string URL -> session cookie -> template JS -> POST body -> backend state. Il campo `asl` (nome) ha priorita' su `asl_id`. Il campo `uoc` viene recuperato automaticamente da personale.csv.
 - **CORS proxy**: le API chat-log (`/api/chat-log/*`) sono proxate dal server Go per evitare errori CORS cross-origin dal browser.
 - **Config duplicata**: backend e frontend hanno ciascuno il proprio `config.json` con impostazioni indipendenti.

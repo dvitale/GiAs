@@ -177,7 +177,7 @@ cmd_test() {
         local query="${test%%|*}"
         local expected="${test##*|}"
 
-        local response=$(curl -s --max-time 30 -X POST "http://localhost:$PORT/webhooks/rest/webhook" \
+        local response=$(curl -s --max-time 30 -X POST "http://localhost:$PORT/api/v1/chat" \
             -H "Content-Type: application/json" \
             -d "{\"sender\": \"test\", \"message\": \"$query\"}" 2>/dev/null || echo "")
 

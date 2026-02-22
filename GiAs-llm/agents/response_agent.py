@@ -200,7 +200,7 @@ class ResponseFormatter:
     def format_search_results(
         search_term: str,
         matches: List[Dict[str, Any]],
-        max_display: int = 10
+        max_display: Optional[int] = 10
     ) -> str:
         """
         Formatta risultati ricerca piani con tutti i dettagli:
@@ -209,7 +209,8 @@ class ResponseFormatter:
         response = f"**Piani trovati per: '{search_term}'**\n\n"
         response += f"**Trovati {len(matches)} risultati rilevanti:**\n\n"
 
-        for idx, piano_info in enumerate(matches[:max_display], 1):
+        display_matches = matches[:max_display] if max_display else matches
+        for idx, piano_info in enumerate(display_matches, 1):
             sezione = piano_info.get('sezione', '')
             alias = piano_info.get('alias', '')
             alias_ind = piano_info.get('alias_indicatore', '')
@@ -246,7 +247,7 @@ class ResponseFormatter:
                 response += f" | Rilevanza: {piano_info['similarity']:.0%}"
             response += "\n\n"
 
-        if len(matches) > max_display:
+        if max_display and len(matches) > max_display:
             response += f"... e altri {len(matches) - max_display} risultati.\n\n"
 
         return response
@@ -349,7 +350,8 @@ class ResponseFormatter:
         osa_risky_count: int,
         activities_count: int,
         osa_rischiosi: pd.DataFrame,
-        has_results: bool = True
+        has_results: bool = True,
+        max_display: Optional[int] = 20
     ) -> str:
         """
         Formatta analisi priorità basata su rischio.
@@ -375,10 +377,12 @@ class ResponseFormatter:
         response += f"**Attività critiche identificate (regionale):** {activities_count}\n"
 
         title_suffix = f" per Piano {piano_id}" if piano_id else ""
-        response += f"**Top 20 OSA Mai Controllati in Attività ad Alto Rischio{title_suffix}:**\n"
+        display_count = max_display if max_display else len(osa_rischiosi)
+        response += f"**Top {display_count} OSA Mai Controllati in Attività ad Alto Rischio{title_suffix}:**\n"
         response += "*(Ordinati per rischiosità storica dell'attività a livello regionale)*\n"
 
-        for idx, row in enumerate(osa_rischiosi.itertuples(index=False), 1):
+        display_df = osa_rischiosi.head(max_display) if max_display else osa_rischiosi
+        for idx, row in enumerate(display_df.itertuples(index=False), 1):
             numero_id = getattr(row, 'num_riconoscimento', '') if pd.notna(getattr(row, 'num_riconoscimento', '')) else getattr(row, 'n_reg', '')
             if not numero_id or str(numero_id) == 'nan':
                 numero_id = getattr(row, 'codice_fiscale', '')
@@ -407,8 +411,8 @@ class ResponseFormatter:
         response += "ad attività che hanno mostrato criticità significative nei controlli "
         response += "effettuati a livello regionale (Regione Campania). Dare priorità assoluta ai primi 5 della lista."
 
-        if osa_risky_count > 20:
-            response += f"\n\n**Nota:** Visualizzati 20 su {osa_risky_count} risultati. Usa il pulsante 'Scarica' per ottenere l'elenco completo."
+        if max_display and osa_risky_count > max_display:
+            response += f"\n\n**Nota:** Visualizzati {max_display} su {osa_risky_count} risultati. Usa il pulsante 'Scarica' per ottenere l'elenco completo."
 
         return response
 
@@ -469,7 +473,8 @@ class ResponseFormatter:
         piano_id: Optional[str],
         delayed_count: int,
         total_found: int,
-        priority_df_display: pd.DataFrame
+        priority_df_display: pd.DataFrame,
+        max_display: Optional[int] = 15
     ) -> str:
         """
         Formatta stabilimenti prioritari da programmazione.
@@ -487,10 +492,12 @@ class ResponseFormatter:
         response += f"**Totale stabilimenti trovati:** {total_found}\n"
 
         title_suffix = f" per Piano {piano_id}" if piano_id else ""
-        response += f"**Top 15 Stabilimenti Prioritari{title_suffix} (mai controllati):**\n"
+        display_count = max_display if max_display else len(priority_df_display)
+        response += f"**Top {display_count} Stabilimenti Prioritari{title_suffix} (mai controllati):**\n"
         response += "*(Ordinati per urgenza programmazione e correlazione statistica)*\n"
 
-        for idx, row in enumerate(priority_df_display.itertuples(index=False)):
+        display_df = priority_df_display.head(max_display) if max_display else priority_df_display
+        for idx, row in enumerate(display_df.itertuples(index=False)):
             num_id = getattr(row, 'num_riconoscimento', '')
             if pd.isna(num_id) or str(num_id) == 'nan':
                 num_id = 'N/D'
@@ -511,8 +518,8 @@ class ResponseFormatter:
         response += "3. Individuati stabilimenti mai controllati per quelle attività\n"
         response += "**Raccomandazione:** Dare priorità ai primi 5 stabilimenti della lista."
 
-        if total_found > 15:
-            response += f"\n**Nota:** Visualizzati 15 su {total_found} risultati. Usa il pulsante 'Scarica' per ottenere l'elenco completo."
+        if max_display and total_found > max_display:
+            response += f"\n**Nota:** Visualizzati {max_display} su {total_found} risultati. Usa il pulsante 'Scarica' per ottenere l'elenco completo."
 
         return response
 
@@ -880,7 +887,8 @@ class ResponseFormatter:
         num_registrazione: Optional[str] = None,
         numero_riconoscimento: Optional[str] = None,
         partita_iva: Optional[str] = None,
-        ragione_sociale: Optional[str] = None
+        ragione_sociale: Optional[str] = None,
+        max_display: Optional[int] = 20
     ) -> str:
         """
         Formatta storico controlli stabilimento.
@@ -926,8 +934,8 @@ class ResponseFormatter:
         response += f"**📊 Totale controlli trovati:** {len(history_df)}\n\n"
         response += "────────────────────────────────────\n\n"
 
-        # Limita visualizzazione a 20 controlli più recenti
-        display_limit = min(20, len(history_df))
+        # Limita visualizzazione
+        display_limit = min(max_display, len(history_df)) if max_display else len(history_df)
 
         for idx, row in enumerate(history_df.head(display_limit).itertuples(index=False), 1):
             data_controllo = getattr(row, 'data_inizio_controllo', 'N.D.')

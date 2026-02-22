@@ -279,8 +279,15 @@ def search_piani_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
                 search_term=search_term,
                 matches=matches
             )
+            # Genera risposta completa senza limiti per detail_context
+            full_response = ResponseFormatter.format_search_results(
+                search_term=search_term,
+                matches=matches,
+                max_display=None
+            )
             result = apply_two_phase_check(
-                state, "search_piani_by_topic", result, total_found, summary_text
+                state, "search_piani_by_topic", result, total_found, summary_text,
+                full_formatted_response=full_response
             )
 
     state["tool_output"] = {"type": "search_piani", "data": result}
@@ -313,9 +320,23 @@ def priority_establishment_tool(state: Dict[str, Any], event_callback=None, **_)
     if isinstance(result, dict):
         total_found = result.get("total_found", 0)
         if total_found > TWO_PHASE_THRESHOLDS.get("ask_priority_establishment", 5):
+            import pandas as pd
             summary_text = ResponseFormatter.format_priority_establishments_summary(result)
+            # Genera risposta completa senza limiti per detail_context
+            priority_data = result.get("priority_establishments", [])
+            priority_df_full = pd.DataFrame(priority_data) if isinstance(priority_data, list) else priority_data
+            full_response = ResponseFormatter.format_priority_establishments(
+                user_asl=result.get("user_asl", result.get("asl", "N/D")),
+                uoc_name=result.get("uoc_name", result.get("uoc", "N/D")),
+                piano_id=result.get("piano_code"),
+                delayed_count=result.get("delayed_plans_count", 0),
+                total_found=total_found,
+                priority_df_display=priority_df_full,
+                max_display=None
+            )
             result = apply_two_phase_check(
-                state, "ask_priority_establishment", result, total_found, summary_text
+                state, "ask_priority_establishment", result, total_found, summary_text,
+                full_formatted_response=full_response
             )
 
     state["tool_output"] = {"type": "priority_establishment", "data": result}
@@ -418,8 +439,22 @@ def risk_predictor_tool(state: Dict[str, Any], event_callback=None, **_) -> Dict
                 "osa_rischiosi": result.get("risky_establishments", []),
             }
             summary_text = ResponseFormatter.format_risk_based_priority_summary(mapped_result)
+            # Genera risposta completa senza limiti per detail_context
+            import pandas as pd
+            risky_data = result.get("risky_establishments", [])
+            risky_df = pd.DataFrame(risky_data) if isinstance(risky_data, list) else risky_data
+            full_response = ResponseFormatter.format_risk_based_priority(
+                user_asl=result.get("asl", "N/D"),
+                piano_id=result.get("piano_code"),
+                osa_total_count=result.get("total_never_controlled", 0),
+                osa_risky_count=total_risky,
+                activities_count=result.get("activities_at_risk", 0),
+                osa_rischiosi=risky_df,
+                max_display=None
+            )
             result = apply_two_phase_check(
-                state, "ask_risk_based_priority", result, total_risky, summary_text
+                state, "ask_risk_based_priority", result, total_risky, summary_text,
+                full_formatted_response=full_response
             )
 
     state["tool_output"] = {"type": output_type, "data": result}
@@ -499,8 +534,21 @@ def establishment_history_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
         total_controls = result.get("total_controls", 0)
         if total_controls > TWO_PHASE_THRESHOLDS.get("ask_establishment_history", 5):
             summary_text = ResponseFormatter.format_establishment_history_summary(result)
+            # Genera risposta completa senza limiti per detail_context
+            import pandas as pd
+            history_data = result.get("history", [])
+            history_df = pd.DataFrame(history_data) if isinstance(history_data, list) else history_data
+            full_response = ResponseFormatter.format_establishment_history(
+                history_df=history_df,
+                num_registrazione=num_registrazione,
+                numero_riconoscimento=numero_riconoscimento,
+                partita_iva=partita_iva,
+                ragione_sociale=ragione_sociale,
+                max_display=None
+            )
             result = apply_two_phase_check(
-                state, "ask_establishment_history", result, total_controls, summary_text
+                state, "ask_establishment_history", result, total_controls, summary_text,
+                full_formatted_response=full_response
             )
 
     state["tool_output"] = {"type": "establishment_history", "data": result}
@@ -561,8 +609,20 @@ def nearby_priority_tool(state: Dict[str, Any], event_callback=None, **_) -> Dic
         total_found = result.get("total_found", 0)
         if total_found > TWO_PHASE_THRESHOLDS.get("ask_nearby_priority", 10):
             summary_text = ResponseFormatter.format_nearby_priority_summary(result)
+            # Genera risposta completa senza limiti per detail_context
+            import pandas as pd
+            nearby_data = result.get("nearby_establishments", [])
+            nearby_df = pd.DataFrame(nearby_data) if isinstance(nearby_data, list) else nearby_data
+            full_response = ResponseFormatter.format_nearby_priority(
+                location=result.get("location", "N/D"),
+                center_coords=result.get("center_coords", (0, 0)),
+                radius_km=result.get("radius_km", 5.0),
+                nearby_df=nearby_df,
+                total_found=total_found
+            )
             result = apply_two_phase_check(
-                state, "ask_nearby_priority", result, total_found, summary_text
+                state, "ask_nearby_priority", result, total_found, summary_text,
+                full_formatted_response=full_response
             )
 
     state["tool_output"] = {"type": "nearby_priority", "data": result}

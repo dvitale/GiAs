@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**GiAs-llm** is a LangGraph-based conversational AI system for veterinary monitoring in Regione Campania (Italy). It migrates Rasa chatbot logic to a pure LLM + LangGraph architecture with multi-model support (Almawave/Velvet, Mistral-Nemo, LLaMA 3.1) and an advanced hybrid search system combining vector similarity and LLM semantic reasoning.
+**GiAs-llm** is a LangGraph-based conversational AI system for veterinary monitoring in Regione Campania (Italy). It uses a pure LLM + LangGraph architecture with multi-model support (Almawave/Velvet, Mistral-Nemo, LLaMA 3.1) and an advanced hybrid search system combining vector similarity and LLM semantic reasoning.
 
 **Domain**: ASL (Azienda Sanitaria Locale) operators query veterinary control plans, identify inspection priorities based on risk analysis and delayed schedules, and discover establishments requiring urgent checks.
 
@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 3-Layer Separation
 
-The system follows a strict architectural separation migrated from the original Rasa codebase:
+The system follows a strict architectural separation:
 
 1. **Data Layer** (`agents/data_agent.py`):
    - `DataRetriever`: Pure CSV data access
@@ -163,15 +163,12 @@ Uses `formatted_response` from `ResponseFormatter` when available, falls back to
 **Risk Score (Statistical)**: `P(NC) × Impatto × 100` where P(NC) = (total NC) / (controls), Impatto = (severe NC) / (controls)
 **ML Score**: XGBoost predicted probability of NC (0.0-1.0), threshold: HIGH > 0.70, MEDIUM > 0.40
 
-## Migration Notes
+## Architecture Notes
 
-This codebase migrates from **Rasa** to **LangGraph**. Key changes:
-
-- **No more**: `dispatcher`, `tracker`, `SlotSet`, Rasa `Action` classes
 - **Tool functions**: Pure functions with explicit parameters (no side effects)
-- **Intent classification**: LLM-based (Router) instead of Rasa NLU
-- **Response generation**: LLM-based (response_generator_node) instead of templates
-- **State management**: LangGraph `ConversationState` instead of Rasa slots
+- **Intent classification**: LLM-based (Router) with hybrid heuristics
+- **Response generation**: LLM-based (response_generator_node) with template fallback
+- **State management**: LangGraph `ConversationState` (TypedDict)
 
 **Agent files**: Business logic is in `agents/data_agent.py` and `agents/response_agent.py`.
 
@@ -222,7 +219,9 @@ GiAs-llm/
 │   └── utils.py               # Shared utilities
 ├── app/                        # FastAPI server (unchanged)
 │   ├── main.py                # Entry point stub
-│   └── api.py                 # FastAPI server with Rasa compatibility
+│   ├── api.py                 # FastAPI server (API V1 nativa)
+│   ├── session_manager.py     # SessionManager centralizzato (thread-safe)
+│   └── models.py              # Modelli Pydantic API (ChatMessage, ChatResult, ParseResult, etc.)
 ├── orchestrator/               # LangGraph workflow
 │   ├── graph.py                # ConversationGraph, _build_graph(), entry point run()
 │   ├── graph_legacy.py         # Backup vecchio grafo lineare (pre-refactoring)
@@ -305,7 +304,7 @@ GiAs-llm/
 │   │   └── test_tools_real.py            # Tool con dati reali
 │   ├── e2e/                   # End-to-end, richiedono server :5005 attivo
 │   │   ├── test_api_endpoints.py         # Endpoint API
-│   │   ├── test_api_webhook.py           # Webhook Rasa-compat
+│   │   ├── test_api_webhook.py           # Chat V1 endpoint
 │   │   ├── test_fallback.py              # Fallback recovery
 │   │   ├── test_intents.py               # Copertura 20/20 intent
 │   │   ├── test_metadata.py              # Metadata utente
@@ -375,7 +374,7 @@ GiAs-llm/
 **Never**:
 - Access CSVs directly in tools
 - Mix data logic with text formatting
-- Use Rasa-specific imports
+- Import data modules outside the 3-layer separation
 
 ## Hybrid Search System (v1.0.0)
 
@@ -517,7 +516,7 @@ python -m pytest tests/legacy/ -v           # Solo legacy (esclusi per default)
 ## Production Deployment
 
 **FastAPI Server** (Port 5005):
-- Rasa webhook compatibility for GChat integration
+- API V1 nativa per integrazione GChat
 - `start_server.sh` for production deployment
 - Health checks and monitoring endpoints
 - Graceful fallback mechanisms for system resilience
@@ -609,7 +608,7 @@ When writing prompts or responses, use correct Italian veterinary terms:
 - 20-intent classification LLM-first con confidence reale e few-shot dinamico
 - **NLU migliorato**: prompt V2 con disambiguazione, `MINIMAL_HEURISTICS=True`, `FewShotRetriever` Qdrant
 - Test suite v4.0: unit/integration/e2e/legacy (100% intent coverage)
-- FastAPI deployment with Rasa compatibility
+- FastAPI deployment con API V1 nativa
 - 323,146 veterinary records processed
 - **Configurable risk predictor** (ML or statistical) via `GIAS_RISK_PREDICTOR`
 

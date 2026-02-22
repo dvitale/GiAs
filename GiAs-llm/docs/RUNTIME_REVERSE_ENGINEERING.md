@@ -30,23 +30,23 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        PROCESSO DI AVVIO                            │
 │                                                                     │
-│  server.sh ──exec──▶ start_server.sh ──python3──▶ app/api.py      │
+│  server.sh ──exec──▶ start_server.sh ──python3──▶ app/api.py        │
 │                          │                            │             │
 │                   [verifica LLM backend]        [FastAPI + Uvicorn] │
 │                   [pre-carica modello]                │             │
 │                   [seleziona modello]           lifespan()          │
-│                                                      │             │
-│                                          ┌───────────┼──────────┐  │
-│                                          │           │          │  │
-│                                     agents/data  ConversationGraph  │
-│                                     (DataFrame)  (LangGraph)    │  │
-│                                          │           │          │  │
+│                                                      │              │
+│                                          ┌───────────┼───────────┐  │
+│                                          │           │           │  │
+│                                     agents/data ConversationGraph│  │
+│                                     (DataFrame)  (LangGraph)     │  │
+│                                          │           │           │  │
 │                                     data_sources/  orchestrator/ │  │
-│                                     factory.py    graph.py      │  │
-│                                          │           │          │  │
-│                                     PostgreSQL    Router        │  │
-│                                     (gias_db)    LLMClient     │  │
-│                                                  TOOL_REGISTRY  │  │
+│                                     factory.py    graph.py       │  │
+│                                          │           │           │  │
+│                                     PostgreSQL    Router         │  │
+│                                     (gias_db)    LLMClient       │  │
+│                                                  TOOL_REGISTRY   │  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 

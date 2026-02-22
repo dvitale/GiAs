@@ -1,6 +1,6 @@
 """
 Test E2E per endpoint streaming SSE.
-Verifica /webhooks/rest/webhook/stream.
+Verifica /api/v1/chat/stream.
 """
 
 import pytest

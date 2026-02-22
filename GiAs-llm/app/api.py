@@ -1,14 +1,13 @@
 """
 FastAPI wrapper per GiAs-llm
-Implementa le stesse convenzioni di Rasa per compatibilità con GChat
+API nativa per GChat (protocollo v1)
 """
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional, AsyncGenerator, Callable
+from typing import Dict, Any, Optional, AsyncGenerator
 import logging
 import sys
 import os
@@ -23,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from orchestrator.graph import ConversationGraph
 from orchestrator.workflow_validator import WorkflowValidator
+from app.session_manager import SessionManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,33 +34,14 @@ _data_preloaded = False
 # Avoids re-initializing LLMClient and Router on every request
 _conversation_graph = None
 
-# Session store for 2-phase response system
-# Maps sender_id -> {detail_context: {...}, timestamp: ...}
-_session_store: Dict[str, Dict[str, Any]] = {}
-_session_lock = threading.Lock()  # Protegge accesso concorrente al session store
-
-# Session TTL in seconds (5 minutes)
-SESSION_TTL = 300
-
-# Contatore richieste per cleanup periodico sessioni scadute
-_request_count = 0
-_CLEANUP_EVERY_N_REQUESTS = 100
+# Singleton SessionManager (sostituisce _session_store, _session_lock, _request_count)
+_session_mgr = SessionManager()
 
 # Timeout per esecuzione grafo (deve essere < timeout Go frontend 60s)
 GRAPH_INVOKE_TIMEOUT = 50
 
 # Intent metadata cache (loaded once from DB)
 _intent_metadata_cache: Dict[str, Dict[str, Any]] = {}
-
-
-def _cleanup_expired_sessions():
-    """Rimuove sessioni scadute dal session store. Chiamata periodicamente."""
-    now = time.time()
-    expired = [k for k, v in _session_store.items() if now - v.get("timestamp", 0) > SESSION_TTL * 2]
-    for k in expired:
-        del _session_store[k]
-    if expired:
-        logger.info(f"[Session] Cleaned up {len(expired)} expired sessions, {len(_session_store)} remaining")
 
 
 def _load_intent_metadata():
@@ -251,19 +232,6 @@ app.add_middleware(
 )
 
 
-class RasaMessage(BaseModel):
-    """Formato messaggio compatibile con Rasa webhook"""
-    sender: str
-    message: str
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class RasaResponse(BaseModel):
-    """Formato risposta compatibile con Rasa webhook"""
-    text: str
-    recipient_id: Optional[str] = None
-    custom: Optional[Dict[str, Any]] = None  # Per dati extra (execution_path, node_timings, ecc.)
-
 
 async def format_sse_event(event: Dict[str, Any]) -> str:
     """Formatta evento in formato SSE (Server-Sent Events)"""
@@ -274,7 +242,7 @@ async def format_sse_event(event: Dict[str, Any]) -> str:
 
 @app.get("/")
 async def health_check():
-    """Health check endpoint (compatibile con Rasa)"""
+    """Health check endpoint"""
     return {
         "status": "ok",
         "version": "1.0.0",
@@ -282,710 +250,263 @@ async def health_check():
     }
 
 
-@app.post("/webhooks/rest/webhook")
-async def webhook(message: RasaMessage) -> List[RasaResponse]:
+# =============================================================================
+# API V1 — Endpoint nativi
+# =============================================================================
+
+from app.models import (
+    ChatMessage, ChatResponse as ChatResponseV1, ChatResult,
+    ExecutionInfo, Suggestion, ParseRequest, ParseResult, SSEFinalEvent,
+)
+
+
+def _metadata_to_dict(meta) -> Dict[str, Any]:
+    """Converte UserMetadata (o None) in dict per il grafo."""
+    if meta is None:
+        return {}
+    return {k: v for k, v in meta.model_dump().items() if v is not None}
+
+
+def _build_chat_result(result: Dict[str, Any]) -> ChatResult:
+    """Mappa il result dict di graph.run() a ChatResult tipizzato."""
+    # Converti suggestions dal formato grafo [{text, query}, ...] a Suggestion
+    raw_suggestions = result.get("suggestions") or []
+    suggestions = []
+    for s in raw_suggestions:
+        if isinstance(s, dict):
+            suggestions.append(Suggestion(text=s.get("text", ""), query=s.get("query")))
+        elif isinstance(s, str):
+            suggestions.append(Suggestion(text=s))
+
+    execution = ExecutionInfo(
+        execution_path=result.get("execution_path", []),
+        node_timings=result.get("node_timings", {}),
+        total_execution_ms=result.get("total_execution_ms"),
+    )
+
+    response_text = result.get("response", "")
+    error = result.get("error", "")
+    if error:
+        response_text = f"❌ Errore: {error}" if not response_text else response_text
+
+    return ChatResult(
+        text=response_text or "Non ho capito la tua richiesta. Puoi riformularla?",
+        intent=result.get("intent", ""),
+        slots=result.get("slots", {}),
+        suggestions=suggestions,
+        execution=execution,
+        needs_clarification=result.get("needs_clarification", False),
+        has_more_details=result.get("has_more_details", False),
+        error=error if error else None,
+    )
+
+
+@app.post("/api/v1/chat")
+async def chat_v1(message: ChatMessage) -> ChatResponseV1:
     """
-    Endpoint webhook compatibile con Rasa REST channel.
+    Endpoint chat nativo. Sostituisce /webhooks/rest/webhook.
 
-    Request format:
-    {
-        "sender": "user123",
-        "message": "quali attività ha il piano A1?",
-        "metadata": {
-            "asl": "NA1",
-            "uoc": "Veterinaria",
-            "user_id": "123",
-            "codice_fiscale": "...",
-            "username": "..."
-        }
-    }
-
-    Response format (array di oggetti):
-    [
-        {"text": "Risposta del sistema..."}
-    ]
+    Differenze dal formato Rasa:
+    - metadata tipizzato (UserMetadata vs Dict)
+    - Risposta singola ChatResult vs List[RasaResponse]
+    - Tutti i campi del grafo esposti
+    - suggestions tipizzato come List[Suggestion]
     """
     try:
-        logger.info(f"[Webhook] Ricevuto messaggio da {message.sender}: {message.message}")
+        logger.info(f"[V1Chat] Ricevuto messaggio da {message.sender}: {message.message}")
 
-        metadata = message.metadata or {}
-
-        # Gestione intelligente metadata
+        # Converti UserMetadata in dict per il grafo
+        metadata = _metadata_to_dict(message.metadata)
         if not metadata.get('user_id'):
             metadata['user_id'] = message.sender
 
-        # Risolvi UOC da user_id se manca (GChat non invia uoc)
+        # Risolvi UOC
         if not metadata.get('uoc') and metadata.get('user_id'):
             try:
                 from agents.data import get_uoc_from_user_id
                 resolved_uoc = get_uoc_from_user_id(metadata['user_id'])
                 if resolved_uoc:
                     metadata['uoc'] = resolved_uoc
-                    logger.debug(f"[METADATA] UOC resolved from user_id: {resolved_uoc}")
-            except Exception as e:
-                logger.debug(f"[METADATA] Could not resolve UOC from user_id: {e}")
+            except Exception:
+                pass
 
-        # Log warning solo se manca ASL (uoc può essere risolto da user_id)
-        if not metadata.get('asl'):
-            logger.warning(f"[METADATA] Missing ASL in production: {metadata}")
-
-        logger.info(f"[Webhook] Metadata (with defaults): {metadata}")
-
-        # Use singleton ConversationGraph for better performance
-        # Falls back to creating a new instance if singleton not initialized
-        global _conversation_graph, _session_store
+        global _conversation_graph
         if _conversation_graph is None:
-            logger.info("[Webhook] Initializing ConversationGraph (first request)")
             _conversation_graph = ConversationGraph()
 
-        # Cleanup periodico sessioni scadute
-        global _request_count
-        _request_count += 1
-        if _request_count % _CLEANUP_EVERY_N_REQUESTS == 0:
-            with _session_lock:
-                _cleanup_expired_sessions()
+        _session_mgr.periodic_cleanup()
 
-        # 2-phase system: retrieve detail_context from session if available
-        with _session_lock:
-            sender_session = _session_store.get(message.sender, {}).copy()
-        detail_context = sender_session.get("detail_context", {})
+        # Recupera contesto sessione
+        ctx = _session_mgr.get_session_context(message.sender)
+        metadata.update(ctx.metadata_enrichment)
 
-        # Check session TTL
-        session_timestamp = sender_session.get("timestamp", 0)
-        session_valid = time.time() - session_timestamp <= SESSION_TTL
-
-        if not session_valid:
-            detail_context = {}  # Session expired
-
-        # Inject session context into metadata for conversational memory
-        if sender_session and session_valid:
-            last_intent = sender_session.get("last_intent")
-            last_slots = sender_session.get("last_slots")
-            session_summary = sender_session.get("conversation_summary")
-            if last_intent:
-                metadata["_session_last_intent"] = last_intent
-            if last_slots:
-                metadata["_session_last_slots"] = last_slots
-            if session_summary:
-                metadata["_session_summary"] = session_summary
-
-            # Inject contesto risposta per risoluzione anaforica (es. "le varianti" -> "del piano A2")
-            last_response_context = sender_session.get("last_response_context")
-            if not last_response_context:
-                # Fallback: prova dal dialogue_state
-                ds = sender_session.get("dialogue_state") or {}
-                last_response_context = ds.get("last_response_context")
-            if last_response_context:
-                metadata["_session_last_response_context"] = last_response_context
-
-            # NUOVO: Inject fallback recovery state
-            fallback_suggestions = sender_session.get("fallback_suggestions")
-            fallback_phase = sender_session.get("fallback_phase")
-            fallback_count = sender_session.get("fallback_count")
-            fallback_selected_category = sender_session.get("fallback_selected_category")
-            if fallback_suggestions:
-                metadata["_fallback_suggestions"] = fallback_suggestions
-                logger.debug(f"[Webhook] Loaded {len(fallback_suggestions)} fallback_suggestions from session for {message.sender}")
-            if fallback_phase:
-                metadata["_fallback_phase"] = fallback_phase
-            if fallback_count is not None:
-                metadata["_fallback_count"] = fallback_count
-            if fallback_selected_category:
-                metadata["_fallback_selected_category"] = fallback_selected_category
-
-        # NUOVO: Recupera e valida workflow_context da sessione
-        workflow_context_raw = sender_session.get("workflow_context")
-
-        # SECURITY: Valida workflow_context con TTL check
+        # Valida workflow_context
         workflow_context = WorkflowValidator.validate_workflow_context(
-            workflow_context_raw,
-            session_timestamp
+            ctx.workflow_context, ctx.session_timestamp
         )
+        if ctx.workflow_context and not workflow_context:
+            _session_mgr.invalidate_workflow(message.sender)
 
-        # Se validazione fallisce, rimuovi solo workflow_context (non tutta la session)
-        if workflow_context_raw and not workflow_context:
-            logger.warning(f"[SECURITY] Invalid or expired workflow_context for user {message.sender}")
-            # Non fare pop di tutta la session, solo rimuovi workflow_context
-            with _session_lock:
-                if message.sender in _session_store:
-                    _session_store[message.sender].pop("workflow_context", None)
-            workflow_context = None
-
-        # Recupera dialogue_state da sessione (nuovo DST)
-        dialogue_state_from_session = sender_session.get("dialogue_state") if session_valid else None
-
-        # Esegui il grafo con timeout per evitare request pendenti
+        # Esegui il grafo con timeout
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
                 _conversation_graph.run,
                 message=message.message,
                 metadata=metadata,
-                detail_context=detail_context,
+                detail_context=ctx.detail_context,
                 workflow_context=workflow_context,
-                dialogue_state=dialogue_state_from_session,
+                dialogue_state=ctx.dialogue_state,
             )
             try:
                 result = future.result(timeout=GRAPH_INVOKE_TIMEOUT)
             except FuturesTimeoutError:
-                logger.error(f"[Webhook] Graph invoke timeout after {GRAPH_INVOKE_TIMEOUT}s for sender {message.sender}")
-                return [RasaResponse(
-                    recipient_id=message.sender,
-                    text="⏱️ La richiesta ha impiegato troppo tempo. Riprova con una domanda più specifica."
-                )]
+                logger.error(f"[V1Chat] Graph timeout after {GRAPH_INVOKE_TIMEOUT}s for {message.sender}")
+                return ChatResponseV1(
+                    sender=message.sender,
+                    result=ChatResult(
+                        text="⏱️ La richiesta ha impiegato troppo tempo. Riprova con una domanda più specifica.",
+                        error="timeout",
+                    )
+                )
 
-        # Estrai last_response_context dal dialogue_state o direttamente dal result
-        last_response_context = None
-        ds = result.get("dialogue_state") or {}
-        if ds.get("last_response_context"):
-            last_response_context = ds["last_response_context"]
-        elif result.get("response_context"):
-            last_response_context = result["response_context"]
+        # Aggiorna sessione
+        _session_mgr.update_session(message.sender, result)
 
-        # 2-phase system + conversational memory + workflow + DST: store in session
-        if result.get("has_more_details") and result.get("detail_context"):
-            session_data = {
-                "detail_context": result["detail_context"],
-                "last_intent": result.get("intent", ""),
-                "last_slots": result.get("slots", {}),
-                "conversation_summary": f"intent={result.get('intent', '')}, slots={result.get('slots', {})}",
-                "timestamp": time.time(),
-                "dialogue_state": result.get("dialogue_state"),  # NUOVO: DST
-                "last_response_context": last_response_context,  # Per risoluzione anaforica
-            }
-            # NUOVO: Salva workflow_context se presente
-            if result.get("workflow_id"):
-                session_data["workflow_context"] = {
-                    "workflow_id": result.get("workflow_id"),
-                    "workflow_nonce": result.get("workflow_nonce"),
-                    "workflow_type": result.get("workflow_type"),
-                    "workflow_stage": result.get("workflow_stage"),
-                    "pending_question": result.get("pending_question"),
-                    "available_options": result.get("available_options"),
-                    "workflow_history": result.get("workflow_history"),
-                    "accumulated_filters": result.get("accumulated_filters"),
-                    "selected_strategy_id": ((result.get("workflow_context") or {}).get("selected_strategy") or {}).get("id"),
-                    "current_strategy_index": (result.get("workflow_context") or {}).get("current_strategy_index"),
-                    "last_query_intent": ((result.get("workflow_context") or {}).get("last_query") or {}).get("intent"),
-                }
-            # NUOVO: Salva fallback recovery state
-            if result.get("fallback_suggestions"):
-                session_data["fallback_suggestions"] = result["fallback_suggestions"]
-                session_data["fallback_phase"] = result.get("fallback_phase", 1)
-                session_data["fallback_count"] = result.get("fallback_count", 0)
-                if result.get("fallback_selected_category"):
-                    session_data["fallback_selected_category"] = result["fallback_selected_category"]
-            elif result.get("intent") != "fallback":
-                # Reset fallback state se intent diverso da fallback
-                session_data.pop("fallback_suggestions", None)
-                session_data.pop("fallback_phase", None)
-                session_data.pop("fallback_count", None)
-                session_data.pop("fallback_selected_category", None)
-            with _session_lock:
-                _session_store[message.sender] = session_data
-            logger.info(f"[Webhook] Stored detail_context + session for sender {message.sender}")
-        elif result.get("intent") in ["confirm_show_details", "decline_show_details"]:
-            # Clear detail_context but keep conversational memory
-            if message.sender in _session_store:
-                session_data = {
-                    "last_intent": result.get("intent", ""),
-                    "last_slots": result.get("slots", {}),
-                    "conversation_summary": f"intent={result.get('intent', '')}, slots={result.get('slots', {})}",
-                    "timestamp": time.time(),
-                    "dialogue_state": result.get("dialogue_state"),  # NUOVO: DST
-                    "last_response_context": last_response_context,  # Per risoluzione anaforica
-                }
-                # NUOVO: Mantieni workflow_context se attivo
-                if result.get("workflow_id"):
-                    session_data["workflow_context"] = {
-                        "workflow_id": result.get("workflow_id"),
-                        "workflow_nonce": result.get("workflow_nonce"),
-                        "workflow_type": result.get("workflow_type"),
-                        "workflow_stage": result.get("workflow_stage"),
-                        "pending_question": result.get("pending_question"),
-                        "available_options": result.get("available_options"),
-                        "workflow_history": result.get("workflow_history"),
-                        "accumulated_filters": result.get("accumulated_filters"),
-                        "selected_strategy_id": result.get("workflow_context", {}).get("selected_strategy", {}).get("id"),
-                        "current_strategy_index": result.get("workflow_context", {}).get("current_strategy_index"),
-                        "last_query_intent": result.get("workflow_context", {}).get("last_query", {}).get("intent"),
-                    }
-                # NUOVO: Gestisci fallback recovery state
-                if result.get("fallback_suggestions"):
-                    session_data["fallback_suggestions"] = result["fallback_suggestions"]
-                    session_data["fallback_phase"] = result.get("fallback_phase", 1)
-                    session_data["fallback_count"] = result.get("fallback_count", 0)
-                    if result.get("fallback_selected_category"):
-                        session_data["fallback_selected_category"] = result["fallback_selected_category"]
-                else:
-                    # Reset fallback state
-                    session_data.pop("fallback_suggestions", None)
-                    session_data.pop("fallback_phase", None)
-                    session_data.pop("fallback_count", None)
-                    session_data.pop("fallback_selected_category", None)
-                with _session_lock:
-                    _session_store[message.sender] = session_data
-                logger.info(f"[Webhook] Cleared detail_context, kept session for sender {message.sender}")
-        else:
-            # Always update conversational memory
-            with _session_lock:
-                existing = _session_store.get(message.sender, {}).copy()
-
-            # Detect topic change: se l'intent cambia significativamente, reset contesto
-            previous_intent = existing.get("last_intent", "")
-            current_intent = result.get("intent", "")
-            CONTINUATION_INTENTS = {"confirm_show_details", "decline_show_details", "fallback"}
-            is_topic_change = (
-                previous_intent and
-                current_intent and
-                previous_intent != current_intent and
-                current_intent not in CONTINUATION_INTENTS
-            )
-
-            if is_topic_change:
-                # Reset contesto che potrebbe confondere la prossima classificazione
-                existing.pop("last_response_context", None)
-                existing.pop("detail_context", None)
-                logger.info(f"[Webhook] Topic change detected ({previous_intent} -> {current_intent}), reset session context for {message.sender}")
-
-            existing["last_intent"] = current_intent
-            existing["last_slots"] = result.get("slots", {})
-            existing["conversation_summary"] = f"intent={current_intent}, slots={result.get('slots', {})}"
-            existing["timestamp"] = time.time()
-            # Keep detail_context if it was already there (don't overwrite)
-            if "detail_context" not in existing:
-                existing["detail_context"] = {}
-            # NUOVO: Aggiorna dialogue_state
-            existing["dialogue_state"] = result.get("dialogue_state")
-            # Aggiorna contesto risposta per risoluzione anaforica (solo se NON cambio topic)
-            if last_response_context and not is_topic_change:
-                existing["last_response_context"] = last_response_context
-            # NUOVO: Aggiorna workflow_context
-            if result.get("workflow_id"):
-                existing["workflow_context"] = {
-                    "workflow_id": result.get("workflow_id"),
-                    "workflow_nonce": result.get("workflow_nonce"),
-                    "workflow_type": result.get("workflow_type"),
-                    "workflow_stage": result.get("workflow_stage"),
-                    "pending_question": result.get("pending_question"),
-                    "available_options": result.get("available_options"),
-                    "workflow_history": result.get("workflow_history"),
-                    "accumulated_filters": result.get("accumulated_filters"),
-                    "selected_strategy_id": ((result.get("workflow_context") or {}).get("selected_strategy") or {}).get("id"),
-                    "current_strategy_index": (result.get("workflow_context") or {}).get("current_strategy_index"),
-                    "last_query_intent": ((result.get("workflow_context") or {}).get("last_query") or {}).get("intent"),
-                }
-            elif "workflow_context" in existing:
-                # Rimuovi workflow_context se workflow completato
-                del existing["workflow_context"]
-
-            # NUOVO: Aggiorna fallback recovery state
-            if result.get("fallback_suggestions"):
-                existing["fallback_suggestions"] = result["fallback_suggestions"]
-                existing["fallback_phase"] = result.get("fallback_phase", 1)
-                existing["fallback_count"] = result.get("fallback_count", 0)
-                if result.get("fallback_selected_category"):
-                    existing["fallback_selected_category"] = result["fallback_selected_category"]
-                logger.debug(f"[Webhook] Saved {len(result['fallback_suggestions'])} fallback_suggestions to session for {message.sender}")
-            elif result.get("intent") != "fallback":
-                # Reset fallback state se intent diverso da fallback
-                existing.pop("fallback_suggestions", None)
-                existing.pop("fallback_phase", None)
-                existing.pop("fallback_count", None)
-                existing.pop("fallback_selected_category", None)
-
-            with _session_lock:
-                _session_store[message.sender] = existing
-
-        final_response = result.get("response", "")
-        error = result.get("error", "")
-
-        if error:
-            logger.error(f"[Webhook] Errore: {error}")
-            response_text = f"❌ Errore: {error}"
-        elif final_response:
-            response_text = final_response
-        else:
-            response_text = "Non ho capito la tua richiesta. Puoi riformularla?"
-
-        logger.info(f"[Webhook] Risposta generata ({len(response_text)} caratteri)")
-
-        # Log to chat_log table with extended fields
+        # Log
+        chat_result = _build_chat_result(result)
         log_chat(
             ask=message.message,
             intent=result.get("intent", ""),
-            answer=response_text,
+            answer=chat_result.text,
             metadata=metadata,
             session_id=message.sender,
             slots=result.get("slots"),
             response_time_ms=result.get("total_execution_ms"),
-            error=error if error else None,
+            error=result.get("error") if result.get("error") else None,
         )
 
-        # Costruisci custom payload con execution tracking
-        custom_payload = {
-            "execution_path": result.get("execution_path", []),
-            "node_timings": result.get("node_timings", {}),
-            "total_execution_ms": result.get("total_execution_ms"),
-            "intent": result.get("intent", ""),
-            "slots": result.get("slots", {}),
-            "suggestions": result.get("suggestions", []),
-        }
-
-        return [
-            RasaResponse(
-                text=response_text,
-                recipient_id=message.sender,
-                custom=custom_payload
-            )
-        ]
+        return ChatResponseV1(sender=message.sender, result=chat_result)
 
     except Exception as e:
-        logger.exception(f"[Webhook] Eccezione non gestita: {e}")
-        return [
-            RasaResponse(
+        logger.exception(f"[V1Chat] Eccezione non gestita: {e}")
+        return ChatResponseV1(
+            sender=message.sender,
+            result=ChatResult(
                 text=f"❌ Errore interno del sistema: {str(e)}",
-                recipient_id=message.sender
+                error=str(e),
             )
-        ]
+        )
 
 
-@app.post("/webhooks/rest/webhook/stream")
-async def webhook_stream(message: RasaMessage):
+@app.post("/api/v1/chat/stream")
+async def chat_stream_v1(message: ChatMessage):
     """
-    Endpoint webhook con streaming SSE (Server-Sent Events).
+    Endpoint chat streaming nativo. Sostituisce /webhooks/rest/webhook/stream.
 
-    Restituisce eventi progressivi durante l'elaborazione:
-    - status: Aggiornamenti sullo stato del nodo corrente
-    - reasoning: Messaggi di ragionamento del sistema
-    - token: Token streaming della risposta (se disponibile)
-    - final: Risposta finale completa
-    - error: Eventi di errore
-
-    Response format: text/event-stream (SSE)
+    L'evento SSE finale contiene un ChatResult completo (stesso schema del sincrono).
     """
     async def event_generator() -> AsyncGenerator[str, None]:
-        # Queue thread-safe per comunicazione tra thread sincrono e async generator
         event_queue = Queue()
         result_container = {"result": None, "exception": None}
 
         try:
-            logger.info(f"[WebhookStream] Ricevuto messaggio da {message.sender}: {message.message}")
+            logger.info(f"[V1Stream] Ricevuto messaggio da {message.sender}: {message.message}")
 
-            metadata = message.metadata or {}
-
-            # Gestione intelligente metadata (come webhook sincrono)
+            metadata = _metadata_to_dict(message.metadata)
             if not metadata.get('user_id'):
                 metadata['user_id'] = message.sender
 
-            # Risolvi UOC da user_id se manca
             if not metadata.get('uoc') and metadata.get('user_id'):
                 try:
                     from agents.data import get_uoc_from_user_id
                     resolved_uoc = get_uoc_from_user_id(metadata['user_id'])
                     if resolved_uoc:
                         metadata['uoc'] = resolved_uoc
-                        logger.debug(f"[METADATA] UOC resolved from user_id: {resolved_uoc}")
-                except Exception as e:
-                    logger.debug(f"[METADATA] Could not resolve UOC from user_id: {e}")
+                except Exception:
+                    pass
 
-            if not metadata.get('asl'):
-                logger.warning(f"[METADATA] Missing ASL in production: {metadata}")
-
-            # Event callback per emettere eventi SSE durante l'elaborazione
             def event_callback(event: Dict[str, Any]):
-                """Callback invocato dal ConversationGraph per emettere eventi SSE"""
                 event["timestamp"] = int(time.time() * 1000)
-                # Put in queue thread-safe (sincrono)
                 event_queue.put(event)
 
-            # Yield evento iniziale
             yield await format_sse_event({
                 "type": "status",
                 "timestamp": int(time.time() * 1000),
                 "message": "Connessione stabilita, elaborazione in corso..."
             })
 
-            # Use singleton ConversationGraph
-            global _conversation_graph, _session_store
+            global _conversation_graph
             if _conversation_graph is None:
-                logger.info("[WebhookStream] Initializing ConversationGraph (first request)")
                 _conversation_graph = ConversationGraph()
 
-            # 2-phase system: retrieve detail_context from session if available
-            sender_session = _session_store.get(message.sender, {})
-            detail_context = sender_session.get("detail_context", {})
+            ctx = _session_mgr.get_session_context(message.sender)
+            metadata.update(ctx.metadata_enrichment)
 
-            # Check session TTL
-            session_timestamp = sender_session.get("timestamp", 0)
-            if time.time() - session_timestamp > SESSION_TTL:
-                detail_context = {}
-
-            # Inject session context into metadata
-            if sender_session and time.time() - session_timestamp <= SESSION_TTL:
-                last_intent = sender_session.get("last_intent")
-                last_slots = sender_session.get("last_slots")
-                session_summary = sender_session.get("conversation_summary")
-                if last_intent:
-                    metadata["_session_last_intent"] = last_intent
-                if last_slots:
-                    metadata["_session_last_slots"] = last_slots
-                if session_summary:
-                    metadata["_session_summary"] = session_summary
-
-                # Inject fallback recovery state (come endpoint sincrono)
-                fallback_suggestions = sender_session.get("fallback_suggestions")
-                fallback_phase = sender_session.get("fallback_phase")
-                fallback_count = sender_session.get("fallback_count")
-                fallback_selected_category = sender_session.get("fallback_selected_category")
-                if fallback_suggestions:
-                    metadata["_fallback_suggestions"] = fallback_suggestions
-                    logger.debug(f"[WebhookStream] Loaded {len(fallback_suggestions)} fallback_suggestions from session for {message.sender}")
-                if fallback_phase:
-                    metadata["_fallback_phase"] = fallback_phase
-                if fallback_count is not None:
-                    metadata["_fallback_count"] = fallback_count
-                if fallback_selected_category:
-                    metadata["_fallback_selected_category"] = fallback_selected_category
-
-            # NUOVO: Recupera e valida workflow_context da sessione
-            workflow_context_raw = sender_session.get("workflow_context")
-
-            # SECURITY: Valida workflow_context con TTL check
             workflow_context = WorkflowValidator.validate_workflow_context(
-                workflow_context_raw,
-                session_timestamp
+                ctx.workflow_context, ctx.session_timestamp
             )
+            if ctx.workflow_context and not workflow_context:
+                _session_mgr.invalidate_workflow(message.sender)
 
-            # Se validazione fallisce, pulisci sessione
-            if workflow_context_raw and not workflow_context:
-                logger.warning(f"[SECURITY] Invalid or expired workflow_context for user {message.sender}")
-                _session_store.pop(message.sender, None)
-                workflow_context = None
-
-            # Recupera dialogue_state da sessione (come endpoint sincrono)
-            session_valid_for_ds = sender_session and time.time() - session_timestamp <= SESSION_TTL
-            dialogue_state_from_session = sender_session.get("dialogue_state") if session_valid_for_ds else None
-
-            # NON injettiamo event_callback nel metadata!
-            # Invece, lo passiamo direttamente al graph che lo userà internamente
-
-            # Esegui ConversationGraph in thread separato per non bloccare async
             def run_graph():
                 try:
-                    # Passiamo il callback direttamente al metodo run
                     result = _conversation_graph.run(
                         message=message.message,
                         metadata=metadata,
-                        detail_context=detail_context,
-                        workflow_context=workflow_context,  # NUOVO parametro validato
+                        detail_context=ctx.detail_context,
+                        workflow_context=workflow_context,
                         event_callback=event_callback,
-                        dialogue_state=dialogue_state_from_session,
+                        dialogue_state=ctx.dialogue_state,
                     )
                     result_container["result"] = result
-                    # Signal completion
                     event_queue.put(None)
                 except Exception as e:
                     result_container["exception"] = e
                     event_queue.put(None)
 
-            # Start graph execution in thread pool
             loop = asyncio.get_event_loop()
             loop.run_in_executor(None, run_graph)
 
-            # Stream eventi dalla queue mentre il graph esegue
             while True:
-                # Poll queue con timeout per non bloccare
                 try:
                     event = await asyncio.get_event_loop().run_in_executor(
-                        None, event_queue.get, True, 0.5  # timeout 0.5s
+                        None, event_queue.get, True, 0.5
                     )
                 except:
-                    # Timeout - continua polling
                     continue
-
-                # None indica completamento
                 if event is None:
                     break
-
-                # Yield evento formattato
                 yield await format_sse_event(event)
 
-            # Check per eccezioni durante l'esecuzione
             if result_container["exception"]:
                 raise result_container["exception"]
 
             result = result_container["result"]
+            _session_mgr.update_session(message.sender, result)
 
-            # 2-phase system + conversational memory + workflow: store in session
-            if result.get("has_more_details") and result.get("detail_context"):
-                session_data = {
-                    "detail_context": result["detail_context"],
-                    "last_intent": result.get("intent", ""),
-                    "last_slots": result.get("slots", {}),
-                    "conversation_summary": f"intent={result.get('intent', '')}, slots={result.get('slots', {})}",
-                    "timestamp": time.time()
-                }
-                # NUOVO: Salva workflow_context se presente
-                if result.get("workflow_id"):
-                    session_data["workflow_context"] = {
-                        "workflow_id": result.get("workflow_id"),
-                        "workflow_nonce": result.get("workflow_nonce"),
-                        "workflow_type": result.get("workflow_type"),
-                        "workflow_stage": result.get("workflow_stage"),
-                        "pending_question": result.get("pending_question"),
-                        "available_options": result.get("available_options"),
-                        "workflow_history": result.get("workflow_history"),
-                        "accumulated_filters": result.get("accumulated_filters"),
-                        "selected_strategy_id": result.get("workflow_context", {}).get("selected_strategy", {}).get("id"),
-                        "current_strategy_index": result.get("workflow_context", {}).get("current_strategy_index"),
-                        "last_query_intent": result.get("workflow_context", {}).get("last_query", {}).get("intent"),
-                    }
-                # Salva fallback recovery state
-                if result.get("fallback_suggestions"):
-                    session_data["fallback_suggestions"] = result["fallback_suggestions"]
-                    session_data["fallback_phase"] = result.get("fallback_phase", 1)
-                    session_data["fallback_count"] = result.get("fallback_count", 0)
-                    if result.get("fallback_selected_category"):
-                        session_data["fallback_selected_category"] = result["fallback_selected_category"]
-                    logger.debug(f"[WebhookStream] Saved {len(result['fallback_suggestions'])} fallback_suggestions to session for {message.sender}")
-                _session_store[message.sender] = session_data
-                logger.info(f"[WebhookStream] Stored detail_context + session for sender {message.sender}")
-            elif result.get("intent") in ["confirm_show_details", "decline_show_details"]:
-                if message.sender in _session_store:
-                    session_data = {
-                        "last_intent": result.get("intent", ""),
-                        "last_slots": result.get("slots", {}),
-                        "conversation_summary": f"intent={result.get('intent', '')}, slots={result.get('slots', {})}",
-                        "timestamp": time.time()
-                    }
-                    # NUOVO: Mantieni workflow_context se attivo
-                    if result.get("workflow_id"):
-                        session_data["workflow_context"] = {
-                            "workflow_id": result.get("workflow_id"),
-                            "workflow_nonce": result.get("workflow_nonce"),
-                            "workflow_type": result.get("workflow_type"),
-                            "workflow_stage": result.get("workflow_stage"),
-                            "pending_question": result.get("pending_question"),
-                            "available_options": result.get("available_options"),
-                            "workflow_history": result.get("workflow_history"),
-                            "accumulated_filters": result.get("accumulated_filters"),
-                            "selected_strategy_id": result.get("workflow_context", {}).get("selected_strategy", {}).get("id"),
-                            "current_strategy_index": result.get("workflow_context", {}).get("current_strategy_index"),
-                            "last_query_intent": result.get("workflow_context", {}).get("last_query", {}).get("intent"),
-                        }
-                    # Gestisci fallback recovery state
-                    if result.get("fallback_suggestions"):
-                        session_data["fallback_suggestions"] = result["fallback_suggestions"]
-                        session_data["fallback_phase"] = result.get("fallback_phase", 1)
-                        session_data["fallback_count"] = result.get("fallback_count", 0)
-                        if result.get("fallback_selected_category"):
-                            session_data["fallback_selected_category"] = result["fallback_selected_category"]
-                        logger.debug(f"[WebhookStream] Saved {len(result['fallback_suggestions'])} fallback_suggestions to session for {message.sender}")
-                    _session_store[message.sender] = session_data
-                    logger.info(f"[WebhookStream] Cleared detail_context, kept session for sender {message.sender}")
-            else:
-                existing = _session_store.get(message.sender, {})
-                existing["last_intent"] = result.get("intent", "")
-                existing["last_slots"] = result.get("slots", {})
-                existing["conversation_summary"] = f"intent={result.get('intent', '')}, slots={result.get('slots', {})}"
-                existing["timestamp"] = time.time()
-                if "detail_context" not in existing:
-                    existing["detail_context"] = {}
-                # Aggiorna dialogue_state (come endpoint sincrono)
-                existing["dialogue_state"] = result.get("dialogue_state")
-                # NUOVO: Aggiorna workflow_context
-                if result.get("workflow_id"):
-                    existing["workflow_context"] = {
-                        "workflow_id": result.get("workflow_id"),
-                        "workflow_nonce": result.get("workflow_nonce"),
-                        "workflow_type": result.get("workflow_type"),
-                        "workflow_stage": result.get("workflow_stage"),
-                        "pending_question": result.get("pending_question"),
-                        "available_options": result.get("available_options"),
-                        "workflow_history": result.get("workflow_history"),
-                        "accumulated_filters": result.get("accumulated_filters"),
-                        "selected_strategy_id": result.get("workflow_context", {}).get("selected_strategy", {}).get("id"),
-                        "current_strategy_index": result.get("workflow_context", {}).get("current_strategy_index"),
-                        "last_query_intent": result.get("workflow_context", {}).get("last_query", {}).get("intent"),
-                    }
-                elif "workflow_context" in existing:
-                    # Rimuovi workflow_context se workflow completato
-                    del existing["workflow_context"]
+            chat_result = _build_chat_result(result)
 
-                # Aggiorna fallback recovery state
-                if result.get("fallback_suggestions"):
-                    existing["fallback_suggestions"] = result["fallback_suggestions"]
-                    existing["fallback_phase"] = result.get("fallback_phase", 1)
-                    existing["fallback_count"] = result.get("fallback_count", 0)
-                    if result.get("fallback_selected_category"):
-                        existing["fallback_selected_category"] = result["fallback_selected_category"]
-                    logger.debug(f"[WebhookStream] Saved {len(result['fallback_suggestions'])} fallback_suggestions to session for {message.sender}")
-                elif result.get("intent") != "fallback":
-                    # Reset fallback state se intent diverso da fallback
-                    existing.pop("fallback_suggestions", None)
-                    existing.pop("fallback_phase", None)
-                    existing.pop("fallback_count", None)
-                    existing.pop("fallback_selected_category", None)
-
-                _session_store[message.sender] = existing
-
-            final_response = result.get("response", "")
-            error = result.get("error", "")
-
-            if error:
-                logger.error(f"[WebhookStream] Errore: {error}")
-                # FIX: Log anche gli errori (prima venivano persi)
-                log_chat(
-                    ask=message.message,
-                    intent=result.get("intent", ""),
-                    answer=f"❌ Errore: {error}",
-                    metadata=metadata,
-                    session_id=message.sender,
-                    slots=result.get("slots"),
-                    response_time_ms=result.get("total_execution_ms"),
-                    error=error,
-                )
-                yield await format_sse_event({
-                    "type": "error",
-                    "timestamp": int(time.time() * 1000),
-                    "error": error,
-                    "recoverable": False
-                })
-                return
-
-            if not final_response:
-                final_response = "Non ho capito la tua richiesta. Puoi riformularla?"
-
-            logger.info(f"[WebhookStream] Risposta generata ({len(final_response)} caratteri)")
-
-            # Log to chat_log table with extended fields
             log_chat(
                 ask=message.message,
                 intent=result.get("intent", ""),
-                answer=final_response,
+                answer=chat_result.text,
                 metadata=metadata,
                 session_id=message.sender,
                 slots=result.get("slots"),
                 response_time_ms=result.get("total_execution_ms"),
-                error=None,
+                error=result.get("error") if result.get("error") else None,
             )
 
-            # Yield evento finale con risposta completa
-            yield await format_sse_event({
-                "type": "final",
-                "timestamp": int(time.time() * 1000),
-                "content": final_response,
-                "metadata": {
-                    "intent": result.get("intent", ""),
-                    "full_data": result.get("full_data", {}),
-                    "data_type": result.get("data_type"),
-                    "suggestions": result.get("suggestions", [])
-                }
-            })
+            # Evento finale con ChatResult completo (stesso formato del sincrono)
+            final_event = SSEFinalEvent(
+                timestamp=int(time.time() * 1000),
+                result=chat_result,
+            )
+            yield await format_sse_event(final_event.model_dump())
 
         except Exception as e:
-            logger.exception(f"[WebhookStream] Eccezione non gestita: {e}")
+            logger.exception(f"[V1Stream] Eccezione non gestita: {e}")
             yield await format_sse_event({
                 "type": "error",
                 "timestamp": int(time.time() * 1000),
@@ -999,91 +520,42 @@ async def webhook_stream(message: RasaMessage):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"  # Disable nginx buffering
+            "X-Accel-Buffering": "no"
         }
     )
 
 
-class RasaParseRequest(BaseModel):
-    """Formato richiesta per /model/parse (compatibile con Rasa)"""
-    text: str
-    metadata: Optional[Dict[str, Any]] = None
-
-
-@app.post("/model/parse")
-async def parse(request: RasaParseRequest) -> Dict[str, Any]:
+@app.post("/api/v1/parse")
+async def parse_v1(request: ParseRequest) -> ParseResult:
     """
-    Endpoint per parsing NLU (compatibile con Rasa).
-    Utile per debugging e testing.
-
-    Request format:
-    {
-        "text": "messaggio da analizzare",
-        "metadata": {...}
-    }
-
-    Response format:
-    {
-        "text": "messaggio originale",
-        "intent": {"name": "ask_piano_description", "confidence": 0.95},
-        "entities": [...],
-        "metadata": {...}
-    }
+    Endpoint parsing NLU nativo. Sostituisce /model/parse.
+    Ritorna confidence reale dal router (non hardcoded 0.95).
     """
     try:
-        # Reuse singleton ConversationGraph for better performance
         global _conversation_graph
         if _conversation_graph is None:
-            logger.info("[Parse] Initializing ConversationGraph (first request)")
             _conversation_graph = ConversationGraph()
 
+        metadata = _metadata_to_dict(request.metadata)
         router = _conversation_graph.router
+        result = router.classify(message=request.text, metadata=metadata)
 
-        result = router.classify(
-            message=request.text,
-            metadata=request.metadata or {}
+        return ParseResult(
+            text=request.text,
+            intent=result.get("intent", "fallback"),
+            confidence=result.get("confidence", 0.5),
+            slots=result.get("slots", {}),
+            needs_clarification=result.get("needs_clarification", False),
         )
 
-        return {
-            "text": request.text,
-            "intent": {
-                "name": result.get("intent", "fallback"),
-                "confidence": 0.95 if result.get("intent") else 0.3
-            },
-            "entities": [
-                {"entity": k, "value": v}
-                for k, v in result.get("slots", {}).items()
-            ],
-            "metadata": request.metadata,
-            "slots": result.get("slots", {}),
-            "needs_clarification": result.get("needs_clarification", False)
-        }
-
     except Exception as e:
-        logger.exception(f"[Parse] Errore: {e}")
-        return {
-            "text": request.text,
-            "intent": {"name": "fallback", "confidence": 0.0},
-            "entities": [],
-            "error": str(e)
-        }
-
-
-@app.get("/conversations/{conversation_id}/tracker")
-async def get_tracker(conversation_id: str) -> Dict[str, Any]:
-    """
-    Endpoint per ottenere lo stato della conversazione.
-    Stub per compatibilità con Rasa.
-    """
-    return {
-        "sender_id": conversation_id,
-        "slots": {},
-        "latest_message": {},
-        "events": [],
-        "paused": False,
-        "followup_action": None,
-        "active_loop": {}
-    }
+        logger.exception(f"[V1Parse] Errore: {e}")
+        return ParseResult(
+            text=request.text,
+            intent="fallback",
+            confidence=0.0,
+            slots={},
+        )
 
 
 @app.get("/status")
@@ -1096,15 +568,17 @@ async def status():
 
     config = get_config()
 
-    # Check actual LLM availability
-    llm_model = AppConfig.get_model_name()
-    llm_model_key = AppConfig.LLM_MODEL
+    # Check actual LLM availability — usa il modello dal client reale
     llm_backend = AppConfig.LLM_BACKEND
     try:
         test_client = LLMClient()
         llm_mode = "real" if test_client.use_real_llm else "stub"
+        llm_model = test_client.model  # modello effettivo dal provider
+        llm_model_key = test_client.model_key
     except Exception:
         llm_mode = "stub"
+        llm_model = AppConfig.get_model_name()
+        llm_model_key = AppConfig.LLM_MODEL
     llm_status = f"{llm_model} ({llm_mode})"
 
     return {
@@ -1862,8 +1336,8 @@ if __name__ == "__main__":
     import uvicorn
 
     logger.info("Avvio GiAs-llm API server...")
-    logger.info("Endpoint webhook: http://localhost:5005/webhooks/rest/webhook")
-    logger.info("Endpoint parse: http://localhost:5005/model/parse")
+    logger.info("Endpoint chat: http://localhost:5005/api/v1/chat")
+    logger.info("Endpoint parse: http://localhost:5005/api/v1/parse")
     logger.info("Endpoint status: http://localhost:5005/status")
 
     uvicorn.run(

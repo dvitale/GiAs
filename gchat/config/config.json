@@ -5,8 +5,7 @@
   },
   "llm_server": {
     "url": "http://localhost:5005",
-    "timeout": 60,
-    "stream_endpoint": "/webhooks/rest/webhook/stream"
+    "timeout": 60
   },
   "log": {
     "level": "info",

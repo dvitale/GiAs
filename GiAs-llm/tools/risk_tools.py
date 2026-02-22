@@ -106,8 +106,7 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
 
         osa_rischiosi_display, osa_rischiosi_full = RiskAnalyzer.rank_osa_by_risk(
             osa_df=osa_filtered,
-            risk_scores_df=rischio_per_attivita,
-            limit=20
+            risk_scores_df=rischio_per_attivita
         )
 
         all_data = []
@@ -148,7 +147,7 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
             "total_never_controlled": len(osa_filtered),
             "total_risky": len(all_data),
             "activities_at_risk": len(rischio_per_attivita),
-            "risky_establishments": all_data[:20],
+            "risky_establishments": all_data,
             "formatted_response": response
         }
 

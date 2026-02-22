@@ -1,5 +1,5 @@
 """
-Test E2E per endpoint webhook principale.
+Test E2E per endpoint chat principale (/api/v1/chat).
 Replica esattamente le chiamate dal frontend gchat.
 """
 
@@ -10,11 +10,11 @@ import random
 import string
 
 
-class TestWebhookBasic:
-    """Test base per webhook /webhooks/rest/webhook."""
+class TestChatBasic:
+    """Test base per /api/v1/chat."""
 
     @pytest.mark.e2e
-    def test_webhook_greet(self, webhook_url, unique_sender, complete_metadata):
+    def test_chat_greet(self, webhook_url, unique_sender, complete_metadata):
         """Test saluto base come frontend."""
         payload = {
             "sender": unique_sender,
@@ -26,15 +26,14 @@ class TestWebhookBasic:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, list)
-        assert len(data) > 0
-        assert "text" in data[0]
+        assert "result" in data
+        assert "text" in data["result"]
         # Verifica risposta di benvenuto
-        text = data[0]["text"].lower()
+        text = data["result"]["text"].lower()
         assert any(word in text for word in ["benvenuto", "ciao", "buon", "posso aiutarti"])
 
     @pytest.mark.e2e
-    def test_webhook_help(self, webhook_url, unique_sender, complete_metadata):
+    def test_chat_help(self, webhook_url, unique_sender, complete_metadata):
         """Test richiesta aiuto."""
         payload = {
             "sender": unique_sender,
@@ -46,13 +45,13 @@ class TestWebhookBasic:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) > 0
-        text = data[0]["text"].lower()
+        assert "result" in data
+        text = data["result"]["text"].lower()
         # Deve elencare funzionalita'
         assert any(word in text for word in ["posso", "aiutarti", "domand", "funzionalit"])
 
     @pytest.mark.e2e
-    def test_webhook_goodbye(self, webhook_url, unique_sender, complete_metadata):
+    def test_chat_goodbye(self, webhook_url, unique_sender, complete_metadata):
         """Test saluto finale."""
         payload = {
             "sender": unique_sender,
@@ -64,16 +63,16 @@ class TestWebhookBasic:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) > 0
-        text = data[0]["text"].lower()
+        assert "result" in data
+        text = data["result"]["text"].lower()
         assert any(word in text for word in ["arrivederci", "buon lavoro", "presto"])
 
 
-class TestWebhookMetadata:
+class TestChatMetadata:
     """Test gestione metadata come frontend."""
 
     @pytest.mark.e2e
-    def test_webhook_all_metadata_fields(self, webhook_url, unique_sender):
+    def test_chat_all_metadata_fields(self, webhook_url, unique_sender):
         """Test con tutti i campi metadata come frontend reale."""
         payload = {
             "sender": unique_sender,
@@ -91,13 +90,13 @@ class TestWebhookMetadata:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) > 0
+        assert "result" in data
         # Risposta deve menzionare piani o ritardi
-        text = data[0]["text"].lower()
+        text = data["result"]["text"].lower()
         assert any(word in text for word in ["piano", "ritard", "control", "programmazione"])
 
     @pytest.mark.e2e
-    def test_webhook_minimal_metadata(self, webhook_url, unique_sender):
+    def test_chat_minimal_metadata(self, webhook_url, unique_sender):
         """Test con metadata minimi."""
         payload = {
             "sender": unique_sender,
@@ -109,10 +108,10 @@ class TestWebhookMetadata:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) > 0
+        assert "result" in data
 
     @pytest.mark.e2e
-    def test_webhook_no_metadata(self, webhook_url, unique_sender):
+    def test_chat_no_metadata(self, webhook_url, unique_sender):
         """Test senza metadata (come chiamata diretta)."""
         payload = {
             "sender": unique_sender,
@@ -124,12 +123,12 @@ class TestWebhookMetadata:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) > 0
+        assert "result" in data
         # Help deve funzionare anche senza metadata
-        assert "text" in data[0]
+        assert "text" in data["result"]
 
 
-class TestWebhookSenderFormat:
+class TestChatSenderFormat:
     """Test formato sender ID come frontend."""
 
     @pytest.mark.e2e
@@ -150,10 +149,9 @@ class TestWebhookSenderFormat:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) > 0
-        # recipient_id deve corrispondere al sender
-        if "recipient_id" in data[0]:
-            assert data[0]["recipient_id"] == sender
+        assert "result" in data
+        # sender deve corrispondere
+        assert data.get("sender") == sender
 
     @pytest.mark.e2e
     def test_sender_uniqueness(self, webhook_url, complete_metadata,
@@ -180,12 +178,12 @@ class TestWebhookSenderFormat:
         assert resp2.status_code == 200
 
 
-class TestWebhookResponseFormat:
-    """Test formato response Rasa-compatible."""
+class TestChatResponseFormat:
+    """Test formato response V1."""
 
     @pytest.mark.e2e
-    def test_response_is_list(self, webhook_url, unique_sender, complete_metadata):
-        """Verifica che response sia lista (Rasa format)."""
+    def test_response_is_dict(self, webhook_url, unique_sender, complete_metadata):
+        """Verifica che response sia un dict con result e sender."""
         payload = {
             "sender": unique_sender,
             "message": "ciao",
@@ -195,11 +193,13 @@ class TestWebhookResponseFormat:
         resp = requests.post(webhook_url, json=payload, timeout=75)
         data = resp.json()
 
-        assert isinstance(data, list)
+        assert isinstance(data, dict)
+        assert "result" in data
+        assert "sender" in data
 
     @pytest.mark.e2e
-    def test_response_has_text(self, webhook_url, unique_sender, complete_metadata):
-        """Verifica che ogni response abbia campo text."""
+    def test_response_result_has_text(self, webhook_url, unique_sender, complete_metadata):
+        """Verifica che result abbia campo text."""
         payload = {
             "sender": unique_sender,
             "message": "aiuto",
@@ -209,13 +209,13 @@ class TestWebhookResponseFormat:
         resp = requests.post(webhook_url, json=payload, timeout=75)
         data = resp.json()
 
-        for item in data:
-            assert "text" in item
-            assert isinstance(item["text"], str)
+        result = data["result"]
+        assert "text" in result
+        assert isinstance(result["text"], str)
 
     @pytest.mark.e2e
-    def test_response_custom_field(self, webhook_url, unique_sender, complete_metadata):
-        """Test che response possa avere campo custom."""
+    def test_response_result_has_intent(self, webhook_url, unique_sender, complete_metadata):
+        """Test che result abbia campo intent."""
         payload = {
             "sender": unique_sender,
             "message": "piani in ritardo",
@@ -225,12 +225,12 @@ class TestWebhookResponseFormat:
         resp = requests.post(webhook_url, json=payload, timeout=75)
         data = resp.json()
 
-        # custom e' opzionale ma se presente deve essere dict
-        if len(data) > 0 and "custom" in data[0]:
-            assert isinstance(data[0]["custom"], dict)
+        result = data["result"]
+        assert "intent" in result
+        assert isinstance(result["intent"], str)
 
 
-class TestWebhookTimeout:
+class TestChatTimeout:
     """Test gestione timeout come frontend."""
 
     @pytest.mark.e2e

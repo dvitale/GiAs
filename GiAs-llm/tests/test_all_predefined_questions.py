@@ -14,7 +14,7 @@ import requests
 import json
 import time
 
-API_URL = "http://localhost:5005/webhooks/rest/webhook"
+API_URL = "http://localhost:5005/api/v1/chat"
 METADATA = {"asl": "AVELLINO", "user_id": "42145"}
 
 PREDEFINED_QUESTIONS = [
@@ -46,8 +46,8 @@ def _run_question(question_id, question_text):
 
         if response.status_code == 200:
             data = response.json()
-            if data and len(data) > 0:
-                answer = data[0].get('text', '')
+            if data and "result" in data:
+                answer = data["result"].get('text', '')
                 has_error = "error" in answer.lower() or "non ho capito" in answer.lower()
                 return (not has_error, answer, elapsed)
             return (False, "", elapsed)

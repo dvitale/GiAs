@@ -64,7 +64,7 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
   - `monitor.html`: Monitor qualita' conversazioni
 
 - **config/**: File di configurazione
-  - `config.json`: Configurazione server, Rasa, logging, UI
+  - `config.json`: Configurazione server, LLM backend, logging, UI
 
 - **data/**: Dati CSV
   - `personale.csv`: Dati utenti (ASL, nome, cognome, codice fiscale, user_id)
@@ -85,48 +85,67 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
 
 ### 1. Endpoint Backend Utilizzato
 
-**Webhook REST**: `POST {BACKEND_URL}/webhooks/rest/webhook`
-**Webhook Streaming (SSE)**: `POST {BACKEND_URL}{STREAM_ENDPOINT}`
+**Chat V1**: `POST {BACKEND_URL}/api/v1/chat`
+**Chat Streaming V1 (SSE)**: `POST {BACKEND_URL}/api/v1/chat/stream`
+**Parse NLU V1**: `POST {BACKEND_URL}/api/v1/parse`
 
-Gli endpoint sono configurabili in `config/config.json`:
+Configurazione in `config/config.json`:
 ```json
 {
   "llm_server": {
     "url": "http://localhost:5005",
-    "timeout": 60,
-    "stream_endpoint": "/webhooks/rest/webhook/stream"
+    "timeout": 60
   }
 }
 ```
 
 - `url`: URL base del backend LLM
 - `timeout`: Timeout HTTP in secondi
-- `stream_endpoint`: Path endpoint streaming (default: `/webhooks/rest/webhook/stream`)
 
 ### 2. Strutture Dati per Comunicazione con Backend
 
 #### Request a Backend (app/llm_client.go)
 ```go
-type LLMMessage struct {
-    Sender   string                 `json:"sender"`
-    Message  string                 `json:"message"`
-    Metadata map[string]interface{} `json:"metadata,omitempty"`
+type NativeUserMetadata struct {
+    ASL           string `json:"asl,omitempty"`
+    ASLID         string `json:"asl_id,omitempty"`
+    UserID        string `json:"user_id,omitempty"`
+    CodiceFiscale string `json:"codice_fiscale,omitempty"`
+    Username      string `json:"username,omitempty"`
+    UOC           string `json:"uoc,omitempty"`
+}
+
+type NativeChatMessage struct {
+    Sender   string              `json:"sender"`
+    Message  string              `json:"message"`
+    Metadata *NativeUserMetadata `json:"metadata,omitempty"`
 }
 ```
 
 - **sender**: Identificatore sessione utente (default: "user")
 - **message**: Testo messaggio utente
-- **metadata**: Contesto utente (ASL, user_id, codice_fiscale, username, asl_id, uoc)
+- **metadata**: Contesto utente tipizzato (ASL, user_id, codice_fiscale, username, asl_id, uoc)
 
 #### Response da Backend (app/llm_client.go)
 ```go
-type LLMResponse struct {
-    Text   string                 `json:"text"`
-    Custom map[string]interface{} `json:"custom,omitempty"`
+type NativeChatResponse struct {
+    Result ChatResultV1 `json:"result"`
+    Sender string       `json:"sender"`
+}
+
+type ChatResultV1 struct {
+    Text               string                 `json:"text"`
+    Intent             string                 `json:"intent"`
+    Slots              map[string]interface{} `json:"slots"`
+    Suggestions        []Suggestion           `json:"suggestions"`
+    Execution          *ExecutionInfo         `json:"execution,omitempty"`
+    NeedsClarification bool                   `json:"needs_clarification"`
+    HasMoreDetails     bool                   `json:"has_more_details"`
+    Error              string                 `json:"error,omitempty"`
 }
 ```
 
-Il backend restituisce array di risposte: `[]LLMResponse`. Il campo `Custom` contiene dati strutturati opzionali (`full_data`, `data_type`, `suggestions`, `execution_path`, `node_timings`).
+Il backend restituisce un singolo oggetto `NativeChatResponse` con `result` contenente tutti i campi del grafo (text, intent, slots, suggestions, execution info, etc.).
 
 ### 3. Flusso di Comunicazione
 
@@ -140,15 +159,15 @@ CheckLLMServerHealth() → GET {BACKEND_URL}
 
 #### B. Invio Messaggio (app/llm_client.go)
 ```
-SendToLLM(message, sender, llmServerURL, timeout, context) → []LLMResponse
+SendToLLMV1(message, sender, llmServerURL, timeout, context) → NativeChatResponse
 ```
 
 **Processo**:
-1. Costruisce `LLMMessage` con messaggio, sender e metadata
+1. Costruisce `NativeChatMessage` con messaggio, sender e metadata tipizzato
 2. Serializza JSON
-3. POST a `{LLM_URL}/webhooks/rest/webhook`
+3. POST a `{LLM_URL}/api/v1/chat`
 4. Timeout HTTP configurabile
-5. Parsing response JSON
+5. Parsing response JSON in `NativeChatResponse`
 6. Logging completo di ogni fase
 
 **Logging** (prefissi):
@@ -283,8 +302,7 @@ Dati caricati al rendering pagina se `user_id` presente in query string.
   "server": { "port": "8080", "host": "localhost" },
   "llm_server": {
     "url": "http://localhost:5005",
-    "timeout": 60,
-    "stream_endpoint": "/webhooks/rest/webhook/stream"
+    "timeout": 60
   },
   "log": { "level": "info", "file": "log/app.log" },
   "predefined_questions": [
@@ -414,7 +432,7 @@ context := map[string]interface{}{
 ```
 
 ### 8. **Go Server → Backend API**
-`POST http://localhost:5005/webhooks/rest/webhook` (or `/debug` per debug mode):
+`POST http://localhost:5005/api/v1/chat`:
 ```json
 {
   "sender": "user",
@@ -478,7 +496,7 @@ Tool Nodes - read state values from ConversationState
 - Fallback graceful per configurazione mancante
 - Session ID via header `X-Session-ID` per tracking
 - **IMPORTANTE**: Metadata passati via campo `metadata` dell'API webhook, NON come parte del messaggio testuale
-- **ARCHITETTURA**: Sistema basato su LangGraph + LLM invece di Rasa tradizionale
+- **ARCHITETTURA**: Sistema basato su LangGraph + LLM con API V1 nativa
 
 ## Funzionalità JavaScript (statics/js/chat.js)
 
@@ -608,10 +626,10 @@ Il sistema genera automaticamente comandi curl per testare manualmente le API GI
 **Formato Log**:
 ```
 === GIAS API DEBUG SESSION - 2024-12-20 15:30:45 ===
-Endpoint: WEBHOOK
+Endpoint: CHAT_V1
 Request Data:
 {
-  "url": "http://localhost:5005/webhooks/rest/webhook",
+  "url": "http://localhost:5005/api/v1/chat",
   "method": "POST",
   "headers": {
     "Content-Type": "application/json",
@@ -633,15 +651,15 @@ Request Data:
 }
 
 CURL TEST COMMAND:
-curl -X POST 'http://localhost:5005/webhooks/rest/webhook' -H 'Content-Type: application/json' -H 'User-Agent: GChat/1.0' -H 'X-Source: gchat-debug' -d '{"sender":"user","message":"stabilimenti piano A22","metadata":{"asl":"BENEVENTO","asl_id":"202","user_id":"6448","codice_fiscale":"ZZIBRD65R11A783K"}}'
+curl -X POST 'http://localhost:5005/api/v1/chat' -H 'Content-Type: application/json' -H 'User-Agent: GChat/1.0' -H 'X-Source: gchat-debug' -d '{"sender":"user","message":"stabilimenti piano A22","metadata":{"asl":"BENEVENTO","asl_id":"202","user_id":"6448","codice_fiscale":"ZZIBRD65R11A783K"}}'
 === END DEBUG SESSION ===
 ```
 
 ### Endpoint API Supportati
 
-#### 1. **Webhook Principale** (`/webhooks/rest/webhook`)
+#### 1. **Chat V1** (`/api/v1/chat`)
 ```bash
-curl -X POST 'http://localhost:5005/webhooks/rest/webhook' \
+curl -X POST 'http://localhost:5005/api/v1/chat' \
   -H 'Content-Type: application/json' \
   -H 'User-Agent: GChat/1.0' \
   -H 'X-Source: gchat-debug' \
@@ -657,10 +675,10 @@ curl -X POST 'http://localhost:5005/webhooks/rest/webhook' \
   }'
 ```
 
-#### 2. **Endpoint Parse** (`/model/parse`)
+#### 2. **Endpoint Parse V1** (`/api/v1/parse`)
 Per test di analisi NLU:
 ```bash
-curl -X POST 'http://localhost:5005/model/parse' \
+curl -X POST 'http://localhost:5005/api/v1/parse' \
   -H 'Content-Type: application/json' \
   -H 'User-Agent: GChat/1.0' \
   -H 'X-Source: gchat-debug-parse' \
@@ -673,13 +691,17 @@ curl -X POST 'http://localhost:5005/model/parse' \
   }'
 ```
 
-#### 3. **Endpoint Tracker** (`/conversations/{sender}/tracker`)
-Per debug stato conversazione:
+#### 3. **Streaming V1** (`/api/v1/chat/stream`)
+Per test streaming SSE:
 ```bash
-curl -X GET 'http://localhost:5005/conversations/user/tracker' \
+curl -N -X POST 'http://localhost:5005/api/v1/chat/stream' \
   -H 'Content-Type: application/json' \
-  -H 'User-Agent: GChat/1.0' \
-  -H 'X-Source: gchat-debug-tracker'
+  -H 'Accept: text/event-stream' \
+  -d '{
+    "sender": "user",
+    "message": "piani in ritardo",
+    "metadata": {"asl": "BENEVENTO"}
+  }'
 ```
 
 ### Modalità Debug Integrata
@@ -740,19 +762,19 @@ Utilizza l'endpoint debug per ottenere informazioni dettagliate:
 Copia il comando curl dal log e eseguilo direttamente:
 ```bash
 # Dal log gias_api_debug.log
-curl -X POST 'http://localhost:5005/webhooks/rest/webhook' -H 'Content-Type: application/json' -H 'User-Agent: GChat/1.0' -H 'X-Source: gchat-debug' -d '{"sender":"user","message":"stabilimenti piano A22","metadata":{"asl":"BENEVENTO","asl_id":"202","user_id":"6448"}}'
+curl -X POST 'http://localhost:5005/api/v1/chat' -H 'Content-Type: application/json' -H 'User-Agent: GChat/1.0' -H 'X-Source: gchat-debug' -d '{"sender":"user","message":"stabilimenti piano A22","metadata":{"asl":"BENEVENTO","asl_id":"202","user_id":"6448"}}'
 ```
 
 #### 2. **Test con Variazioni**
 Modifica parametri per test specifici:
 ```bash
 # Test con ASL diversa
-curl -X POST 'http://localhost:5005/webhooks/rest/webhook' \
+curl -X POST 'http://localhost:5005/api/v1/chat' \
   -H 'Content-Type: application/json' \
   -d '{"sender":"user","message":"stabilimenti piano A22","metadata":{"asl":"NAPOLI","asl_id":"203"}}'
 
 # Test senza metadati
-curl -X POST 'http://localhost:5005/webhooks/rest/webhook' \
+curl -X POST 'http://localhost:5005/api/v1/chat' \
   -H 'Content-Type: application/json' \
   -d '{"sender":"user","message":"stabilimenti piano A22"}'
 ```
@@ -783,9 +805,8 @@ chmod +x test_api.sh
 
 Il sistema aggiunge header specifici per identificare richieste debug:
 
-- **Webhook**: `X-Source: gchat-debug`
-- **Parse**: `X-Source: gchat-debug-parse`
-- **Tracker**: `X-Source: gchat-debug-tracker`
+- **Chat V1**: `X-Source: gchat-debug`
+- **Parse V1**: `X-Source: gchat-debug-parse`
 - **User-Agent**: `GChat/1.0`
 
 ### Best Practices
@@ -802,12 +823,12 @@ Il sistema aggiunge header specifici per identificare richieste debug:
    curl -X GET 'http://localhost:5005/'
 
    # 2. Test parse semplice
-   curl -X POST 'http://localhost:5005/model/parse' \
+   curl -X POST 'http://localhost:5005/api/v1/parse' \
      -H 'Content-Type: application/json' \
      -d '{"text": "ciao"}'
 
-   # 3. Test webhook completo
-   curl -X POST 'http://localhost:5005/webhooks/rest/webhook' \
+   # 3. Test chat completo
+   curl -X POST 'http://localhost:5005/api/v1/chat' \
      -H 'Content-Type: application/json' \
      -d '{"sender":"test","message":"ciao"}'
    ```
@@ -815,12 +836,12 @@ Il sistema aggiunge header specifici per identificare richieste debug:
 3. **Debug Errori**:
    ```bash
    # Verbose output per debug
-   curl -v -X POST 'http://localhost:5005/webhooks/rest/webhook' \
+   curl -v -X POST 'http://localhost:5005/api/v1/chat' \
      -H 'Content-Type: application/json' \
      -d '{"sender":"user","message":"test"}'
 
    # Con timeout
-   curl --max-time 10 -X POST 'http://localhost:5005/webhooks/rest/webhook' \
+   curl --max-time 10 -X POST 'http://localhost:5005/api/v1/chat' \
      -H 'Content-Type: application/json' \
      -d '{"sender":"user","message":"test"}'
    ```
@@ -831,9 +852,8 @@ Le funzioni principali che generano i log curl sono:
 
 - **`generateCurlCommand()`**: Genera comando curl da URL, payload e headers
 - **`logCurlCommand()`**: Scrive comando e metadati nel file di log debug
-- **Integrazione in `SendToLLM()`**: Auto-logging di ogni richiesta webhook
-- **Integrazione in `ParseMessage()`**: Auto-logging richieste parse
-- **Integrazione in `GetTracker()`**: Auto-logging richieste tracker
+- **Integrazione in `SendToLLMV1()`**: Auto-logging di ogni richiesta chat V1
+- **Integrazione in `ParseMessage()`**: Auto-logging richieste parse V1
 
 Questo sistema facilita significativamente il troubleshooting e il test isolato delle API GIAS durante lo sviluppo.
 
@@ -861,8 +881,7 @@ La configurazione timeout è stata ottimizzata per gestire le richieste LLM lung
 {
   "llm_server": {
     "url": "http://localhost:5005",
-    "timeout": 60,
-    "stream_endpoint": "/webhooks/rest/webhook/stream"
+    "timeout": 60
   }
 }
 ```
@@ -870,7 +889,6 @@ La configurazione timeout è stata ottimizzata per gestire le richieste LLM lung
 **Parametri LLM Server**:
 - `url`: URL base del backend LLM
 - `timeout`: Timeout in secondi per le richieste HTTP
-- `stream_endpoint`: Path dell'endpoint SSE per streaming (default: `/webhooks/rest/webhook/stream`)
 
 #### Client JavaScript
 ```javascript
@@ -947,7 +965,7 @@ fetch('/gias/webchat/chat', {
 ```bash
 # Test multiple requests per verificare timeout sotto carico
 for i in {1..5}; do
-  curl -X POST 'http://localhost:5005/webhooks/rest/webhook' \
+  curl -X POST 'http://localhost:5005/api/v1/chat' \
     -H 'Content-Type: application/json' \
     -d '{"sender":"stress_test_'$i'","message":"analizza tutti i piani di controllo della campania"}' &
 done

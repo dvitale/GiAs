@@ -24,16 +24,18 @@ func TestUIConfigHasEnableStreaming(t *testing.T) {
 	}
 }
 
-func TestLLMServerConfigHasStreamEndpoint(t *testing.T) {
-	// Test che LLMServerConfig abbia il campo StreamEndpoint
+func TestLLMServerConfigFields(t *testing.T) {
+	// Test che LLMServerConfig abbia URL e Timeout
 	config := LLMServerConfig{
-		URL:            "http://localhost:5005",
-		Timeout:        60,
-		StreamEndpoint: "/webhooks/rest/webhook/stream",
+		URL:     "http://localhost:5005",
+		Timeout: 60,
 	}
 
-	if config.StreamEndpoint != "/webhooks/rest/webhook/stream" {
-		t.Errorf("StreamEndpoint mismatch: got %s, want /webhooks/rest/webhook/stream", config.StreamEndpoint)
+	if config.URL != "http://localhost:5005" {
+		t.Errorf("URL mismatch: got %s, want http://localhost:5005", config.URL)
+	}
+	if config.Timeout != 60 {
+		t.Errorf("Timeout mismatch: got %d, want 60", config.Timeout)
 	}
 }
 
@@ -46,25 +48,25 @@ func TestDefaultConfigHasEnableStreaming(t *testing.T) {
 	}
 }
 
-func TestDefaultConfigHasStreamEndpoint(t *testing.T) {
-	// Test che il default config abbia StreamEndpoint
+func TestDefaultConfigLLMServer(t *testing.T) {
+	// Test che il default config abbia LLM server configurato
 	defaultConfig := getDefaultConfig()
 
-	expected := "/webhooks/rest/webhook/stream"
-	if defaultConfig.LLMServer.StreamEndpoint != expected {
-		t.Errorf("Default StreamEndpoint mismatch: got %s, want %s",
-			defaultConfig.LLMServer.StreamEndpoint, expected)
+	if defaultConfig.LLMServer.URL == "" {
+		t.Error("Default LLMServer.URL should not be empty")
+	}
+	if defaultConfig.LLMServer.Timeout <= 0 {
+		t.Error("Default LLMServer.Timeout should be positive")
 	}
 }
 
 func TestConfigJSONParsing(t *testing.T) {
-	// Test parsing JSON con i nuovi campi
+	// Test parsing JSON
 	jsonData := `{
 		"server": {"port": "8080", "host": "localhost"},
 		"llm_server": {
 			"url": "http://localhost:5005",
-			"timeout": 60,
-			"stream_endpoint": "/custom/stream"
+			"timeout": 60
 		},
 		"log": {"level": "info", "file": "test.log"},
 		"predefined_questions": [],
@@ -81,10 +83,12 @@ func TestConfigJSONParsing(t *testing.T) {
 		t.Fatalf("Failed to parse JSON: %v", err)
 	}
 
-	// Verifica StreamEndpoint
-	if config.LLMServer.StreamEndpoint != "/custom/stream" {
-		t.Errorf("StreamEndpoint mismatch: got %s, want /custom/stream",
-			config.LLMServer.StreamEndpoint)
+	// Verifica LLM server
+	if config.LLMServer.URL != "http://localhost:5005" {
+		t.Errorf("URL mismatch: got %s, want http://localhost:5005", config.LLMServer.URL)
+	}
+	if config.LLMServer.Timeout != 60 {
+		t.Errorf("Timeout mismatch: got %d, want 60", config.LLMServer.Timeout)
 	}
 
 	// Verifica EnableStreaming
@@ -135,33 +139,13 @@ func TestLoadConfigFromFile(t *testing.T) {
 
 	config := LoadConfig()
 
-	// Il file config.json dovrebbe avere enable_streaming: true
+	// Il file config.json dovrebbe avere enable_streaming configurato
 	if !config.UI.EnableStreaming {
 		t.Log("Warning: config.json has enable_streaming: false")
 	}
 
-	// Verifica che StreamEndpoint sia configurato
-	if config.LLMServer.StreamEndpoint == "" {
-		t.Log("Warning: config.json missing stream_endpoint, will use default")
-	}
-}
-
-func TestStreamEndpointFallback(t *testing.T) {
-	// Test che StreamEndpoint vuoto usi il default nella logica applicativa
-	config := LLMServerConfig{
-		URL:            "http://localhost:5005",
-		Timeout:        60,
-		StreamEndpoint: "", // vuoto
-	}
-
-	// Simula la logica di SendToLLMStream
-	streamEndpoint := config.StreamEndpoint
-	if streamEndpoint == "" {
-		streamEndpoint = "/webhooks/rest/webhook/stream"
-	}
-
-	expected := "/webhooks/rest/webhook/stream"
-	if streamEndpoint != expected {
-		t.Errorf("Fallback StreamEndpoint mismatch: got %s, want %s", streamEndpoint, expected)
+	// Verifica che LLM server sia configurato
+	if config.LLMServer.URL == "" {
+		t.Error("config.json missing llm_server.url")
 	}
 }

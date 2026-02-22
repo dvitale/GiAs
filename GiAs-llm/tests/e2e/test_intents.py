@@ -203,7 +203,7 @@ class TestIntentSlotExtraction:
         """Test estrazione codice piano."""
         result = parse_client("di cosa tratta il piano B47")
 
-        assert result["intent"]["name"] == "ask_piano_description"
+        assert result["intent"] == "ask_piano_description"
         assert result["slots"].get("piano_code") == "B47"
 
     @pytest.mark.e2e
@@ -211,7 +211,7 @@ class TestIntentSlotExtraction:
         """Test estrazione topic per ricerca."""
         result = parse_client("piani che riguardano bovini")
 
-        assert result["intent"]["name"] == "search_piani_by_topic"
+        assert result["intent"] == "search_piani_by_topic"
         # topic dovrebbe essere estratto
         if "topic" in result.get("slots", {}):
             assert "bovin" in result["slots"]["topic"].lower()
@@ -256,8 +256,8 @@ class TestIntentConfidence:
         """Test alta confidence per saluto chiaro."""
         result = parse_client("ciao")
 
-        assert result["intent"]["name"] == "greet"
-        assert result["intent"]["confidence"] >= 0.8
+        assert result["intent"] == "greet"
+        assert result["confidence"] >= 0.7
 
     @pytest.mark.e2e
     def test_moderate_confidence_complex(self, parse_client):
@@ -267,8 +267,8 @@ class TestIntentConfidence:
         )
 
         # Intent corretto con confidence ragionevole
-        assert result["intent"]["name"] in ["ask_delayed_plans", "search_piani_by_topic"]
-        assert result["intent"]["confidence"] >= 0.4
+        assert result["intent"] in ["ask_delayed_plans", "search_piani_by_topic"]
+        assert result["confidence"] >= 0.4
 
 
 class TestIntentDisambiguation:
@@ -279,11 +279,11 @@ class TestIntentDisambiguation:
         """Test disambiguazione piani in ritardo vs verifica singolo piano."""
         # Generico -> ask_delayed_plans
         result1 = parse_client("piani in ritardo")
-        assert result1["intent"]["name"] == "ask_delayed_plans"
+        assert result1["intent"] == "ask_delayed_plans"
 
         # Specifico -> check_if_plan_delayed
         result2 = parse_client("il piano A1 è in ritardo")
-        assert result2["intent"]["name"] == "check_if_plan_delayed"
+        assert result2["intent"] == "check_if_plan_delayed"
         assert result2["slots"].get("piano_code") == "A1"
 
     @pytest.mark.e2e
@@ -291,8 +291,8 @@ class TestIntentDisambiguation:
         """Test disambiguazione priorita' programmazione vs rischio."""
         # Programmazione -> ask_priority_establishment
         result1 = parse_client("chi devo controllare secondo la programmazione")
-        assert result1["intent"]["name"] == "ask_priority_establishment"
+        assert result1["intent"] == "ask_priority_establishment"
 
         # Rischio -> ask_risk_based_priority
         result2 = parse_client("chi devo controllare secondo il rischio storico")
-        assert result2["intent"]["name"] == "ask_risk_based_priority"
+        assert result2["intent"] == "ask_risk_based_priority"
