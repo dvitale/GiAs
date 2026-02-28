@@ -37,9 +37,20 @@ class ResponseFormatter:
         return str(indicator).strip().upper().startswith('ATT')
 
     @staticmethod
-    def _label_for_indicator(indicator: str) -> str:
-        """Restituisce 'Attività' se ATT-prefixed, altrimenti 'Sottopiano'."""
-        return "Attività" if ResponseFormatter._is_attivita(indicator) else "Sottopiano"
+    def _label_for_piano(indicators) -> str:
+        """Restituisce 'Piano/Attività' se almeno un indicatore ha prefisso ATT, altrimenti 'Piano'.
+
+        Args:
+            indicators: singolo str o lista di str/dict con alias_indicatore
+        """
+        if isinstance(indicators, str):
+            return "Piano/Attività" if ResponseFormatter._is_attivita(indicators) else "Piano"
+        # Lista di indicatori (str o dict)
+        for ind in (indicators or []):
+            alias = ind.get('alias_indicatore', ind.get('alias_ind', '')) if isinstance(ind, dict) else ind
+            if ResponseFormatter._is_attivita(alias):
+                return "Piano/Attività"
+        return "Piano"
 
     @staticmethod
     def format_piano_description(
@@ -73,7 +84,10 @@ class ResponseFormatter:
             elif sezione:
                 response += f"**Sezione {sezione}**\n"
 
-            response += f"**Piano:** {alias}\n"
+            # Indicatori (terzo livello) - carica prima per determinare etichetta piano
+            sottopiani = info.get('sottopiani') or info.get('descrizione-2', [])
+            piano_label = ResponseFormatter._label_for_piano(sottopiani)
+            response += f"**{piano_label}:** {alias}\n"
 
             # Tipo attività (campionamento)
             if campionamento is True:
@@ -84,31 +98,18 @@ class ResponseFormatter:
 
             response += f"\n**Descrizione del piano:**\n{desc_main}\n\n"
 
-            # Sottopiani (usa nuova struttura, con fallback per retrocompatibilità)
-            sottopiani = info.get('sottopiani') or info.get('descrizione-2', [])
             if sottopiani:
-                # Header dinamico: conta ATT vs non-ATT
-                n_att = sum(1 for s in sottopiani if ResponseFormatter._is_attivita(
-                    s.get('alias_indicatore') or s.get('alias_ind', '')))
-                n_sotto = len(sottopiani) - n_att
-                if n_att == len(sottopiani):
-                    header_label = f"**Attività ({n_att}):**"
-                elif n_att == 0:
-                    header_label = f"**Sottopiani ({n_sotto}):**"
-                else:
-                    header_label = f"**Sottopiani ({n_sotto}) e Attività ({n_att}):**"
-                response += f"{header_label}\n\n"
+                response += f"**Indicatori ({len(sottopiani)}):**\n\n"
                 for idx, sottopiano in enumerate(sottopiani, 1):
                     # Supporta sia nuova struttura che vecchia per retrocompatibilità
                     alias_ind = sottopiano.get('alias_indicatore') or sottopiano.get('alias_ind', '')
                     desc_sotto = sottopiano.get('descrizione_sottopiano') or sottopiano.get('text', '')
                     camp_sotto = sottopiano.get('campionamento')
 
-                    label = ResponseFormatter._label_for_indicator(alias_ind)
-                    response += f"{idx}. **{label} {alias_ind}**\n"
+                    response += f"{idx}. **Indicatore {alias_ind}**\n"
                     response += f"   {desc_sotto}\n"
 
-                    # Mostra tipo attività sottopiano se diverso o specificato
+                    # Mostra tipo attività indicatore se diverso o specificato
                     if camp_sotto is True:
                         response += f"   _Tipo: Prelievo campioni_\n"
                     elif camp_sotto is False:
@@ -234,17 +235,17 @@ class ResponseFormatter:
             else:
                 sezione_display = sezione
 
+            piano_label = ResponseFormatter._label_for_piano(alias_ind)
             response += f"{idx}. **Sezione:** {sezione_display}\n"
-            response += f"   **Piano:** {alias} — {desc}\n"
+            response += f"   **{piano_label}:** {alias} — {desc}\n"
             if alias_ind:
-                label = ResponseFormatter._label_for_indicator(alias_ind)
-                response += f"   **{label}:** {alias_ind}"
+                response += f"   **Indicatore:** {alias_ind}"
                 if desc2:
                     response += f" — {desc2}"
                 response += "\n"
             response += f"   **Campionamento:** {camp_label}"
             if 'similarity' in piano_info and piano_info['similarity'] is not None:
-                response += f" | Rilevanza: {piano_info['similarity']:.0%}"
+                response += f" - Rilevanza: {piano_info['similarity']:.0%}"
             response += "\n\n"
 
         if max_display and len(matches) > max_display:
@@ -272,13 +273,13 @@ class ResponseFormatter:
             campionamento = piano_info.get('campionamento')
             camp_label = "Si" if campionamento is True else ("No" if campionamento is False else "N.D.")
 
-            response += f"{idx}. **{piano_info['sezione']}** - Piano **{piano_info['alias']}**"
+            piano_label = ResponseFormatter._label_for_piano(alias_ind)
+            response += f"{idx}. **{piano_info['sezione']}** - {piano_label} **{piano_info['alias']}**"
             if alias_ind:
-                label = ResponseFormatter._label_for_indicator(alias_ind)
-                response += f" | {label}: {alias_ind}"
-            response += f" | Camp.: {camp_label}"
+                response += f" - Indicatore {alias_ind}"
+            response += f" - Camp.: {camp_label}"
             if 'similarity' in piano_info and piano_info['similarity'] is not None:
-                response += f" | Ril.: {piano_info['similarity']:.0%}"
+                response += f" - Ril.: {piano_info['similarity']:.0%}"
             response += "\n"
 
         if len(matches) > limit:
@@ -576,7 +577,8 @@ class ResponseFormatter:
         total_delay: int,
         top_delayed: pd.DataFrame,
         worst_plan_details: Optional[pd.DataFrame] = None,
-        worst_plan_id: Optional[str] = None
+        worst_plan_id: Optional[str] = None,
+        uos_name: Optional[str] = None
     ) -> tuple:
         """
         Formatta analisi piani in ritardo.
@@ -587,6 +589,8 @@ class ResponseFormatter:
         response = f"**Analisi Piani in Ritardo**\n"
         response += f"**ASL:** {user_asl}\n"
         response += f"**Struttura:** {uoc_name}\n"
+        if uos_name:
+            response += f"**UOS:** {uos_name}\n"
         response += f"**Piani in ritardo:** {total_plans_delayed}\n"
         response += f"**Controlli mancanti totali:** {total_delay}\n"
         response += "\n─────────────────────────────────────\n"
@@ -666,20 +670,10 @@ class ResponseFormatter:
 
         if sottopiani:
             if len(sottopiani) > 1:
-                att_list = [s for s in sottopiani if ResponseFormatter._is_attivita(s)]
-                sotto_list = [s for s in sottopiani if not ResponseFormatter._is_attivita(s)]
-                parts = []
-                if sotto_list:
-                    parts.append(f"**Sottopiani in ritardo:** {', '.join(sotto_list)}")
-                if att_list:
-                    parts.append(f"**Attività in ritardo:** {', '.join(att_list)}")
-                response += "\n".join(parts) + "\n\n"
+                response += f"**Indicatori in ritardo:** {', '.join(sottopiani)}\n\n"
                 response += f"**Dettagli aggregati:**\n"
             else:
-                label = ResponseFormatter._label_for_indicator(sottopiani[0])
-                # Accordo grammaticale: "specifico" vs "specifica"
-                spec = "specifica" if label == "Attività" else "specifico"
-                response += f"**{label} {spec}:** {sottopiani[0]}\n\n"
+                response += f"**Indicatore specifico:** {sottopiani[0]}\n\n"
                 response += f"**Dettagli:**\n"
         else:
             response += f"**Dettagli:**\n"
@@ -1093,7 +1087,7 @@ class ResponseFormatter:
             if controlli > 0:
                 prob_nc = (nc_gravi + nc_non_gravi) / controlli
                 impatto = nc_gravi / controlli
-                response += f"\n   📊 Probabilità NC: {prob_nc:.1%}, Impatto: {impatto:.1%}"
+                response += f"\n   📊 NC per controllo: {prob_nc:.1f}, NC gravi per controllo: {impatto:.1f}"
 
             response += "\n\n"
 
@@ -1534,8 +1528,8 @@ class SuggestionGenerator:
         for idx, row in enumerate(top_categories.head(5).itertuples(index=False)):
             categoria = getattr(row, 'categoria_nc', '')
             risk_score = getattr(row, 'punteggio_rischio_categoria', '')
-            prob_nc = getattr(row, 'prob_nc', '') * 100
-            impatto = getattr(row, 'impatto', '') * 100
+            prob_nc = getattr(row, 'prob_nc', 0)
+            impatto = getattr(row, 'impatto', 0)
 
             # Determina livello rischio per emoji
             if risk_score >= 50:
@@ -1550,8 +1544,8 @@ class SuggestionGenerator:
 
             response += f"{idx + 1}. {risk_emoji} **{categoria}**\n"
             response += f"   • **Rischio:** {risk_level} (Score: {risk_score:.1f})\n"
-            response += f"   • **Probabilità NC:** {prob_nc:.1f}%\n"
-            response += f"   • **Impatto NC Gravi:** {impatto:.1f}%\n\n"
+            response += f"   • **NC per controllo:** {prob_nc:.1f}\n"
+            response += f"   • **NC gravi per controllo:** {impatto:.1f}\n\n"
 
         # Raccomandazioni specifiche
         response += "**💡 Raccomandazioni per i Controlli:**\n"
