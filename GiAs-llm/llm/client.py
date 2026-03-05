@@ -22,6 +22,7 @@ class LLMClient:
     - OpenAI: API via SDK (GPT-4o, GPT-4o-mini)
     - Anthropic: API via SDK (Claude Sonnet, Haiku)
     - OpenAI-Compatible: Generic /v1/chat/completions with API key (Mistral, Groq, etc.)
+    - OpenRouter: OpenRouter.ai aggregator (OpenAI-compatible protocol)
     """
 
     def __init__(self, model: str = None, use_real_llm: bool = True):
@@ -41,7 +42,7 @@ class LLMClient:
             if self.backend_type == "llamacpp":
                 model = self.backend_config.get("model_name", "Llama-3.2-3B-Instruct-Q6_K_L.gguf")
                 model_key = "llamacpp"
-            elif self.backend_type in ("openai", "anthropic", "openai_compat"):
+            elif self.backend_type in ("openai", "anthropic", "openai_compat", "openrouter"):
                 model = self.backend_config.get("model", "gpt-4o-mini")
                 model_key = "external"
             else:
@@ -101,7 +102,7 @@ class LLMClient:
             provider = OpenAIProvider(self.model, self.backend_config)
         elif self.backend_type == "anthropic":
             provider = AnthropicProvider(self.model, self.backend_config)
-        elif self.backend_type == "openai_compat":
+        elif self.backend_type in ("openai_compat", "openrouter"):
             provider = OpenAICompatProvider(self.model, self.backend_config)
         else:
             raise ValueError(f"Backend LLM non supportato: {self.backend_type}")
@@ -296,7 +297,7 @@ class LLMClient:
             })
 
         # Top attività rischiose (PRIMA di rischio generico)
-        if any(word in user_message for word in ["attività rischiose", "attività più rischiose", "top attività", "classifica attività"]):
+        if any(word in user_message for word in ["attività rischiose", "attività più rischiose", "top attività", "classifica attività", "linee di attività", "linea di attività"]):
             return json.dumps({
                 "intent": "ask_top_risk_activities",
                 "slots": {},

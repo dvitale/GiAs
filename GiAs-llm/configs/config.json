@@ -1,13 +1,14 @@
 {
   "current_year": 2025,
   "llm_backend": {
-    "type": "openai_compat",
+    "type": "openrouter",
     "options": [
       "ollama",
       "llamacpp",
       "openai",
       "anthropic",
-      "openai_compat"
+      "openai_compat",
+      "openrouter"
     ],
     "description": {
       "ollama": "Ollama server (porta 11434, API /api/chat)",
@@ -46,6 +47,13 @@
       "model": "mistral-medium-latest",
       "timeout_seconds": 30,
       "api_key_env": "MISTRAL_API_KEY"
+    },
+    "openrouter": {
+	"host": "https://openrouter.ai/api",
+	"api_endpoint": "/v1/chat/completions",
+	"model": "google/gemini-2.5-flash",
+	"timeout_seconds": 30,
+	"api_key_env": "OPENROUTER_API_KEY"
     }
   },
   "gdpr": {
@@ -104,8 +112,8 @@
     }
   },
   "hybrid_search": {
-    "cpu_mode": true,
-    "default_strategy": "vector_only",
+    "cpu_mode": false,
+    "default_strategy": "hybrid",
     "description": "Su macchine CPU-only, disabilitare LLM reranking per risparmiare 1-2s per ricerca. Impostare cpu_mode a false per abilitare hybrid/llm_only."
   },
   "rag_documents": {
@@ -114,9 +122,13 @@
     "collection_name": "procedure_documents",
     "chunk_size": 600,
     "chunk_overlap": 100,
+    "parent_chunk_size": 1800,
+    "parent_chunk_overlap": 200,
     "top_k": 5,
     "score_threshold": 0.30,
-    "description": "RAG per documentazione e manuali procedure operative"
+    "description": "RAG per documentazione e manuali procedure operative",
+    "cache_ttl_seconds": 1800,
+    "cache_max_size": 200
   },
   "fallback_recovery": {
     "enabled": true,
@@ -127,5 +139,8 @@
     "enable_llm_phase": true,
     "enable_category_menu": true,
     "description": "Configurazione sistema di fallback intelligente con approssimazioni successive (keyword + LLM + menu categorizzato)"
+  },
+  "guided_learning": {
+    "enabled": true
   }
 }

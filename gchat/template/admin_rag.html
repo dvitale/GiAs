@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}}</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --border-color: #475569;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-green: #4ade80;
+            --accent-red: #f87171;
+            --accent-yellow: #fbbf24;
+            --accent-purple: #a78bfa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e293b 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 20px 24px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 16px;
+            font-size: 0.85rem;
+        }
+
+        .header-nav a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+
+        .header-nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .section h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .form-grid .full-width {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.85;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--accent-red);
+            color: white;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+        }
+
+        .btn-warning {
+            background: var(--accent-yellow);
+            color: #1e293b;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-top: 12px;
+        }
+
+        .status-msg {
+            font-size: 0.85rem;
+            padding: 8px 12px;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .status-msg.success {
+            display: block;
+            background: rgba(74, 222, 128, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+
+        .status-msg.error {
+            display: block;
+            background: rgba(248, 113, 113, 0.15);
+            color: var(--accent-red);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        thead th {
+            text-align: left;
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 500;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.4);
+            vertical-align: top;
+        }
+
+        tbody tr:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .td-domanda {
+            max-width: 350px;
+            word-wrap: break-word;
+        }
+
+        .td-risposta {
+            max-width: 300px;
+            word-wrap: break-word;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-intent {
+            background: rgba(167, 139, 250, 0.2);
+            color: var(--accent-purple);
+        }
+
+        .badge-source {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .docs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+        }
+
+        .doc-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: border-color 0.2s;
+        }
+
+        .doc-card:hover {
+            border-color: var(--accent-blue);
+        }
+
+        .doc-card a {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .doc-card .doc-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .doc-icon {
+            font-size: 1.8rem;
+            flex-shrink: 0;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            .docs-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <h1>Gestione Domande RAG</h1>
+                <div class="header-nav">
+                    <a href="{{.basePath}}/">Chat</a>
+                    <a href="{{.basePath}}/analytics">Analytics</a>
+                    <a href="{{.basePath}}/monitor">Monitor</a>
+                    <a href="{{.basePath}}/debug">Debug</a>
+                    <a href="{{.basePath}}/history">Cronologia</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inserimento nuova domanda -->
+        <div class="section">
+            <h2>Inserisci Nuova Domanda</h2>
+            <div class="form-grid">
+                <div class="full-width">
+                    <label for="domanda">Domanda *</label>
+                    <textarea id="domanda" rows="2" placeholder="Es: Come si compila il modulo per il piano A22?"></textarea>
+                </div>
+                <div class="full-width">
+                    <label for="risposta">Risposta (opzionale)</label>
+                    <textarea id="risposta" rows="2" placeholder="Risposta attesa dalla documentazione"></textarea>
+                </div>
+                <div>
+                    <label for="source">Fonte documento</label>
+                    <input id="source" type="text" placeholder="Es: Guida_DIGEMON.pdf">
+                </div>
+                <div>
+                    <label for="intent">Intent</label>
+                    <select id="intent">
+                        <option value="info_procedure">Caricamento...</option>
+                    </select>
+                </div>
+                <div class="full-width">
+                    <label for="notes">Note (opzionale)</label>
+                    <input id="notes" type="text" placeholder="Note aggiuntive">
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-primary" id="btnInsert" onclick="insertDomanda()">Inserisci</button>
+                <div id="insertStatus" class="status-msg"></div>
+            </div>
+        </div>
+
+        <!-- Domande esistenti -->
+        <div class="section">
+            <h2>Domande Attive (<span id="totalCount">0</span>)</h2>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Domanda</th>
+                            <th>Risposta</th>
+                            <th>Intent</th>
+                            <th>Source</th>
+                            <th>Data</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="domandeTable">
+                        <tr>
+                            <td colspan="7" class="empty-state">Caricamento...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Documenti PDF -->
+        <div class="section">
+            <h2>Documenti PDF</h2>
+            <div class="docs-grid" id="docsGrid">
+                <div class="empty-state">Caricamento...</div>
+            </div>
+        </div>
+
+        <!-- Reindicizzazione -->
+        <div class="section">
+            <h2>Reindicizzazione</h2>
+            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 12px;">
+                Sincronizza le domande inserite con l'indice Qdrant usato dal RAG. Necessario dopo inserimenti o eliminazioni.
+            </p>
+            <div class="btn-row">
+                <button class="btn btn-warning" id="btnReindex" onclick="reindex()">Avvia Reindicizzazione</button>
+                <div id="reindexStatus" class="status-msg"></div>
+            </div>
+            <pre id="reindexOutput" style="display:none; margin-top:12px; background:var(--bg-tertiary); padding:12px; border-radius:6px; font-size:0.8rem; color:var(--text-secondary); white-space:pre-wrap; max-height:300px; overflow-y:auto;"></pre>
+        </div>
+    </div>
+
+    <script>
+        const basePath = '{{.basePath}}';
+        const apiBase = basePath + '/api/admin';
+
+        // Caricamento iniziale
+        document.addEventListener('DOMContentLoaded', () => {
+            loadIntents();
+            loadDomande();
+            loadDocuments();
+        });
+
+        async function loadDomande() {
+            try {
+                const resp = await fetch(apiBase + '/domande-rag');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+
+                document.getElementById('totalCount').textContent = data.total;
+                const tbody = document.getElementById('domandeTable');
+
+                if (!data.records || data.records.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nessuna domanda attiva</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.records.map(r => `
+                    <tr>
+                        <td>${r.id}</td>
+                        <td class="td-domanda">${escapeHtml(r.domanda)}</td>
+                        <td class="td-risposta">${r.risposta ? escapeHtml(r.risposta.substring(0, 150)) + (r.risposta.length > 150 ? '...' : '') : '-'}</td>
+                        <td><span class="badge badge-intent">${escapeHtml(r.intent)}</span></td>
+                        <td>${r.source ? '<span class="badge badge-source">' + escapeHtml(r.source) + '</span>' : '-'}</td>
+                        <td style="white-space:nowrap; color:var(--text-muted); font-size:0.8rem;">${r.created_at ? new Date(r.created_at).toLocaleDateString('it-IT') : '-'}</td>
+                        <td><button class="btn btn-danger" onclick="deleteDomanda(${r.id})">Elimina</button></td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                document.getElementById('domandeTable').innerHTML =
+                    '<tr><td colspan="7" class="empty-state" style="color:var(--accent-red)">Errore caricamento: ' + escapeHtml(e.message) + '</td></tr>';
+            }
+        }
+
+        async function loadIntents() {
+            const select = document.getElementById('intent');
+            try {
+                const resp = await fetch(apiBase + '/intents');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+
+                select.innerHTML = '';
+                if (data.intents && data.intents.length > 0) {
+                    data.intents.forEach(i => {
+                        const opt = document.createElement('option');
+                        opt.value = i.intent;
+                        opt.textContent = i.intent;
+                        opt.title = i.description;
+                        if (i.intent === 'info_procedure') opt.selected = true;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                select.innerHTML = '<option value="info_procedure">info_procedure</option>';
+                console.error('Errore caricamento intents:', e);
+            }
+        }
+
+        async function insertDomanda() {
+            const domanda = document.getElementById('domanda').value.trim();
+            if (!domanda) {
+                showStatus('insertStatus', 'Il campo domanda è obbligatorio', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('btnInsert');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Inserimento...';
+
+            try {
+                const body = {
+                    domanda: domanda,
+                    risposta: document.getElementById('risposta').value.trim() || null,
+                    source: document.getElementById('source').value.trim() || null,
+                    intent: document.getElementById('intent').value,
+                    notes: document.getElementById('notes').value.trim() || null,
+                };
+
+                const resp = await fetch(apiBase + '/domande-rag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.detail || 'Errore inserimento');
+
+                showStatus('insertStatus', 'Domanda inserita con id=' + data.id, 'success');
+                // Reset form
+                document.getElementById('domanda').value = '';
+                document.getElementById('risposta').value = '';
+                document.getElementById('source').value = '';
+                document.getElementById('notes').value = '';
+                // Reload lista
+                loadDomande();
+            } catch (e) {
+                showStatus('insertStatus', e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Inserisci';
+            }
+        }
+
+        async function deleteDomanda(id) {
+            if (!confirm('Disattivare la domanda id=' + id + '?')) return;
+
+            try {
+                const resp = await fetch(apiBase + '/domande-rag/' + id, { method: 'DELETE' });
+                if (!resp.ok) {
+                    const data = await resp.json();
+                    throw new Error(data.detail || 'Errore eliminazione');
+                }
+                loadDomande();
+            } catch (e) {
+                alert('Errore: ' + e.message);
+            }
+        }
+
+        async function reindex() {
+            if (!confirm('Avviare la reindicizzazione? Potrebbe richiedere qualche minuto.')) return;
+
+            const btn = document.getElementById('btnReindex');
+            const output = document.getElementById('reindexOutput');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Reindicizzazione in corso...';
+            output.style.display = 'none';
+
+            try {
+                const resp = await fetch(apiBase + '/domande-rag/reindex', { method: 'POST' });
+                const data = await resp.json();
+
+                if (data.status === 'ok') {
+                    showStatus('reindexStatus', 'Reindicizzazione completata con successo', 'success');
+                } else {
+                    showStatus('reindexStatus', 'Reindicizzazione terminata con errori', 'error');
+                }
+
+                if (data.stdout || data.stderr) {
+                    output.style.display = 'block';
+                    output.textContent = (data.stdout || '') + (data.stderr ? '\nSTDERR:\n' + data.stderr : '');
+                }
+            } catch (e) {
+                showStatus('reindexStatus', 'Errore: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Avvia Reindicizzazione';
+            }
+        }
+
+        async function loadDocuments() {
+            const grid = document.getElementById('docsGrid');
+            try {
+                const resp = await fetch(apiBase + '/documents');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+
+                if (!data.documents || data.documents.length === 0) {
+                    grid.innerHTML = '<div class="empty-state">Nessun documento PDF trovato in data/documents/</div>';
+                    return;
+                }
+
+                grid.innerHTML = data.documents.map(d => {
+                    const sizeMB = (d.size_bytes / (1024 * 1024)).toFixed(1);
+                    const docUrl = apiBase + '/documents/' + encodeURIComponent(d.filename);
+                    return `
+                        <div class="doc-card">
+                            <div class="doc-icon">&#128196;</div>
+                            <div>
+                                <a href="${docUrl}" target="_blank">${escapeHtml(d.filename)}</a>
+                                <div class="doc-meta">${sizeMB} MB</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                grid.innerHTML = '<div class="empty-state" style="color:var(--accent-red)">Errore caricamento documenti: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        function showStatus(elemId, msg, type) {
+            const el = document.getElementById(elemId);
+            el.textContent = msg;
+            el.className = 'status-msg ' + type;
+            if (type === 'success') {
+                setTimeout(() => { el.className = 'status-msg'; }, 5000);
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+    </script>
+</body>
+
+</html>

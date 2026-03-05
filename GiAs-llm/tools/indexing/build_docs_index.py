@@ -39,19 +39,83 @@ def parse_args():
                         help="Dimensione chunk in caratteri (default: 600)")
     parser.add_argument("--chunk-overlap", type=int, default=100,
                         help="Sovrapposizione chunk in caratteri (default: 100)")
+    parser.add_argument("--parent-chunk-size", type=int, default=1800,
+                        help="Dimensione parent chunk in caratteri (default: 1800)")
+    parser.add_argument("--parent-chunk-overlap", type=int, default=200,
+                        help="Sovrapposizione parent chunk in caratteri (default: 200)")
     return parser.parse_args()
 
 
-def load_and_chunk_documents(docs_dir, chunk_size, chunk_overlap):
-    """Carica e chunka tutti i documenti dalla directory."""
+def load_and_chunk_documents(docs_dir, chunk_size, chunk_overlap,
+                             parent_chunk_size=1800, parent_chunk_overlap=200):
+    """Carica e chunka tutti i documenti con parent-child chunking."""
     chunker = DocumentChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    chunks = chunker.process_directory(docs_dir)
-    print(f"  Caricati {len(chunks)} chunk totali")
-    return chunks
+
+    loaders = {
+        '.pdf': chunker._load_pdf,
+        '.docx': chunker._load_docx,
+        '.txt': chunker._load_txt,
+        '.md': chunker._load_txt,
+    }
+
+    all_chunks = []
+    files = sorted(os.listdir(docs_dir))
+    for filename in files:
+        filepath = os.path.join(docs_dir, filename)
+        if not os.path.isfile(filepath):
+            continue
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in DocumentChunker.SUPPORTED_EXTENSIONS:
+            continue
+        try:
+            loader = loaders.get(ext)
+            text, page_map = loader(filepath)
+            if not text or not text.strip():
+                print(f"  File vuoto: {filename}")
+                continue
+
+            base_metadata = {
+                "source_file": filename,
+                "title": chunker._extract_title_from_filename(filename),
+            }
+            chunks = chunker.chunk_text_with_parents(
+                text, base_metadata, page_map=page_map,
+                parent_chunk_size=parent_chunk_size,
+                parent_chunk_overlap=parent_chunk_overlap
+            )
+            all_chunks.extend(chunks)
+            print(f"  Processato {filename}: {len(chunks)} chunk (parent-child)")
+        except Exception as e:
+            # Fallback: chunking standard senza parent
+            try:
+                chunks = chunker.load_file(filepath)
+                all_chunks.extend(chunks)
+                print(f"  Processato {filename} (senza parent): {len(chunks)} chunk")
+            except Exception as e2:
+                print(f"  Errore processando {filename}: {e2}")
+
+    print(f"  Caricati {len(all_chunks)} chunk totali")
+    return all_chunks
 
 
-def initialize_qdrant():
-    """Inizializza client Qdrant locale."""
+def initialize_qdrant(use_singleton=False):
+    """Inizializza client Qdrant locale.
+
+    Args:
+        use_singleton: se True, usa il singleton condiviso (quando chiamato dal server).
+                       Se False, crea un client dedicato (per esecuzione standalone).
+    """
+    if use_singleton:
+        try:
+            from agents.qdrant_singleton import get_qdrant_client
+            client = get_qdrant_client()
+            if client is not None:
+                print(f"  Qdrant client singleton riutilizzato")
+                return client
+        except ImportError:
+            pass
+        print(f"  Singleton non disponibile, creo client dedicato")
+
     os.makedirs(QDRANT_PATH, exist_ok=True)
     client = QdrantClient(path=QDRANT_PATH)
     print(f"  Qdrant client inizializzato: {QDRANT_PATH}")
@@ -94,6 +158,7 @@ def index_chunks(client, model, chunks):
             vector=embedding.tolist(),
             payload={
                 "content": chunk["content"],
+                "parent_content": chunk.get("parent_content", chunk["content"]),
                 "source_file": chunk["metadata"].get("source_file", ""),
                 "title": chunk["metadata"].get("title", ""),
                 "section": chunk["metadata"].get("section", ""),
@@ -176,7 +241,11 @@ def main():
 
     # 1. Carica e chunka documenti
     print(f"\n[1/5] Caricamento e chunking documenti...")
-    chunks = load_and_chunk_documents(args.docs_dir, args.chunk_size, args.chunk_overlap)
+    chunks = load_and_chunk_documents(
+        args.docs_dir, args.chunk_size, args.chunk_overlap,
+        parent_chunk_size=args.parent_chunk_size,
+        parent_chunk_overlap=args.parent_chunk_overlap
+    )
 
     if not chunks:
         print("\n  Nessun chunk generato. Verifica che i documenti contengano testo.")
@@ -212,6 +281,56 @@ def main():
     print(f"  Chunk size: {args.chunk_size} chars")
     print(f"  Chunk overlap: {args.chunk_overlap} chars")
     print("=" * 60)
+
+
+def run_indexing(docs_dir=None, chunk_size=600, chunk_overlap=100,
+                 parent_chunk_size=1800, parent_chunk_overlap=200):
+    """
+    Esegue l'indicizzazione programmaticamente (senza argparse).
+
+    Returns:
+        Dict con risultati: documents_count, chunks_count, status, error (se presente)
+    """
+    if docs_dir is None:
+        docs_dir = DEFAULT_DOCS_DIR
+
+    if not os.path.isdir(docs_dir):
+        return {"status": "error", "error": f"Directory non trovata: {docs_dir}",
+                "documents_count": 0, "chunks_count": 0}
+
+    doc_files = [f for f in os.listdir(docs_dir) if os.path.isfile(os.path.join(docs_dir, f))]
+    supported = [f for f in doc_files
+                 if os.path.splitext(f)[1].lower() in DocumentChunker.SUPPORTED_EXTENSIONS]
+
+    if not supported:
+        return {"status": "error", "error": "Nessun documento supportato trovato",
+                "documents_count": 0, "chunks_count": 0}
+
+    try:
+        chunks = load_and_chunk_documents(
+            docs_dir, chunk_size, chunk_overlap,
+            parent_chunk_size=parent_chunk_size,
+            parent_chunk_overlap=parent_chunk_overlap
+        )
+        if not chunks:
+            return {"status": "error", "error": "Nessun chunk generato",
+                    "documents_count": len(supported), "chunks_count": 0}
+
+        model = initialize_embedding_model()
+        embedding_dim = model.get_sentence_embedding_dimension()
+        client = initialize_qdrant(use_singleton=True)
+        create_collection(client, embedding_dim)
+        index_chunks(client, model, chunks)
+
+        return {
+            "status": "completed",
+            "documents_count": len(supported),
+            "chunks_count": len(chunks),
+            "documents": supported,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e),
+                "documents_count": len(supported), "chunks_count": 0}
 
 
 if __name__ == "__main__":

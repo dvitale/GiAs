@@ -714,6 +714,30 @@ body {
     color: var(--accent-hover);
 }
 
+/* Document download links in RAG responses */
+.doc-download-link {
+    color: var(--accent-color);
+    text-decoration: none;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background-color 0.2s, color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.doc-download-link::before {
+    content: '\2B07';
+    font-size: 0.85em;
+}
+
+.doc-download-link:hover {
+    background: var(--accent-light);
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
 /* ============================================================================
    Scroll to Bottom Button
    ============================================================================ */
@@ -1497,4 +1521,151 @@ body.dark-theme .header-nav-link.active {
     .conversation-messages {
         padding: 16px;
     }
+}
+
+/* ============================================================================
+   Guided Learning
+   ============================================================================ */
+
+.guided-learning-container {
+    margin-top: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-tertiary);
+    transition: opacity 0.3s ease;
+}
+
+.guided-learning-container.fade-out {
+    opacity: 0;
+}
+
+.guided-learning-header {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+.guided-learning-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.guided-learning-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+}
+
+.guided-learning-btn:hover:not(.gl-btn-disabled) {
+    border-color: var(--accent-color);
+    background: var(--accent-light);
+}
+
+.guided-learning-btn.gl-btn-selected {
+    border-color: var(--accent-color);
+    background: var(--accent-light);
+    font-weight: 600;
+}
+
+.guided-learning-btn.gl-btn-disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.gl-btn-emoji {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.gl-btn-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.gl-btn-label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.gl-btn-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.guided-learning-dismiss {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.guided-learning-dismiss:hover {
+    color: var(--text-secondary);
+    text-decoration: underline;
+}
+
+.guided-learning-feedback {
+    padding: 8px 12px;
+    font-size: 0.83rem;
+    color: #15803d;
+    background: #f0fdf4;
+    border-radius: 8px;
+    border: 1px solid #bbf7d0;
+}
+
+.guided-learning-error {
+    padding: 8px 12px;
+    font-size: 0.83rem;
+    color: #b91c1c;
+    background: #fef2f2;
+    border-radius: 8px;
+    border: 1px solid #fecaca;
+}
+
+/* Dark theme variants */
+.dark-theme .guided-learning-container {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+.dark-theme .guided-learning-btn {
+    background: #0f172a;
+    border-color: #334155;
+}
+
+.dark-theme .guided-learning-btn:hover:not(.gl-btn-disabled) {
+    border-color: #6366f1;
+    background: #1e1b4b;
+}
+
+.dark-theme .guided-learning-btn.gl-btn-selected {
+    border-color: #6366f1;
+    background: #1e1b4b;
+}
+
+.dark-theme .guided-learning-feedback {
+    color: #4ade80;
+    background: #052e16;
+    border-color: #166534;
+}
+
+.dark-theme .guided-learning-error {
+    color: #f87171;
+    background: #450a0a;
+    border-color: #7f1d1d;
 }

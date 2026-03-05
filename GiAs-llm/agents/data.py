@@ -101,3 +101,35 @@ def get_uoc_from_user_id(user_id: str) -> str:
         pass
 
     return None
+
+
+def get_uos_from_user_id(user_id: str) -> str:
+    """
+    Risolve la UOS dal user_id usando personale_df.
+
+    Args:
+        user_id: ID utente
+
+    Returns:
+        Nome UOS o None
+    """
+    if not user_id:
+        return None
+
+    if personale_df.empty:
+        return None
+
+    try:
+        user_id_str = str(user_id).replace('.0', '')
+
+        user_row = personale_df[
+            personale_df['user_id'].astype(str).str.replace('.0', '', regex=False) == user_id_str
+        ]
+        if not user_row.empty:
+            uos = user_row.iloc[0].get('descrizione_uos')
+            if pd.notna(uos) and str(uos).strip() and str(uos).strip().upper() != 'NULL':
+                return str(uos).strip()
+    except (ValueError, KeyError):
+        pass
+
+    return None

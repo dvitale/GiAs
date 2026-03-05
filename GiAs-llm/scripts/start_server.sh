@@ -114,7 +114,7 @@ select_model_interactive() {
     echo ""
 }
 
-if [ "$GIAS_LLM_BACKEND" = "openai" ] || [ "$GIAS_LLM_BACKEND" = "anthropic" ] || [ "$GIAS_LLM_BACKEND" = "openai_compat" ]; then
+if [ "$GIAS_LLM_BACKEND" = "openai" ] || [ "$GIAS_LLM_BACKEND" = "anthropic" ] || [ "$GIAS_LLM_BACKEND" = "openai_compat" ] || [ "$GIAS_LLM_BACKEND" = "openrouter" ]; then
     # ═══════════════════════════════════════════════════════
     # Provider LLM esterno (OpenAI, Anthropic, Mistral, etc.)
     # ═══════════════════════════════════════════════════════

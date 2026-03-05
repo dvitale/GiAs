@@ -95,8 +95,7 @@ run_case "GiAs-llm: locale -> remoto" "aggiorna_verso_remoto_G.sh" \
   --exclude=".*/" \
   --exclude="runtime/logs/" \
   --exclude="__*/" \
-  --exclude="qdrant*/" \
-  --exclude="qdrant*" \
+  --exclude="qdrant_storage/" \
   --include="*/" \
   --include="*.py" \
   --include="*.sh" \
@@ -113,8 +112,7 @@ run_case "GiAs-llm: remoto -> locale" "aggiorna_da_remoto_G.sh" \
   --exclude=".*/" \
   --exclude="runtime/logs/" \
   --exclude="__*/" \
-  --exclude="qdrant*/" \
-  --exclude="qdrant*" \
+  --exclude="qdrant_storage/" \
   --include="*/" \
   --include="*.py" \
   --include="*.sh" \

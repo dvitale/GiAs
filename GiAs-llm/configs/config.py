@@ -103,10 +103,10 @@ class ModelConfig:
         return cls.AVAILABLE_MODELS
 
 class LLMBackendConfig:
-    """Configurazione backend LLM (Ollama, Llama.cpp, OpenAI, Anthropic, OpenAI-Compatible)"""
+    """Configurazione backend LLM (Ollama, Llama.cpp, OpenAI, Anthropic, OpenAI-Compatible, OpenRouter)"""
 
-    VALID_BACKENDS = ["ollama", "llamacpp", "openai", "anthropic", "openai_compat"]
-    EXTERNAL_BACKENDS = ["openai", "anthropic", "openai_compat"]
+    VALID_BACKENDS = ["ollama", "llamacpp", "openai", "anthropic", "openai_compat", "openrouter"]
+    EXTERNAL_BACKENDS = ["openai", "anthropic", "openai_compat", "openrouter"]
     DEFAULT_BACKEND = "llamacpp"
 
     @classmethod
@@ -180,6 +180,14 @@ class LLMBackendConfig:
                 "timeout_seconds": 30,
                 "api_key_env": "MISTRAL_API_KEY"
             }
+        elif backend_type == "openrouter":
+            return {
+                "host": "https://openrouter.ai/api",
+                "api_endpoint": "/v1/chat/completions",
+                "model": "google/gemini-2.5-flash",
+                "timeout_seconds": 30,
+                "api_key_env": "OPENROUTER_API_KEY"
+            }
         else:  # ollama
             return {
                 "host": "http://localhost:11434",
@@ -223,6 +231,7 @@ class LLMBackendConfig:
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "openai_compat": "GIAS_LLM_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
         }
         env_name = fallbacks.get(backend_type)
         return os.getenv(env_name) if env_name else None
@@ -330,6 +339,23 @@ class AppConfig:
         except Exception as e:
             print(f"[WARNING] Could not load fallback config from config.json: {e}")
             return None
+
+    @classmethod
+    def is_guided_learning_enabled(cls) -> bool:
+        """
+        Ritorna True se il guided learning è abilitato in config.json.
+        """
+        import json
+        config_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "config.json"
+        )
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+                return config_data.get("guided_learning", {}).get("enabled", False)
+        except Exception:
+            return False
 
     @classmethod
     def print_config(cls):

@@ -22,6 +22,12 @@ class IntentMetadata:
     examples: List[str] = field(default_factory=list)  # Esempi domande utente
     requires_slots: List[str] = field(default_factory=list)  # Slot obbligatori
     emoji: str = "📋"  # Emoji rappresentativo
+    # Campi operativi (popolati da DB via IntentMetadataService)
+    tool: Optional[str] = None  # Tool function invocata
+    graph_node: Optional[str] = None  # Nodo LangGraph
+    two_phase_threshold: Optional[int] = None  # Soglia two-phase response
+    is_direct_response: bool = False  # Skip LLM, risposta diretta
+    disambiguation_rules: List[Dict] = field(default_factory=list)  # Regole disambiguazione
 
 
 # Registry completo degli intent con metadati
@@ -162,13 +168,13 @@ INTENT_REGISTRY: Dict[str, IntentMetadata] = {
 
     "ask_top_risk_activities": IntentMetadata(
         intent_id="ask_top_risk_activities",
-        label="Attività più Rischiose",
-        description="Classifica delle tipologie di attività con più rischio NC",
+        label="Linee di Attività più Rischiose",
+        description="Classifica delle linee di attività con più rischio NC",
         category="Priorità e Rischio",
         keywords=["attività", "rischiose", "pericolose", "top", "classifica", "tipologie"],
         context_keywords=["rischio", "più", "maggior"],
         negative_keywords=["stabilimenti", "osa"],
-        examples=["Attività più rischiose", "Top tipologie a rischio", "Classifica attività pericolose"],
+        examples=["Linee di attività più rischiose", "Top tipologie a rischio", "Classifica linee di attività pericolose"],
         requires_slots=[],
         emoji="📊"
     ),
@@ -270,17 +276,19 @@ INTENT_REGISTRY: Dict[str, IntentMetadata] = {
     # ===== CATEGORIA: Procedure Operative =====
     "info_procedure": IntentMetadata(
         intent_id="info_procedure",
-        label="Informazioni Procedura",
-        description="Informazioni su procedure operative da documentazione",
+        label="Informazioni Procedure e Terminologia GISA",
+        description="Informazioni su procedure operative e definizioni di termini GISA/Matrix",
         category="Procedure Operative",
         keywords=["procedura", "procedimento", "passi", "step", "guida", "istruzioni",
-                  "come si fa", "come procedere", "come funziona"],
+                  "come si fa", "come procedere", "come funziona",
+                  "cos'e", "cosa significa", "definizione", "matrix", "preaccettazione", "checklist"],
         context_keywords=["ispezione", "controllo", "verifica", "audit", "registrazione"],
         negative_keywords=["piano", "stabilimento", "ritardo", "rischio"],
         examples=[
             "Qual e' la procedura per ispezione semplice?",
             "Come si esegue un controllo ufficiale?",
             "Quali sono i passi per registrare una NC?",
+            "Cos'e il borsellino in Matrix?",
         ],
         requires_slots=[],
         emoji="📋"

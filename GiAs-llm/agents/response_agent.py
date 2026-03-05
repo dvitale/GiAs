@@ -163,7 +163,7 @@ class ResponseFormatter:
             response += "• Formula: P(NC) × Impatto × 100\n"
             response += "• P(NC) = (NC totali) / (controlli totali)\n"
             response += "• Impatto = (NC gravi) / (controlli totali)\n"
-            response += "• Dati aggregati per tipologia di attività (livello regionale)\n"
+            response += "• Dati aggregati per linea di attività (livello regionale)\n"
 
         return response
 
@@ -357,7 +357,7 @@ class ResponseFormatter:
         """
         Formatta analisi priorità basata su rischio.
         """
-        response = f"**Priorità Controlli Basate sul Rischio Storico delle Attività**\n"
+        response = f"**Priorità Controlli Basate sul Rischio Storico delle Linee di Attività**\n"
         response += f"**ASL:** {user_asl}\n"
 
         if piano_id:
@@ -368,19 +368,19 @@ class ResponseFormatter:
             response += "Buone notizie! Gli stabilimenti mai controllati nella tua ASL "
             if piano_id:
                 response += f"per il piano {piano_id} "
-            response += "appartengono ad attività che storicamente non hanno mostrato criticità "
-            response += "significative (nessuna non conformità rilevata in passato per quelle attività).\n"
+            response += "appartengono a linee di attività che storicamente non hanno mostrato criticità "
+            response += "significative (nessuna non conformità rilevata in passato per quelle linee di attività).\n"
             response += "Puoi procedere con controlli standard seguendo altre priorità operative."
             return response
 
         response += f"**OSA mai controllati analizzati:** {osa_total_count}\n"
-        response += f"**OSA in attività ad alto rischio:** {osa_risky_count}\n"
-        response += f"**Attività critiche identificate (regionale):** {activities_count}\n"
+        response += f"**OSA in linee di attività ad alto rischio:** {osa_risky_count}\n"
+        response += f"**Linee di attività critiche identificate (regionale):** {activities_count}\n"
 
         title_suffix = f" per Piano {piano_id}" if piano_id else ""
         display_count = max_display if max_display else len(osa_rischiosi)
-        response += f"**Top {display_count} OSA Mai Controllati in Attività ad Alto Rischio{title_suffix}:**\n"
-        response += "*(Ordinati per rischiosità storica dell'attività a livello regionale)*\n"
+        response += f"**Top {display_count} OSA Mai Controllati in Linee di Attività ad Alto Rischio{title_suffix}:**\n"
+        response += "*(Ordinati per rischiosità storica della linea di attività a livello regionale)*\n"
 
         display_df = osa_rischiosi.head(max_display) if max_display else osa_rischiosi
         for idx, row in enumerate(display_df.itertuples(index=False), 1):
@@ -401,7 +401,7 @@ class ResponseFormatter:
             response += f"   Rischio: **{punteggio}/100** | NC: {nc_gravi} gravi, {nc_non_gravi} non gravi | Controlli: {controlli}\n"
 
         response += "**Legenda Punteggio Rischio:**\n"
-        response += "• Il punteggio è calcolato sull'attività, non sul singolo stabilimento\n"
+        response += "• Il punteggio è calcolato sulla linea di attività, non sul singolo stabilimento\n"
         response += "• Formula: P(NC) × Impatto × 100\n"
         response += "• P(NC) = (NC totali) / (controlli totali)\n"
         response += "• Impatto = (NC gravi) / (controlli totali)\n"
@@ -409,7 +409,7 @@ class ResponseFormatter:
 
         response += "**Raccomandazione:**\n"
         response += "Questi stabilimenti NON sono mai stati controllati ma appartengono "
-        response += "ad attività che hanno mostrato criticità significative nei controlli "
+        response += "a linee di attività che hanno mostrato criticità significative nei controlli "
         response += "effettuati a livello regionale (Regione Campania). Dare priorità assoluta ai primi 5 della lista."
 
         if max_display and osa_risky_count > max_display:
@@ -1043,16 +1043,16 @@ class ResponseFormatter:
         limit: int
     ) -> str:
         """
-        Formatta la lista delle top attività più rischiose.
+        Formatta la lista delle top linee di attività più rischiose.
         """
         if not activities_data:
-            return "Nessuna attività con dati di rischio disponibili al momento."
+            return "Nessuna linea di attività con dati di rischio disponibili al momento."
 
-        response = f"🔍 **TOP {limit} ATTIVITÀ A MAGGIOR RISCHIO**\n\n"
+        response = f"🔍 **TOP {limit} LINEE DI ATTIVITÀ A MAGGIOR RISCHIO**\n\n"
         response += f"📊 **Panoramica generale:**\n"
-        response += f"- Attività analizzate: {total_activities:,}\n"
-        response += f"- Alto rischio (>7): {high_risk_count} attività\n"
-        response += f"- Medio rischio (3-7): {medium_risk_count} attività\n"
+        response += f"- Linee di attività analizzate: {total_activities:,}\n"
+        response += f"- Alto rischio (>7): {high_risk_count} linee di attività\n"
+        response += f"- Medio rischio (3-7): {medium_risk_count} linee di attività\n"
         response += f"- Risk score medio: {avg_risk_score:.1f}\n\n"
 
         response += f"🎯 **Classifica per Risk Score:**\n\n"
@@ -1093,12 +1093,12 @@ class ResponseFormatter:
 
         # Suggerimenti operativi
         response += f"⚡ **Raccomandazioni:**\n"
-        response += f"- Prioritizzare controlli per attività con risk score > 7 (alto rischio)\n"
-        response += f"- Pianificare ispezioni mirate per le prime {min(5, len(activities_data))} attività\n"
+        response += f"- Prioritizzare controlli per linee di attività con risk score > 7 (alto rischio)\n"
+        response += f"- Pianificare ispezioni mirate per le prime {min(5, len(activities_data))} linee di attività\n"
         response += f"- Monitorare evoluzione risk score dopo i controlli"
 
         if total_activities > limit:
-            response += f"\n\n📋 **Nota:** Altri {total_activities - limit} attività disponibili con risk score inferiore"
+            response += f"\n\n📋 **Nota:** Altre {total_activities - limit} linee di attività disponibili con risk score inferiore"
 
         return response
 

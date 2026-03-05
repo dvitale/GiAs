@@ -130,19 +130,36 @@ class DataRetriever:
         return df
 
     @staticmethod
-    def get_diff_programmati_eseguiti(uoc_name: str) -> pd.DataFrame:
+    def get_diff_programmati_eseguiti(uoc_name: str, asl: Optional[str] = None, uos: Optional[str] = None) -> pd.DataFrame:
         """
-        Recupera differenze programmati vs eseguiti per struttura UOC.
+        Recupera differenze programmati vs eseguiti per struttura UOC, ASL e UOS.
 
         Returns:
-            DataFrame filtrato per UOC
+            DataFrame filtrato per UOC (e ASL/UOS se specificati)
         """
         if diff_prog_eseg_df.empty or not uoc_name:
             return pd.DataFrame()
 
-        return diff_prog_eseg_df[
+        result = diff_prog_eseg_df[
             diff_prog_eseg_df['descrizione_uoc'].str.contains(uoc_name, case=False, na=False)
         ]
+
+        if asl:
+            asl_upper = asl.upper().strip()
+            result = result[
+                result['descrizione_asl'].fillna('').str.upper().str.contains(asl_upper, regex=False)
+            ]
+
+        if uos:
+            uos_filtered = result[
+                result['descrizione_uos'].fillna('').str.upper().str.contains(
+                    uos.upper().strip(), regex=False
+                )
+            ]
+            if not uos_filtered.empty:
+                result = uos_filtered
+
+        return result
 
     @staticmethod
     def search_piani_by_db(query: str) -> List[Dict[str, Any]]:
@@ -218,14 +235,14 @@ class DataRetriever:
 
             cls._qdrant_client = client
             cls._embedding_model = get_embedding_model()
+            cls._qdrant_available = True
+            print("✅ Qdrant client inizializzato")
 
             try:
                 cls._qdrant_client.get_collection("piani_monitoraggio")
-                cls._qdrant_available = True
-                print("✅ Qdrant semantic search disponibile")
-            except:
-                print("⚠️  Collection 'piani_monitoraggio' non trovata in Qdrant")
-                cls._qdrant_available = False
+                print("✅ Collection 'piani_monitoraggio' disponibile")
+            except Exception:
+                print("⚠️  Collection 'piani_monitoraggio' non trovata (semantic search piani disabilitata)")
 
         except ImportError as e:
             print(f"⚠️  Qdrant/SentenceTransformers non disponibile: {e}")
@@ -347,7 +364,7 @@ class DataRetriever:
 
             return [
                 {
-                    "content": hit.payload.get("content", ""),
+                    "content": hit.payload.get("parent_content", hit.payload.get("content", "")),
                     "source_file": hit.payload.get("source_file", ""),
                     "section": hit.payload.get("section", ""),
                     "title": hit.payload.get("title", ""),
@@ -451,13 +468,12 @@ class DataRetriever:
     @staticmethod
     def get_user_structure(user_asl: str, user_id: Optional[int] = None) -> Optional[Tuple[str, str]]:
         """
-        Recupera struttura organizzativa utente da personale.csv.
+        Recupera struttura organizzativa utente da tabella personale.
 
         Returns:
-            Tuple (user_structure, uoc_name) o None se non trovato
+            Tuple (descrizione_asl, descrizione_uoc) o None se non trovato
         """
         try:
-            # Use data source instead of hardcoded path
             from data_sources.factory import get_data_source
             data_source = get_data_source()
             personale_df = data_source.get_personale()
@@ -467,18 +483,17 @@ class DataRetriever:
                 user_record = personale_df[personale_df['user_id'] == int(user_id)]
 
             if user_record is None or user_record.empty:
-                user_record = personale_df[personale_df['asl'].str.upper() == user_asl.upper()]
+                user_record = personale_df[
+                    personale_df['descrizione_asl'].fillna('').str.upper().str.contains(user_asl.upper(), regex=False)
+                ]
 
             if user_record.empty:
                 return None
 
-            user_structure = user_record.iloc[0]['descrizione']
-            user_uoc = user_record.iloc[0]['descrizione_area_struttura_complessa']
+            user_asl_desc = user_record.iloc[0]['descrizione_asl']
+            uoc_name = user_record.iloc[0]['descrizione_uoc']
 
-            structure_parts = user_structure.split('->')
-            uoc_name = structure_parts[1].strip() if len(structure_parts) > 1 else user_uoc
-
-            return (user_structure, uoc_name)
+            return (user_asl_desc, uoc_name)
 
         except Exception as e:
             print(f"[DataRetriever.get_user_structure] Error: {e}")

@@ -62,11 +62,43 @@ class Router:
     }
 
     # =========================================================================
-    # PROMPT V2 (ottimizzato per accuratezza e disambiguazione)
-    # Budget: ~700 token, ~20 esempi con coppie confuse
+    # PROMPT V2 - Template semi-dinamico
+    # Struttura e regole formato restano costanti Python.
+    # Contenuti variabili (catalogo, esempi critici) iniettati da IntentMetadataService.
     # =========================================================================
 
-    CLASSIFICATION_SYSTEM_PROMPT = """Classificatore intent veterinario GIAS. Output JSON esatto:
+    _CLASSIFICATION_PROMPT_TEMPLATE = """Classificatore intent veterinario GIAS. Output JSON esatto:
+{{"reasoning":"breve motivazione","intent":"NOME","slots":{{}},"needs_clarification":false,"confidence":0.85,"alternatives":[]}}
+
+Se sei incerto (confidence < 0.85), aggiungi fino a 2 alternative:
+"alternatives":[{{"intent":"ALTRO","confidence":0.70,"reasoning":"perché"}}]
+
+INTENT PER CATEGORIA:
+{intent_catalog}
+
+SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km
+
+REGOLE DISAMBIGUAZIONE:
+{disambiguation_rules}
+
+ESEMPI CRITICI (coppie confuse):
+{critical_examples}
+
+ESEMPI CON ALTERNATIVES (intent ambigui):
+"come funziona il rischio" → {{"reasoning":"potrebbe essere procedura o analisi rischio","intent":"info_procedure","slots":{{}},"needs_clarification":false,"confidence":0.60,"alternatives":[{{"intent":"ask_risk_based_priority","confidence":0.55,"reasoning":"potrebbe chiedere stabilimenti a rischio"}}]}}
+"controlli recenti" → {{"reasoning":"potrebbe essere storico o priorità","intent":"ask_establishment_history","slots":{{}},"needs_clarification":true,"confidence":0.55,"alternatives":[{{"intent":"ask_priority_establishment","confidence":0.50,"reasoning":"potrebbe chiedere chi controllare"}}]}}
+
+CAMBIO TOPIC (ignora sessione precedente):
+SESSIONE: intent=ask_delayed_plans, slots={{"piano_code":"A1"}}
+"attività più rischiose" → {{"reasoning":"nuovo topic, ignoro sessione piani","intent":"ask_top_risk_activities","slots":{{}},"needs_clarification":false,"confidence":0.95}}
+
+Output: SOLO JSON valido, niente altro."""
+
+    # =========================================================================
+    # PROMPT V2 - Fallback hardcoded (usato se IntentMetadataService non disponibile)
+    # =========================================================================
+
+    _CLASSIFICATION_PROMPT_FALLBACK = """Classificatore intent veterinario GIAS. Output JSON esatto:
 {"reasoning":"breve motivazione","intent":"NOME","slots":{},"needs_clarification":false,"confidence":0.85,"alternatives":[]}
 
 Se sei incerto (confidence < 0.85), aggiungi fino a 2 alternative:
@@ -95,7 +127,7 @@ check_if_plan_delayed(piano_code) - verifica ritardo UN piano specifico
 ask_establishment_history(num_registrazione|partita_iva|ragione_sociale) - storico controlli stabilimento
 
 [Procedure]
-info_procedure - procedure operative, come si fa, passi per
+info_procedure - procedure operative, come si fa, passi per, definizioni termini GISA/Matrix (cos'e X)
 analyze_nc_by_category(categoria) - analisi NC per categoria
 
 [Base]
@@ -110,19 +142,19 @@ SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), 
 
 REGOLE DISAMBIGUAZIONE:
 1. "STABILIMENTI a rischio" → ask_risk_based_priority (NON ask_top_risk_activities)
-2. "ATTIVITÀ rischiose" / "classifica attività" → ask_top_risk_activities (NON ask_risk_based_priority)
+2. "LINEE DI ATTIVITÀ rischiose" / "classifica linee di attività" → ask_top_risk_activities (NON ask_risk_based_priority)
 3. "piani in ritardo" (plurale/generico) → ask_delayed_plans
 4. "il piano X è in ritardo" (specifico) → check_if_plan_delayed
 5. greet se messaggio è saluto/convenevole SENZA domande operative; goodbye se è commiato
 6. Slot mancante per intent che lo richiede → needs_clarification:true
 7. confidence: 0.95+ per match esatto, 0.70-0.90 per inferenza, <0.70 se incerto
-8. CAMBIO TOPIC: Se il messaggio è chiaramente un NUOVO ARGOMENTO (es. "attività rischiose" dopo aver parlato di "piani"), IGNORA la sessione precedente e classifica il messaggio in isolamento
+8. CAMBIO TOPIC: Se il messaggio è chiaramente un NUOVO ARGOMENTO (es. "linee di attività rischiose" dopo aver parlato di "piani"), IGNORA la sessione precedente e classifica il messaggio in isolamento
 9. "PIANI controllare per primi" → ask_delayed_plans (priorità PIANI); "STABILIMENTI controllare per primi" → ask_priority_establishment (priorità STABILIMENTI)
 10. Se la domanda potrebbe corrispondere a 2+ intent con confidence simile, restituisci il migliore come intent principale e gli altri in "alternatives". NON indovinare: è meglio chiedere all'utente che classificare male.
 
 ESEMPI CRITICI (coppie confuse):
 "stabilimenti a rischio" → {"reasoning":"chiede stabilimenti con alto rischio","intent":"ask_risk_based_priority","slots":{},"needs_clarification":false,"confidence":0.95}
-"attività più rischiose" → {"reasoning":"chiede classifica attività per rischio","intent":"ask_top_risk_activities","slots":{},"needs_clarification":false,"confidence":0.95}
+"linee di attività più rischiose" → {"reasoning":"chiede classifica linee di attività per rischio","intent":"ask_top_risk_activities","slots":{},"needs_clarification":false,"confidence":0.95}
 "piani in ritardo" → {"reasoning":"lista piani ritardo generico","intent":"ask_delayed_plans","slots":{},"needs_clarification":false,"confidence":0.95}
 "il piano B2 è in ritardo?" → {"reasoning":"verifica ritardo piano specifico B2","intent":"check_if_plan_delayed","slots":{"piano_code":"B2"},"needs_clarification":false,"confidence":0.95}
 "voglio verificare se un piano è in ritardo" → {"reasoning":"manca piano_code","intent":"check_if_plan_delayed","slots":{},"needs_clarification":true,"confidence":0.85}
@@ -138,6 +170,7 @@ ESEMPI CRITICI (coppie confuse):
 "entro 5 km da Via Roma" → {"reasoning":"raggio specifico","intent":"ask_nearby_priority","slots":{"location":"Via Roma","radius_km":5},"needs_clarification":false,"confidence":0.95}
 "NC categoria HACCP" → {"reasoning":"analisi NC HACCP","intent":"analyze_nc_by_category","slots":{"categoria":"HACCP"},"needs_clarification":false,"confidence":0.95}
 "procedura ispezione" → {"reasoning":"come si fa ispezione","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.90}
+"cos'e il borsellino in Matrix" → {"reasoning":"definizione termine Matrix","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.95}
 "storico IT 2287" → {"reasoning":"storico stabilimento","intent":"ask_establishment_history","slots":{"num_registrazione":"IT 2287"},"needs_clarification":false,"confidence":0.95}
 "ciao" → {"reasoning":"saluto","intent":"greet","slots":{},"needs_clarification":false,"confidence":0.99}
 "buonanotte" → {"reasoning":"saluto serale","intent":"greet","slots":{},"needs_clarification":false,"confidence":0.99}
@@ -155,7 +188,7 @@ ESEMPI CON ALTERNATIVES (intent ambigui):
 
 CAMBIO TOPIC (ignora sessione precedente):
 SESSIONE: intent=ask_delayed_plans, slots={"piano_code":"A1"}
-"attività più rischiose" → {"reasoning":"nuovo topic, ignoro sessione piani","intent":"ask_top_risk_activities","slots":{},"needs_clarification":false,"confidence":0.95}
+"linee di attività più rischiose" → {"reasoning":"nuovo topic, ignoro sessione piani","intent":"ask_top_risk_activities","slots":{},"needs_clarification":false,"confidence":0.95}
 
 Output: SOLO JSON valido, niente altro."""
 
@@ -273,7 +306,7 @@ OUTPUT:"""
 
     GREET_PATTERNS = re.compile(
         r'^(ciao|salve|buongiorno|buonasera|buondì|buon\s*pomeriggio|buonanotte|'
-        r'hey|hi|hello|saluti|ehilà|ehi|ben\s*trovato|ben\s*tornato|eccomi)\b',
+        r'hey|hi|hello|aloha|saluti|ehilà|ehi|ben\s*trovato|ben\s*tornato|eccomi)\b',
         re.IGNORECASE
     )
 
@@ -359,11 +392,11 @@ OUTPUT:"""
         re.IGNORECASE
     )
 
-    # Top attività rischiose
+    # Top attività/linee di attività rischiose
     TOP_RISK_PATTERNS = re.compile(
-        r'\b(attivit[aà]\s*(pi[uù]\s*)?rischios[ae]|'
-        r'top\s*(10\s*)?attivit[aà]|'
-        r'classifica\s*attivit[aà]\s*(per\s*rischio)?)\b',
+        r'\b((?:line[ae]\s+di\s+)?attivit[aà]\s*(pi[uù]\s*)?rischios[ae]|'
+        r'top\s*(10\s*)?(?:line[ae]\s+di\s+)?attivit[aà]|'
+        r'classifica\s*(?:line[ae]\s+di\s+)?attivit[aà]\s*(per\s*rischio)?)\b',
         re.IGNORECASE
     )
 
@@ -602,9 +635,35 @@ OUTPUT:"""
         self.llm_client = llm_client or LLMClient()
         self.enable_cache = enable_cache
         self.intent_cache = IntentCache(ttl_seconds=cache_ttl) if enable_cache else None
+        self._build_system_prompt()
         print(f"🔧 Router configurato con modello: {self.llm_client.model}")
         if enable_cache:
             print(f"📦 Intent cache attivata (TTL: {cache_ttl}s)")
+
+    def _build_system_prompt(self):
+        """Costruisce il prompt di classificazione dal servizio DB o fallback hardcoded."""
+        try:
+            from .intent_metadata_service import get_intent_metadata_service
+            service = get_intent_metadata_service()
+            if service.source == 'database':
+                catalog = service.get_intent_catalog_for_prompt()
+                rules = service.get_disambiguation_rules_for_prompt()
+                examples = service.get_critical_examples_for_prompt()
+                if catalog and examples:
+                    self.CLASSIFICATION_SYSTEM_PROMPT = self._CLASSIFICATION_PROMPT_TEMPLATE.format(
+                        intent_catalog=catalog,
+                        disambiguation_rules=rules,
+                        critical_examples=examples,
+                    )
+                    print(f"📋 Prompt classificazione costruito da DB ({service.source})")
+                    return
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[Router] Prompt dinamico fallito: {e}")
+
+        # Fallback al prompt hardcoded
+        self.CLASSIFICATION_SYSTEM_PROMPT = self._CLASSIFICATION_PROMPT_FALLBACK
+        print(f"📋 Prompt classificazione: fallback hardcoded")
 
     def classify(self, message: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -971,8 +1030,12 @@ OUTPUT:"""
         return slots
 
     def _build_cache_key(self, message: str, has_detail_context: bool) -> str:
-        """Costruisce chiave cache considerando il contesto."""
+        """Costruisce chiave cache normalizzata considerando il contesto."""
         base_key = message.lower().strip()
+        # Rimuovi punteggiatura finale
+        base_key = base_key.rstrip("?!.,;:")
+        # Collassa spazi multipli
+        base_key = re.sub(r'\s+', ' ', base_key)
         if has_detail_context:
             base_key = f"__ctx__:{base_key}"
         return base_key
@@ -1254,7 +1317,13 @@ OUTPUT:"""
         if len(msg_lower) > 15:
             return False
 
-        # Messaggi brevi senza keyword → gibberish
+        # Messaggi brevi composti da parole reali (solo lettere/spazi/accenti) →
+        # potrebbero essere saluti in altre lingue (hola, bonjour, namaste, yo).
+        # Lasciamo decidere all'LLM invece di bloccarli come gibberish.
+        if re.match(r'^[a-zà-öø-ÿ\s]+$', msg_lower) and len(msg_lower) >= 2:
+            return False
+
+        # Messaggi brevi con caratteri non-alfabetici e senza keyword → gibberish
         return True
 
     def get_cache_stats(self) -> Dict[str, Any]:
@@ -1265,6 +1334,20 @@ OUTPUT:"""
         stats = self.intent_cache.get_stats()
         stats["cache_enabled"] = True
         return stats
+
+    def reload(self) -> None:
+        """Hot-reload: ricarica metadati intent da DB, ricostruisce prompt, svuota cache."""
+        try:
+            from .intent_metadata_service import get_intent_metadata_service
+            service = get_intent_metadata_service()
+            service.reload()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[Router] Reload IntentMetadataService fallito: {e}")
+
+        self._build_system_prompt()
+        self.clear_cache()
+        print("[Router] 🔄 Reload completato")
 
     def clear_cache(self) -> None:
         """Clear all cached intent classifications."""

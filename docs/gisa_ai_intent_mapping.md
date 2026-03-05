@@ -41,10 +41,11 @@ Documentazione del sistema di mapping tra domande utente, intent, tool e query p
 | Campo | Valore |
 |-------|--------|
 | Intent | `ask_help` |
-| Tool | nessuno (risposta statica) |
+| Tool | `help_tool()` (dinamico da DB con fallback statico) |
 | Graph Node | `help_tool` |
+| Data Source | `IntentMetadataService.get_help_content()` (da tabella `intent_examples` tipo `help`) |
 
-**Risposta:** Elenco delle funzionalita' disponibili.
+**Risposta:** Elenco delle funzionalita' disponibili, generato dinamicamente dagli esempi `help` nella tabella `intent_examples`. Se il servizio DB non e' disponibile, usa un elenco statico hardcoded come fallback.
 
 ---
 
@@ -471,7 +472,7 @@ GROUP BY indicatore;
 | Data Retriever | `DataRetriever.get_establishment_history()` |
 | Two-Phase | Soglia: 3 controlli |
 
-**Identificatori accettati (almeno uno):** `num_registrazione`, `partita_iva`, `ragione_sociale`
+**Identificatori accettati (almeno uno):** `num_registrazione`, `numero_riconoscimento`, `partita_iva`, `ragione_sociale`
 
 **Query equivalente:**
 ```sql
@@ -670,6 +671,8 @@ Se `needs_clarification=True`, genera messaggio mirato per gli slot mancanti. Al
 
 ## Tabelle del Database (PostgreSQL)
 
+### Tabelle dati operativi
+
 | Nome logico | Tabella PostgreSQL | Descrizione |
 |-------------|-------------------|-------------|
 | `piani` | `piani_monitoraggio` | Anagrafica piani di monitoraggio (730 record unici) |
@@ -680,12 +683,57 @@ Se `needs_clarification=True`, genera messaggio mirato per gli slot mancanti. Al
 | `osa_mai_controllati` | `osa_mai_controllati` | Operatori del settore alimentare mai controllati (118.729 record) |
 | `personale` | `personale` | Anagrafica personale ispettivo (1.494 utenti unici) |
 
+### Tabelle metadata e classificazione
+
+| Tabella | PK | Descrizione |
+|---------|-----|-------------|
+| `intents` | `intent` (VARCHAR 60) | Metadata intent: title, category, emoji, tool, graph_node, keywords, context_keywords, negative_keywords, is_direct_response, disambiguation_rules, two_phase_threshold, required_slots (20 record) |
+| `intent_examples` | `id` (SERIAL) | Esempi per classificazione: text, example_type (few_shot/prompt_critical/disambiguation/variation/help), expected_json, confused_with. FK → intents(intent) ON DELETE CASCADE. (~172 record) |
+| `domande_risposte` | `id` (SERIAL) | Domande RAG curate: domanda, risposta, intent, source, active. UNIQUE(domanda, intent). |
+| `chat_log` | — | Log conversazioni: who, ask, answer, intent, asl, session_id, response_time_ms |
+
+### Colonne tabella `intents` (schema completo)
+
+| Colonna | Tipo | Default | Note |
+|---------|------|---------|------|
+| `intent` | VARCHAR(60) | — | PK |
+| `section_number` | INTEGER | — | Ordinamento UI |
+| `title` | VARCHAR(200) | — | Titolo italiano |
+| `example_question` | TEXT | NULL | Domanda esempio |
+| `tool` | TEXT | NULL | Tool invocato |
+| `graph_node` | VARCHAR(100) | NULL | Nodo LangGraph |
+| `data_retriever` | TEXT | NULL | Metodo DataRetriever |
+| `business_logic` | TEXT | NULL | Metodo BusinessLogic |
+| `two_phase_threshold` | INTEGER | NULL | Soglia two-phase (NULL = non two-phase) |
+| `required_slots` | JSONB | NULL | Array slot richiesti |
+| `query_equivalent` | TEXT | NULL | Query SQL equivalente |
+| `notes` | TEXT | NULL | Note aggiuntive |
+| `category` | VARCHAR(60) | NULL | Categoria per UI (Piano di Controllo, Ricerca, etc.) |
+| `emoji` | VARCHAR(10) | '📋' | Icona per UI |
+| `keywords` | TEXT[] | '{}' | Keyword primarie (+10 punti scoring) |
+| `context_keywords` | TEXT[] | '{}' | Keyword contesto (+5 punti scoring) |
+| `negative_keywords` | TEXT[] | '{}' | Keyword esclusione (-50 punti scoring) |
+| `is_direct_response` | BOOLEAN | FALSE | Se TRUE, skip LLM (greet, goodbye, fallback, confirm, decline) |
+| `disambiguation_rules` | JSONB | '[]' | Regole disambiguazione tra intent simili |
+| `updated_at` | TIMESTAMP | NOW() | Ultimo aggiornamento |
+
+### Tipi example_type in `intent_examples`
+
+| Tipo | Descrizione | Uso |
+|------|-------------|-----|
+| `few_shot` | Esempi generali di training | Indicizzati in Qdrant per few-shot retrieval |
+| `prompt_critical` | Esempi iniettati nel system prompt LLM | Coppie confuse con expected_json |
+| `disambiguation` | Coppie per disambiguare intent simili | confused_with valorizzato |
+| `variation` | Variazioni linguistiche | Copertura dialettale/informale |
+| `help` | Domande suggerite in help_tool() | Mostrate all'utente nella risposta aiuto |
+
 **Qdrant (ricerca semantica):**
 
 | Collection | Modello embedding | Descrizione |
 |------------|------------------|-------------|
 | `piani_monitoraggio` | `paraphrase-multilingual-MiniLM-L12-v2` | Embedding piani per ricerca semantica |
 | `procedure_documents` | `paraphrase-multilingual-MiniLM-L12-v2` | Embedding documenti procedure operative (RAG) |
+| `intent_examples` | `paraphrase-multilingual-MiniLM-L12-v2` | Embedding esempi intent per few-shot retrieval |
 
 ---
 
@@ -700,6 +748,7 @@ Se `needs_clarification=True`, genera messaggio mirato per gli slot mancanti. Al
 | `:top_n` / `:limit` | Numero massimo di risultati |
 | `:threshold` | Soglia di similarita' per ricerca semantica (default: 0.3 vector, 0.4 keyword) |
 | `:num_registrazione` | Numero di registrazione stabilimento (es. "IT 2287") |
+| `:numero_riconoscimento` | Numero di riconoscimento stabilimento (alias di num_registrazione) |
 | `:partita_iva` | Partita IVA operatore (10-11 cifre) |
 | `:ragione_sociale` | Ragione sociale operatore |
 | `:categoria` | Categoria non conformita' (es. "HACCP", "IGIENE DEGLI ALIMENTI") |
@@ -716,7 +765,7 @@ Se `needs_clarification=True`, genera messaggio mirato per gli slot mancanti. Al
 | `ask_piano_stabilimenti` | `piano_code` | |
 | `check_if_plan_delayed` | `piano_code` | |
 | `search_piani_by_topic` | `topic` | |
-| `ask_establishment_history` | `num_registrazione` \| `partita_iva` \| `ragione_sociale` | Almeno uno |
+| `ask_establishment_history` | `num_registrazione` \| `numero_riconoscimento` \| `partita_iva` \| `ragione_sociale` | Almeno uno |
 | `analyze_nc_by_category` | `categoria` | Deve essere in `VALID_NC_CATEGORIES` |
 | `ask_nearby_priority` | `location` | `radius_km` opzionale (default 5) |
 
@@ -726,16 +775,22 @@ Se manca uno slot obbligatorio, `needs_clarification=True` e il sistema chiede e
 
 ## Architettura di Classificazione
 
+> **Nota:** `MINIMAL_HEURISTICS = True` (feature flag attivo). Le euristiche del Layer 1 sono ridotte
+> al minimo (solo confirm/decline, disambiguazione rischio, greet/goodbye/help). Tutto il resto e'
+> delegato al LLM. Il prompt di classificazione e' costruito dinamicamente dalla tabella `intents` e
+> `intent_examples` nel DB (con fallback hardcoded).
+
 ```
 Messaggio utente
     |
     v
 +-----------------------------+
-| Layer 1: Heuristics         | <-- Regex pattern matching (bypass LLM)
-|  - Saluti, aiuto, conferme  |
-|  - Piani in ritardo         |
-|  - Mai controllati, rischio |
-|  - Piano description/stab.  |
+| Layer 1: Heuristics         | <-- Regex pattern matching MINIMALI (bypass LLM)
+|  (MINIMAL_HEURISTICS=True)  |
+|  - Conferme esplicite       |     "si mostrami", "vediamo dettagli"
+|  - Rifiuti espliciti        |     "no grazie", "basta", "stop"
+|  - Conferme/rifiuti brevi   |     "si", "no" (solo se has_detail_context)
+|  - Disambiguazione rischio  |     "1"→mai_controllati, "2"→con_sanzioni
 +-------------+---------------+
               | (nessun match)
               v
@@ -752,8 +807,18 @@ Messaggio utente
               | (cache miss)
               v
 +-----------------------------+
-| Layer 4: LLM classification | <-- llama3.2:3b, system+user roles, json_mode
-|  - Intent + slots + clarif. |
+| Layer 4: LLM classification | <-- Prompt dinamico da DB (o fallback hardcoded)
+|  - Catalogo intent da DB    |     IntentMetadataService.get_intent_catalog_for_prompt()
+|  - Regole disambiguazione   |     IntentMetadataService.get_disambiguation_rules_for_prompt()
+|  - Esempi critici da DB     |     IntentMetadataService.get_critical_examples_for_prompt()
+|  - json_mode output         |
++-------------+---------------+
+              |
+              v
++-----------------------------+
+| Layer 5: Dialogue Manager   | <-- Valuta DialogueState, topic change detection
+|  - dm_evaluate()            |     Classifica messaggio (refinement, continuation, etc.)
+|  - Azione: execute/ask/fall |     Decide se eseguire tool, chiedere slot, o fallback
 +-------------+---------------+
               |
               v
@@ -795,7 +860,7 @@ Il sistema supporta tre modalità di risposta in base alla complessità e alla q
 |--------|---------------|------|
 | `greet` | Statica | Messaggio di benvenuto predefinito |
 | `goodbye` | Statica | Messaggio di congedo predefinito |
-| `ask_help` | Statica | Elenco funzionalità disponibili |
+| `ask_help` | Dinamica (DB) + fallback statico | Elenco funzionalità da intent_examples (tipo help) |
 | `ask_piano_description` | Dati strutturati | Descrizione completa del piano richiesto |
 | `ask_piano_statistics` | Dati aggregati | Statistiche numeriche sui piani |
 | `ask_delayed_plans` | Lista | Elenco piani in ritardo con ritardo numerico |
@@ -878,7 +943,7 @@ Bot:  "📋 Elenco completo stabilimenti ad alto rischio:
 | `ask_piano_stabilimenti` | `piano_code` | "Per quale piano vuoi conoscere gli stabilimenti?" | ✅ Sessione |
 | `check_if_plan_delayed` | `piano_code` | "Quale piano vuoi verificare?" | ✅ Sessione |
 | `search_piani_by_topic` | `topic` | "Quale argomento/settore ti interessa?" | ✅ Sessione |
-| `ask_establishment_history` | `num_registrazione` \| `partita_iva` \| `ragione_sociale` | "Fornisci almeno uno tra: numero riconoscimento, P.IVA, ragione sociale" | ❌ Non carrier |
+| `ask_establishment_history` | `num_registrazione` \| `numero_riconoscimento` \| `partita_iva` \| `ragione_sociale` | "Fornisci almeno uno tra: numero riconoscimento, P.IVA, ragione sociale" | ❌ Non carrier |
 | `analyze_nc_by_category` | `categoria` (da VALID_NC_CATEGORIES) | "Quale categoria NC vuoi analizzare? (HACCP, IGIENE DEGLI ALIMENTI, ...)" | ❌ Non carrier |
 | `ask_nearby_priority` | `location` | "Quale indirizzo o zona vuoi cercare?" | ❌ Non carrier |
 
@@ -978,9 +1043,11 @@ Bot:  "🔍 Verifico lo stato del piano A1...
 ```
 
 **Modello LLM configurato:**
-- Default: `llama3.2:3b` (veloce e leggero)
-- Configurabile via `GIAS_LLM_MODEL`
-- Kept in memory permanentemente (OLLAMA_KEEP_ALIVE=-1)
+- Default: `llama3.2:3b` via Ollama locale (veloce e leggero)
+- Configurabile via `GIAS_LLM_MODEL` e `GIAS_LLM_BACKEND`
+- Supporta provider esterni: OpenAI, Anthropic, OpenAI-compat (Mistral, Groq)
+- Provider esterni richiedono `gdpr.allow_external_llm=true` in config.json
+- Con Ollama: kept in memory permanentemente (OLLAMA_KEEP_ALIVE=-1)
 
 ### 2. Inizializzazione FastAPI (app/api.py)
 
@@ -1000,18 +1067,19 @@ Bot:  "🔍 Verifico lo stato del piano A1...
    - Per chat_log enrichment
 ```
 
-**Endpoints disponibili:**
-- `POST /webhooks/rest/webhook` → Conversazione principale (compatibile Rasa)
-- `POST /model/parse` → NLU parsing (debug/testing)
-- `GET /status` → Stato server + dati caricati
-- `GET /config` → Configurazione corrente
+**Endpoints disponibili (API V1 nativa):**
+- `POST /api/v1/chat` → Conversazione principale
+- `POST /api/v1/chat/stream` → Conversazione streaming (SSE)
+- `POST /api/v1/chat/feedback` → Feedback utente (rating 1-5 + testo)
+- `POST /api/v1/parse` → NLU parsing (debug/testing)
+- `GET /status` → Stato server + dati caricati + rag_cache stats
 - `GET /` → Health check
 
 ### 3. Flusso Richiesta Utente
 
-**Step 1 - Webhook Request:**
+**Step 1 - Chat Request (API V1 nativa):**
 ```
-User → POST /webhooks/rest/webhook
+User → POST /api/v1/chat
 {
   "sender": "user123",
   "message": "Stabilimenti a rischio per il piano A1",
@@ -1031,47 +1099,67 @@ User → POST /webhooks/rest/webhook
 
 **Step 3 - ConversationGraph Execution:**
 ```
-LangGraph Flow:
+LangGraph Flow (5 nodi core + 19 tool):
 ┌─────────────┐
-│  classify   │ ← Router ibrido (heuristics + LLM)
+│  classify   │ ← Router ibrido (heuristics minimali + LLM)
 └──────┬──────┘
        │
        v
+┌──────────────────┐
+│ dialogue_manager │ ← Valuta DialogueState, topic change, slot sufficiency
+└──────┬───────────┘
+       │ (_dm_router condizionale)
+       ├──────────────────────────┐
+       │                         │
+       v                         v
+┌─────────────────┐    ┌────────────┐
+│  Tool Node      │    │  ask_user  │ ← Chiede slot mancanti
+│  (19 nodi)      │    └─────┬──────┘
+│  + fallback_tool│          │
+└──────┬──────────┘          v
+       │                    END
+       v
 ┌─────────────────┐
-│  Tool Node      │ ← Esecuzione tool specifico per intent
-│  (19 nodi)      │   - piano_tool, risk_tool, etc.
+│response_generator│ ← Formattazione risposta (LLM o template)
 └──────┬──────────┘
        │
        v
-┌─────────────────┐
-│ response_gen    │ ← Formattazione risposta (LLM o template)
-└──────┬──────────┘
-       │
-       v
-    END
+      END
 ```
 
-**Step 4 - Router Classification (Hybrid 4-Layer):**
+**Nodi fissi:** `classify`, `dialogue_manager`, `ask_user`, `fallback_tool`, `response_generator`
+**Nodi dinamici:** 19 tool (da `TOOL_REGISTRY`)
+**Totale nodi:** 24
+
+**Step 4 - Router Classification (Hybrid 5-Layer):**
 ```
-Layer 1: Heuristics (regex patterns)
-  ├─ Saluti, aiuto, conferme
-  ├─ Piani in ritardo
-  └─ Mai controllati, rischio
+Layer 1: Heuristics MINIMALI (MINIMAL_HEURISTICS=True)
+  ├─ Conferme esplicite (si mostrami, vediamo dettagli)
+  ├─ Rifiuti espliciti (no grazie, basta, stop)
+  ├─ Conferme/rifiuti brevi (si, no) solo con detail_context
+  └─ Disambiguazione rischio (1→mai_controllati, 2→con_sanzioni)
 
 Layer 2: Pre-parsing slots (regex extraction)
   ├─ piano_code (A1, B2, ...)
   ├─ asl (NA1, AV1, ...)
   ├─ num_registrazione (IT ...)
-  └─ topic, categoria, etc.
+  └─ topic, categoria, location, etc.
 
 Layer 3: Intent Cache (TTL: 3600s)
   └─ Cache key = message + context
 
-Layer 4: LLM Classification (llama3.2:3b)
-  ├─ Prompt compatto (<500 token)
+Layer 4: LLM Classification (prompt dinamico da DB)
+  ├─ Catalogo intent da IntentMetadataService
+  ├─ Regole disambiguazione da DB
+  ├─ Esempi critici (prompt_critical) da DB
   ├─ JSON mode output
-  ├─ Post-validation + slot carry-forward
-  └─ needs_clarification logic
+  └─ Fallback a prompt hardcoded se DB non disponibile
+
+Layer 5: Dialogue Manager
+  ├─ DialogueState tracking (topic changes)
+  ├─ Message type classification (refinement, continuation, etc.)
+  ├─ Azione: execute tool / ask_user / fallback
+  └─ Post-validation + slot carry-forward
 ```
 
 **Step 5 - Tool Execution:**
@@ -1144,9 +1232,10 @@ HTTP 200 OK
    - Pool pre-ping + recycle 1h
 
 **LLM Optimization:**
-- Modello leggero (llama3.2:3b)
+- Default: Ollama locale (llama3.2:3b), configurabile via `GIAS_LLM_MODEL`
+- Supporta provider esterni: OpenAI, Anthropic, OpenAI-compat (Mistral, Groq)
 - Kept in Ollama memory (keep_alive=-1)
-- Prompt compatto (<500 token)
+- Prompt di classificazione dinamico da DB (IntentMetadataService)
 - JSON mode per parsing affidabile
 
 ### 5. Monitoraggio e Debugging
@@ -1160,32 +1249,38 @@ HTTP 200 OK
 - `intents` → Mapping intent → tool → dataretriever
 
 **Endpoint debug:**
-- `POST /model/parse` → Test classificazione NLU
-- `GET /status` → Verifica dati caricati + LLM mode
-- `GET /config` → Configurazione attiva
+- `POST /api/v1/parse` → Test classificazione NLU
+- `GET /status` → Verifica dati caricati + LLM mode + rag_cache stats
+- `GET /` → Health check
 
-### 6. Compatibilità Rasa
+### 6. API V1 Nativa
 
-Il backend è **100% compatibile** con Rasa REST API per integrazione con GChat:
+Il backend usa un **contratto API V1 nativo** tipizzato con Pydantic (`ChatMessage` → `ChatResponse` con `ChatResult`):
 - Request format: `{sender, message, metadata}`
-- Response format: `[{text, recipient_id}]`
-- Endpoints: `/webhooks/rest/webhook`, `/model/parse`, `/status`
+- Response format: `{results: [{text, intent, slots, ...}], session_id}`
+- Endpoints: `/api/v1/chat`, `/api/v1/chat/stream`, `/api/v1/parse`, `/status`
 
 ---
 
 ## Documentazione Allineamento
 
-**Ultimo aggiornamento:** 2026-02-12
+**Ultimo aggiornamento:** 2026-03-05
 **Versione runtime:** 1.0.0
-**Database schema version:** Allineato con codice
+**Database schema version:** Allineato con codice (evolve_intents_schema.sql)
 **Intent implementati:** 20/20 ✓
+**Nodi LangGraph:** 24 (5 fissi + 19 tool)
 **Status:** ✅ PRODUCTION READY
 
 **Verifica effettuata:**
-- ✅ Codice sorgente (router.py, graph.py, api.py)
-- ✅ Tabella intents PostgreSQL (19 record)
+- ✅ Codice sorgente (router.py, graph.py, dialogue_manager.py, tool_nodes.py, api.py)
+- ✅ Tabella intents PostgreSQL (20 record)
+- ✅ Tabella intent_examples PostgreSQL (~172 record, 5 tipi)
+- ✅ Tabella domande_risposte PostgreSQL
 - ✅ Documentazione gisa_ai_intent_mapping.md
 - ✅ Slot richiesti (7 intent con required_slots)
-- ✅ Two-phase thresholds (6 intent configurati)
-- ✅ Tool mappings (tutti corretti)
-- ✅ Graph nodes (19 nodi LangGraph)
+- ✅ Two-phase thresholds (7 intent configurati)
+- ✅ Tool mappings (19 tool, tutti corretti)
+- ✅ Graph nodes (24 nodi: classify, dialogue_manager, ask_user, fallback_tool, response_generator + 19 tool)
+- ✅ MINIMAL_HEURISTICS flag (attivo)
+- ✅ Prompt classificazione dinamico da DB
+- ✅ API V1 nativa (endpoint aggiornati)

@@ -221,7 +221,7 @@ GiAs-llm/
 │   ├── main.py                # Entry point stub
 │   ├── api.py                 # FastAPI server (API V1 nativa)
 │   ├── session_manager.py     # SessionManager centralizzato (thread-safe)
-│   └── models.py              # Modelli Pydantic API (ChatMessage, ChatResult, ParseResult, etc.)
+│   └── models.py              # Modelli Pydantic API (ChatMessage, ChatResult+message_id, FeedbackRequest, etc.)
 ├── orchestrator/               # LangGraph workflow
 │   ├── graph.py                # ConversationGraph, _build_graph(), entry point run()
 │   ├── graph_legacy.py         # Backup vecchio grafo lineare (pre-refactoring)
@@ -246,7 +246,8 @@ GiAs-llm/
 │   ├── risk_analysis_tools.py  # @tool for top risk activities
 │   ├── establishment_tools.py  # @tool for establishment history
 │   ├── search_tools.py         # @tool for hybrid semantic search
-│   ├── procedure_tools.py      # @tool RAG per procedure operative (retrieve + LLM)
+│   ├── procedure_tools.py      # @tool RAG per procedure operative (retrieve + BM25/RRF + LLM)
+│   ├── rag_cache.py            # RAGCache singleton (TTL 30min, max 200 entry)
 │   ├── proximity_tools.py      # @tool per ricerca stabilimenti per prossimità
 │   ├── geo_utils.py            # Geocoding service (Nominatim + SimpleRequestsAdapter)
 │   ├── hybrid_search/          # Advanced search system (v1.0.0)
@@ -254,6 +255,7 @@ GiAs-llm/
 │   │   ├── smart_router.py     # Strategy selection (vector/LLM/hybrid)
 │   │   ├── query_analyzer.py   # Query complexity analysis
 │   │   ├── llm_reranker.py     # LLM-powered result reranking
+│   │   ├── bm25_scorer.py      # BM25 scorer on-the-fly + RRF combiner
 │   │   ├── performance_tracker.py # Performance monitoring
 │   │   └── config_manager.py   # Dynamic configuration management
 │   └── indexing/
@@ -399,6 +401,7 @@ The system implements intelligent query routing between three search strategies:
 
 ### Smart Routing Rules (Priority-based)
 
+0. **cpu_mode gate**: `cpu_mode=true` AND LLM locale → `vector_only` (skip routing rules). Se LLM e' cloud (`LLMBackendConfig.is_external_provider()`), cpu_mode non forza vector_only perche' il reranking cloud non impatta la CPU locale.
 1. **exact_code_queries** (Priority 10): `query_type == "exact_code"` → `vector_only`
 2. **high_load_fallback** (Priority 9): `system_load >= 0.8` → `vector_only`
 3. **high_complexity_semantic** (Priority 8): `complexity_score >= 0.7` → `llm_only`
@@ -417,10 +420,49 @@ The system implements intelligent query routing between three search strategies:
 ### Integration
 
 The hybrid system is fully integrated with existing tools:
-- `search_tools.py`: Main interface with `search_piani_by_topic()` function
+- `search_tools.py`: `search_piani_by_topic()` tenta hybrid search prima del fallback DB ILIKE
 - `DataRetriever`: Vector candidate retrieval
 - `ResponseFormatter`: Consistent Italian response formatting
 - `LLMClient`: Multi-model semantic processing
+
+## RAG Pipeline (procedure_tools.py)
+
+Il sistema RAG gestisce l'intent `info_procedure` per rispondere a domande su procedure operative GISA.
+
+### Pipeline
+
+1. **Cache Check**: `RAGCache` (TTL 30 min, max 200 entry) verifica se la risposta e' gia' in cache. Key: MD5 query normalizzata
+2. **Dynamic Threshold**: `_compute_dynamic_threshold()` calcola soglia e top_k in base alla complessita' della query
+3. **Conversation-Aware Query**: Se presente `_session_summary` nei metadata, la query viene arricchita con il contesto conversazionale per retrieval piu' preciso
+4. **Query Expansion**: Per query medio-alte, `_expand_query()` genera 2 varianti via LLM (con contesto conversazionale se disponibile). I risultati vengono deduplicati e ordinati per score
+5. **BM25 + RRF Re-ranking**: Dopo il retrieval vettoriale, `BM25Scorer` calcola score BM25 on-the-fly sui chunk recuperati (< 1ms). `rrf_combine()` fonde i ranking con Reciprocal Rank Fusion (k=60). Fallback silenzioso a vector-only se BM25 non disponibile
+6. **Retrieve**: `DataRetriever.search_procedure_docs()` recupera chunk dalla collection `procedure_documents`. Con parent-child chunking attivo, restituisce `parent_content` (contesto ampio) invece del child chunk
+7. **Deduplicazione**: `_build_rag_context()` deduplica chunk con incipit identico e li formatta con separatori e citazioni `[Fonte N]`
+8. **Sintesi LLM**: `RAG_SYSTEM_PROMPT` istruisce l'LLM a integrare fonti in una risposta coerente con citazioni inline `[Fonte N]`, segnalando eventuali contraddizioni
+9. **Attribution**: Le fonti vengono aggiunte in coda alla risposta
+10. **Cache Store**: Il risultato viene salvato in `RAGCache` per richieste future
+
+### Feedback Utente
+
+- Ogni risposta chat include un `message_id` (UUID) nel `ChatResult`
+- Endpoint `POST /api/v1/chat/feedback` permette di inviare rating (1-5) e feedback testuale
+- Dati salvati nella tabella `chat_log` (colonne `message_id`, `rating`, `user_feedback`)
+- SQL migration: `sql/add_chat_feedback.sql`
+
+### Re-indicizzazione Admin
+
+- `POST /api/admin/documents/reindex`: lancia re-indicizzazione in background thread
+- `GET /api/admin/documents/reindex/status`: stato corrente (`idle|running|completed|error`)
+- Al completamento, la RAG cache viene svuotata automaticamente
+- `build_docs_index.run_indexing()`: funzione callable programmaticamente (senza argparse)
+
+### Parent-Child Chunking
+
+- **Child chunks** (600 char, overlap 100): usati per retrieval preciso (vettori in Qdrant)
+- **Parent chunks** (1800 char, overlap 200): usati per contesto LLM (salvati in `parent_content` nel payload Qdrant)
+- `DataRetriever.search_procedure_docs()` restituisce `parent_content` quando disponibile (backward-compatible: `payload.get("parent_content", payload.get("content"))`)
+- Configurazione in `config.json` sezione `rag_documents`: `parent_chunk_size`, `parent_chunk_overlap`
+- Re-indicizzazione: `python3 tools/indexing/build_docs_index.py` (richiesta dopo modifica parametri)
 
 ## Data Source Architecture
 

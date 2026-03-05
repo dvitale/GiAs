@@ -19,6 +19,22 @@ except ImportError:
     from agents.response_agent import ResponseFormatter
 
 
+_hybrid_engine = None
+
+
+def _get_hybrid_engine():
+    global _hybrid_engine
+    if _hybrid_engine is None:
+        try:
+            from tools.hybrid_search import HybridSearchEngine
+            from llm.client import LLMClient
+            _hybrid_engine = HybridSearchEngine(llm_client=LLMClient())
+            print("[SEARCH] HybridSearchEngine inizializzato")
+        except Exception as e:
+            print(f"[SEARCH] HybridSearchEngine non disponibile: {e}")
+    return _hybrid_engine
+
+
 @tool("search_piani")
 def search_piani_by_topic(query: str, similarity_threshold: float = 0.4) -> Dict[str, Any]:
     """
@@ -38,6 +54,16 @@ def search_piani_by_topic(query: str, similarity_threshold: float = 0.4) -> Dict
         return {"error": "Query di ricerca non specificata"}
 
     search_term = query.strip()
+
+    # Prova hybrid search prima del fallback DB ILIKE
+    engine = _get_hybrid_engine()
+    if engine is not None:
+        try:
+            result = engine.search(search_term)
+            if result.get("matches") and not result.get("error"):
+                return result
+        except Exception as e:
+            print(f"[SEARCH] Hybrid fallback a DB ILIKE: {e}")
 
     try:
         matches = DataRetriever.search_piani_by_db(search_term)

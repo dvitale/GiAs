@@ -21,7 +21,7 @@ except ImportError:
 
 
 @tool("priority_establishment")
-def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = None) -> Dict[str, Any]:
+def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = None, uos: Optional[str] = None) -> Dict[str, Any]:
     """
     Identifica stabilimenti prioritari da controllare basandosi su piani in ritardo.
 
@@ -29,6 +29,7 @@ def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = N
         asl: Codice ASL (es. "NA1", "SA1")
         uoc: Nome della UOC (Unità Operativa Complessa)
         piano_code: Codice piano opzionale per filtrare
+        uos: Nome della UOS (Unità Operativa Semplice) - opzionale
 
     Returns:
         Dict con stabilimenti prioritari o messaggio di errore
@@ -40,7 +41,7 @@ def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = N
         return {"error": "UOC non specificata", "formatted_response": "Per identificare gli stabilimenti prioritari è necessario conoscere la tua struttura organizzativa (UOC). Assicurati di essere autenticato."}
 
     try:
-        diff_filtered = DataRetriever.get_diff_programmati_eseguiti(uoc)
+        diff_filtered = DataRetriever.get_diff_programmati_eseguiti(uoc, asl=asl, uos=uos)
 
         if diff_filtered.empty:
             return {
@@ -90,7 +91,7 @@ def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = N
                 "asl": asl,
                 "uoc": uoc,
                 "delayed_plans": len(delayed_piani),
-                "formatted_response": f"Ci sono **{len(delayed_piani)}** piani in ritardo per **{uoc}**, ma non sono stati individuati stabilimenti mai controllati nelle attività correlate."
+                "formatted_response": f"Ci sono **{len(delayed_piani)}** piani in ritardo per **{uoc}**, ma non sono stati individuati stabilimenti mai controllati nelle linee di attività correlate."
             }
 
         response = ResponseFormatter.format_priority_establishments(
@@ -172,7 +173,7 @@ def _get_piano_data_from_df(diff_df: pd.DataFrame, piano_code: str) -> Dict[str,
 
 
 @tool("delayed_plans")
-def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[str] = None) -> Dict[str, Any]:
+def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[str] = None, uos: Optional[str] = None) -> Dict[str, Any]:
     """
     Analizza i piani in ritardo per una specifica struttura.
     Se piano_code è specificato, verifica solo se quel piano è in ritardo.
@@ -181,6 +182,7 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
         asl: Codice ASL (es. "NA1", "SA1")
         uoc: Nome della UOC (Unità Operativa Complessa) - opzionale per query aggregate
         piano_code: Codice piano specifico per verifica (es. "B47")
+        uos: Nome della UOS (Unità Operativa Semplice) - opzionale
 
     Returns:
         Dict con piani in ritardo o verifica piano specifico
@@ -198,7 +200,7 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
         }
 
     try:
-        filtered_df = DataRetriever.get_diff_programmati_eseguiti(uoc)
+        filtered_df = DataRetriever.get_diff_programmati_eseguiti(uoc, asl=asl, uos=uos)
 
         if filtered_df.empty:
             return {
@@ -337,7 +339,8 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
             total_delay=total_delay,
             top_delayed=top_delayed,
             worst_plan_details=worst_plan_details,
-            worst_plan_id=worst_plan_id
+            worst_plan_id=worst_plan_id,
+            uos_name=uos
         )
 
         delayed_plans_list = top_delayed.to_dict(orient='records')
@@ -404,7 +407,8 @@ def suggest_controls(asl: Optional[str] = None, limit: int = 5) -> Dict[str, Any
 
 
 def priority_tool(asl: Optional[str] = None, uoc: Optional[str] = None,
-                  piano_code: Optional[str] = None, action: str = "priority") -> Dict[str, Any]:
+                  piano_code: Optional[str] = None, action: str = "priority",
+                  uos: Optional[str] = None) -> Dict[str, Any]:
     """
     Router per funzionalità di priorità e programmazione.
 
@@ -413,6 +417,7 @@ def priority_tool(asl: Optional[str] = None, uoc: Optional[str] = None,
         uoc: Nome UOC
         piano_code: Codice piano opzionale
         action: Tipo di azione ("priority", "delayed_plans", "suggest")
+        uos: Nome UOS (Unità Operativa Semplice) - opzionale
 
     Returns:
         Dict con risultati o messaggio di errore
@@ -423,10 +428,10 @@ def priority_tool(asl: Optional[str] = None, uoc: Optional[str] = None,
         priority_func = get_priority_establishment.func if hasattr(get_priority_establishment, 'func') else get_priority_establishment
 
         if action == "delayed_plans":
-            return delayed_func(asl, uoc)
+            return delayed_func(asl, uoc, uos=uos)
         elif action == "suggest":
             return suggest_func(asl)
         else:
-            return priority_func(asl, uoc, piano_code)
+            return priority_func(asl, uoc, piano_code, uos=uos)
     except Exception as e:
         return {"error": f"Errore in priority_tool: {str(e)}"}

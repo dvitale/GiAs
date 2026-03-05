@@ -77,5 +77,12 @@ class CSVDataSource(DataSource):
         return self._load_csv("diff_prog_eseg")
 
     def load_personale(self) -> pd.DataFrame:
-        """Load personale data."""
-        return self._load_csv("personale", sep=self.personale_sep)
+        """Load personale data, filtered by current_year if anno column exists."""
+        df = self._load_csv("personale", sep=self.personale_sep)
+        if not df.empty and 'anno' in df.columns and 'user_id' in df.columns:
+            from configs.config_loader import get_config
+            current_year = get_config().get_current_year()
+            df = df[df['anno'] == current_year]
+            df = df.drop_duplicates(subset=['user_id'], keep='first')
+            print(f"[CSVDataSource] Filtered personale by anno={current_year}: {len(df)} unique users")
+        return df

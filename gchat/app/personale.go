@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,6 +19,7 @@ type PersonaleRecord struct {
 	NameLast                        string `json:"namelast"`
 	CodiceFiscale                   string `json:"codice_fiscale"`
 	UserID                          int    `json:"user_id"`
+	UOS                             string `json:"uos"`
 }
 
 // Cache structure for personale data
@@ -105,6 +107,13 @@ func LoadPersonaleData() (map[int]PersonaleRecord, error) {
 			NameLast:                        record[4],
 			CodiceFiscale:                   record[5],
 			UserID:                          userID,
+		}
+
+		// Estrai UOS dal terzo segmento di Descrizione (separato da "->")
+		// Es: "ASL AVELLINO->UOC SIAN->UOS DISTRETTO 1" -> "UOS DISTRETTO 1"
+		descParts := strings.Split(personale.Descrizione, "->")
+		if len(descParts) >= 3 {
+			personale.UOS = strings.TrimSpace(descParts[2])
 		}
 
 		personaleMap[userID] = personale

@@ -176,6 +176,9 @@ func main() {
 	api.GET("/", indexHandler)
 	api.POST("/", indexHandler)
 
+	api.POST("/session/reset", func(c *gin.Context) {
+		ProxySessionReset(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
 	api.POST("/chat", HandleChat)
 	api.POST("/chat/stream", HandleChatStream)
 	api.GET("/api/predefined-questions", HandlePredefinedQuestions)
@@ -275,6 +278,42 @@ func main() {
 	})
 	api.GET("/api/chat-log/conversation/:sessionId", func(c *gin.Context) {
 		ProxyChatLogAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+
+	// Admin RAG Management Page
+	api.GET("/admin/rag", func(c *gin.Context) {
+		log.Printf("ADMIN_RAG_PAGE_REQUEST: client_ip=%s", c.ClientIP())
+		templateData := gin.H{
+			"title":    "GIAS Gestione Domande RAG",
+			"basePath": basePath,
+		}
+		c.HTML(http.StatusOK, "admin_rag.html", templateData)
+	})
+
+	// Admin RAG API proxy
+	api.GET("/api/admin/domande-rag", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.POST("/api/admin/domande-rag", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.DELETE("/api/admin/domande-rag/:id", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.POST("/api/admin/domande-rag/reindex", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.GET("/api/admin/intents", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.GET("/api/admin/documents", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.GET("/api/admin/documents/:filename", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.POST("/api/admin/guided-learn", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
 	})
 
 	// Chat History Page

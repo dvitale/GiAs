@@ -101,7 +101,8 @@ curl -X POST http://localhost:5005/api/v1/chat \
 | `localhost:5005/` | GET | Health check backend |
 | `localhost:5005/api/v1/chat` | POST | Chat principale |
 | `localhost:5005/api/v1/chat/stream` | POST | Chat streaming (SSE) |
-| `localhost:5005/status` | GET | Stato + dati caricati |
+| `localhost:5005/api/v1/chat/feedback` | POST | Feedback utente (rating 1-5 + testo) |
+| `localhost:5005/status` | GET | Stato + dati caricati + rag_cache stats |
 | `localhost:5005/api/v1/parse` | POST | Parsing NLU |
 | `localhost:5005/api/chat-log/user-conversations` | GET | Lista conversazioni utente (per codice_fiscale) |
 | `localhost:5005/api/chat-log/conversation/{sid}` | GET | Messaggi di una conversazione |
@@ -114,6 +115,8 @@ curl -X POST http://localhost:5005/api/v1/chat \
 | `localhost:8080/gias/webchat/debug/langgraph` | GET | LangGraph workflow visualizer |
 | `localhost:8080/gias/webchat/analytics` | GET | Dashboard analytics chat |
 | `localhost:8080/gias/webchat/monitor` | GET | Monitor qualita' conversazioni |
+| `localhost:5005/api/admin/documents/reindex` | POST | Lancia re-indicizzazione RAG in background |
+| `localhost:5005/api/admin/documents/reindex/status` | GET | Stato re-indicizzazione |
 
 ## Convenzioni codice
 

@@ -1,0 +1,832 @@
+❯ esegui uno studio di fattibilità per riprodurre lo stesso funzionamento del back-end /opt/lang-env/GiAs-llm usando
+  axiastudio/aioc
+
+● Perfetto, devo prima capire cosa fa il backend GiAs-llm e come è strutturato, oltre a verificare le capacità di AIOC.
+  Lancio esplorazioni parallele.
+
+● 2 Explore agents finished (ctrl+o to expand)
+   ├─ Explore GiAs-llm backend structure · 36 tool uses · 72.5k tokens
+   │  ⎿  Done
+   └─ Explore AIOC SDK capabilities · 35 tool uses · 49.6k tokens
+      ⎿  Done
+
+● Ottima esplorazione. Ho una visione chiara di entrambi i sistemi. Ora lancio un agente Plan per strutturare lo studio di
+  fattibilità.
+
+● Plan(Design AIOC feasibility study)
+  ⎿  Done (41 tool uses · 78.5k tokens · 5m 15s)
+  (ctrl+o to expand)
+
+● Ora ho un quadro completo. Verifico alcuni dettagli chiave prima di scrivere il piano finale.
+
+● Read 5 files (ctrl+o to expand)
+
+● Ho tutti i dettagli necessari. Ora scrivo il piano finale dello studio di fattibilità.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● Il piano dello studio di fattibilità è completo. Ecco un riepilogo rapido di ciò che produrrà:
+
+  Un documento docs/FEASIBILITY-GIAS-AIOC.md che analizza in dettaglio:
+
+  - Mapping architetturale completo tra i componenti GiAs-llm (FastAPI/LangGraph/pandas) e gli equivalenti AIOC
+  - Cambio di paradigma fondamentale: da classificazione intent esplicita a 4 livelli → function calling nativo del LLM con
+  policy gate deterministici
+  - Gap da colmare: server HTTP, session management, data layer (287K record), Qdrant, dialogue state, response formatting
+  - Vantaggi governance: default-deny, audit trail SHA-256, prompt versioning, privacy by design, GDPR come policy gate
+  auditabile
+  - 6 rischi con mitigazioni (top 2: parità classificazione e migrazione data layer)
+  - Strategia a 4 fasi: PoC (2-3 sett.) → Core (4-6 sett.) → Parità+Governance (4-6 sett.) → Validazione (3-4 sett.)
+  - Verdetto: fattibile, 16-22 settimane-dev, con decision gate in Fase 0 (accuratezza function calling ≥ 85%)
+  ⎿  User rejected Claude's plan:
+     ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+     │ Studio di Fattibilità: Riprodurre GiAs-llm con AIOC SDK                                                              │
+     │                                                                                                                      │
+     │ Contesto                                                                                                             │
+     │                                                                                                                      │
+     │ GiAs-llm è un backend Python/FastAPI/LangGraph per il supporto conversazionale al sistema veterinario GISA della     │
+     │ Regione Campania. Si vuole valutare se e come la stessa funzionalità possa essere riprodotta usando                  │
+     │ @axiastudio/aioc, un SDK TypeScript governance-first per orchestrazione LLM.                                         │
+     │                                                                                                                      │
+     │ Lo studio non produce codice, ma un documento analitico (docs/FEASIBILITY-GIAS-AIOC.md) che copre mapping            │
+     │ architetturale, gap, vantaggi, rischi e strategia di migrazione.                                                     │
+     │                                                                                                                      │
+     │ ---                                                                                                                  │
+     │ Cosa produce questo piano                                                                                            │
+     │                                                                                                                      │
+     │ Un singolo file docs/FEASIBILITY-GIAS-AIOC.md contenente lo studio di fattibilità completo, strutturato nelle        │
+     │ sezioni seguenti.                                                                                                    │
+     │                                                                                                                      │
+     │ ---                                                                                                                  │
+     │ Struttura del documento da produrre                                                                                  │
+     │                                                                                                                      │
+     │ 1. Panoramica dei due sistemi                                                                                        │
+     │                                                                                                                      │
+     │ Tabella sinottica GiAs-llm vs AIOC: stack, architettura, paradigma di orchestrazione.                                │
+     │                                                                                                                      │
+     │ 2. Mapping componente per componente                                                                                 │
+     │                                                                                                                      │
+     │ ┌──────────────────────────────────────────────────────┬─────────────────────────────────────────┬────────────────── │
+     │ ──┐                                                                                                                  │
+     │ │                 Componente GiAs-llm                  │            Equivalente AIOC             │    Livello gap    │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ FastAPI server (porta 5005)                          │ Nessuno — serve Express/Fastify/Hono    │ Da costruire      │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ LangGraph state machine (classify → dialogue_manager │ run() loop in src/run.ts — turni LLM    │ Cambio di         │
+     │   │                                                                                                                  │
+     │ │  → tools → response_generator)                       │ con tool calling nativo                 │ paradigma         │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Classificazione intent ibrida a 4 livelli            │ Eliminata — il LLM sceglie i tool via   │ Cambio di         │
+     │   │                                                                                                                  │
+     │ │ (heuristics → regex → LLM → post-validazione)        │ function calling                        │ paradigma         │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │                                                      │ 13 Tool AIOC con schema Zod; 7 intent   │                   │
+     │   │                                                                                                                  │
+     │ │ 20 intent + 13 tool function                         │ senza tool diventano istruzioni nel     │ Mapping diretto   │
+     │   │                                                                                                                  │
+     │ │                                                      │ system prompt                           │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ DialogueState (slot tracking multi-turno)            │ RunContext<TContext> + session store    │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ esterno                                 │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Multi-backend LLM                                    │ ChatCompletionsProvider per qualsiasi   │ Parziale          │
+     │   │                                                                                                                  │
+     │ │ (Ollama/OpenAI/Anthropic/OpenRouter/Llama.cpp)       │ API OpenAI-compatibile; OpenAIProvider, │ (Anthropic manca) │
+     │   │                                                                                                                  │
+     │ │                                                      │  MistralProvider nativi                 │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ SSE streaming                                        │ StreamedRunResult.toStream() → bridge   │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ verso HTTP SSE                          │ (moderato)        │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Data layer CSV/PostgreSQL (pandas, 287K record)      │ Nessuno — serve layer TypeScript        │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ (Knex/Drizzle + SQL)                    │ (significativo)   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Qdrant vector DB (730 piani indicizzati)             │ Nessuno — serve @qdrant/js-client-rest  │ Da costruire      │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │                                                      │                                         │ Supportato        │
+     │   │                                                                                                                  │
+     │ │ Chat logging PostgreSQL                              │ RunRecord sink + RunLogger              │ nativamente con   │
+     │   │                                                                                                                  │
+     │ │                                                      │                                         │ adattamento       │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Session management                                   │ Nessuno — run() è stateless             │ Da costruire      │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Response formatting + suggerimenti follow-up         │ Nessuno — logica applicativa            │ Da costruire      │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Two-phase check (sommario → dettaglio)               │ Orchestrabile tramite tool chaining o   │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ chiamate run() multiple                 │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Fallback recovery (3 fasi)                           │ Implementabile come error handling a    │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ livello tool o multi-agent handoff      │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ GDPR gating per provider esterni                     │ Policy gate toolPolicy / handoffPolicy  │ Supportato        │
+     │   │                                                                                                                  │
+     │ │                                                      │                                         │ nativamente       │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Endpoint monitoraggio/analytics                      │ Nessuno — logica applicativa            │ Da costruire      │
+     │   │                                                                                                                  │
+     │ └──────────────────────────────────────────────────────┴─────────────────────────────────────────┴────────────────── │
+     │ ──┘                                                                                                                  │
+     │                                                                                                                      │
+     │ 3. Il cambio di paradigma fondamentale                                                                               │
+     │                                                                                                                      │
+     │ GiAs-llm (flusso esplicito deterministico):                                                                          │
+     │ input → heuristic → regex → LLM classify → post-validate → dialogue_manager → tool_router → tool →                   │
+     │ response_generator → output                                                                                          │
+     │                                                                                                                      │
+     │ AIOC (flusso LLM-driven con policy gate deterministici):                                                             │
+     │ input → LLM(system_prompt, tools_schema, history) → LLM propone tool_call → policy_gate(allow/deny) → tool.execute() │
+     │  → risultato → LLM → output testuale                                                                                 │
+     │                                                                                                                      │
+     │ Implicazioni chiave:                                                                                                 │
+     │ - Eliminazione della classificazione intent: il LLM sceglie direttamente quale tool chiamare. I 7 intent senza tool  │
+     │ (greet, goodbye, help, confirm, decline, fallback, ask_help) diventano istruzioni nel system prompt.                 │
+     │ - Perdita dei fast-path deterministici: ogni richiesta passa per il LLM (niente shortcut regex/heuristici). Impatto  │
+     │ su latenza per query banali.                                                                                         │
+     │ - Guadagno in flessibilità: query mai viste non richiedono un nuovo intent, basta un tool ben descritto.             │
+     │ - Testabilità diversa: si testa la selezione dei tool da parte del LLM, non l'accuratezza di un classificatore.      │
+     │                                                                                                                      │
+     │ 4. Compatibilità provider                                                                                            │
+     │                                                                                                                      │
+     │ ┌────────────────┬───────────────────────────────────────────────────────┬────────────────────────────────────────── │
+     │ ──┐                                                                                                                  │
+     │ │    Backend     │                     Supporto AIOC                     │                    Note                   │
+     │   │                                                                                                                  │
+     │ │    GiAs-llm    │                                                       │                                           │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ OpenAI         │ Nativo (setupOpenAI())                                │ Diretto                                   │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Mistral        │ Nativo (setupMistral())                               │ Diretto                                   │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ OpenRouter     │ Via ChatCompletionsProvider con baseURL:              │ OpenAI-compatibile                        │
+     │   │                                                                                                                  │
+     │ │                │ openrouter.ai/api/v1                                  │                                           │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Ollama         │ Via ChatCompletionsProvider con baseURL:              │ OpenAI-compat mode di Ollama              │
+     │   │                                                                                                                  │
+     │ │                │ localhost:11434/v1                                    │                                           │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Anthropic      │ NON supportato — API non OpenAI-compatibile           │ Serve un AnthropicProvider custom (1-2    │
+     │   │                                                                                                                  │
+     │ │                │                                                       │ settimane)                                │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Llama.cpp      │ Parziale — dipende dalla modalità server              │ OpenAI-compat mode se disponibile         │
+     │   │                                                                                                                  │
+     │ └────────────────┴───────────────────────────────────────────────────────┴────────────────────────────────────────── │
+     │ ──┘                                                                                                                  │
+     │                                                                                                                      │
+     │ Vincolo critico: AIOC richiede function calling nativo dal LLM. Modelli locali piccoli (< 7B parametri) potrebbero   │
+     │ non supportare bene il function calling, degradando l'accuratezza della selezione tool.                              │
+     │                                                                                                                      │
+     │ 5. Vantaggi di governance di AIOC                                                                                    │
+     │                                                                                                                      │
+     │ Dove AIOC migliora concretamente rispetto a GiAs-llm:                                                                │
+     │                                                                                                                      │
+     │ 1. Default-deny sui tool: ogni tool call deve passare un policy gate deterministico. Tool senza policy configurata = │
+     │  deny automatico. GiAs-llm non ha equivalente.                                                                       │
+     │ 2. Audit trail completo: RunRecord cattura SHA-256 dei prompt, ogni decisione di policy, decisioni guardrail,        │
+     │ context snapshot con redazione privacy. Molto più profondo del chat log di GiAs-llm.                                 │
+     │ 3. Prompt version governance: Agent.promptVersion + PromptSnapshotRecord tracciano quale versione del prompt era     │
+     │ attiva per ogni interazione.                                                                                         │
+     │ 4. Privacy by design: contextRedactor integrato nell'SDK per redazione dati sensibili prima della persistenza.       │
+     │ 5. GDPR come policy gate: il gating GDPR diventa una toolPolicy auditabile che ispeziona gli argomenti e nega        │
+     │ l'accesso a provider esterni per tool con dati personali.                                                            │
+     │ 6. Non-regression detection: i requestFingerprint permettono di rilevare quando un cambio prompt causa comportamento │
+     │  diverso del LLM.                                                                                                    │
+     │                                                                                                                      │
+     │ 6. Analisi dei rischi                                                                                                │
+     │                                                                                                                      │
+     │ Rischi alti                                                                                                          │
+     │                                                                                                                      │
+     │ - R1: Parità classificazione intent — Il function calling del LLM potrebbe non eguagliare la classificazione         │
+     │ hand-tuned di GiAs-llm per query ambigue nel dominio veterinario italiano. Mitigazione: prompt engineering           │
+     │ estensivo, dataset di valutazione dai test GiAs-llm, gate go/no-go in Fase 0.                                        │
+     │ - R2: Migrazione data layer — 287K+ record, 7 dataset, logica pandas complessa. Riscrittura in TypeScript/SQL è il   │
+     │ lavoro più grande e a maggior rischio di regressione. Mitigazione: PostgreSQL views/functions, opzione Python        │
+     │ sidecar.                                                                                                             │
+     │                                                                                                                      │
+     │ Rischi medi                                                                                                          │
+     │                                                                                                                      │
+     │ - R3: Latenza per query banali — Senza fast-path heuristici, anche "ciao" passa per il LLM. Mitigazione: cache,      │
+     │ pre-flight leggero, modelli veloci.                                                                                  │
+     │ - R4: AIOC in fase alpha — Versione 0.1.0-alpha.5. API potrebbe cambiare. Mitigazione: pin versione, fork di         │
+     │ sicurezza, contribuire upstream.                                                                                     │
+     │ - R5: Fidelità dialogo multi-turno — Il DialogueState esplicito di GiAs-llm diventa dipendente dalla coerenza del    │
+     │ LLM nella history. Mitigazione: context injection via dynamic instructions.                                          │
+     │ - R6: Modelli locali e function calling — Ollama con modelli piccoli potrebbe non funzionare bene con il function    │
+     │ calling. Mitigazione: test con modelli specifici (Llama 3.1 8B+ supporta function calling).                          │
+     │                                                                                                                      │
+     │ Rischi bassi                                                                                                         │
+     │                                                                                                                      │
+     │ - R7: Bridge SSE streaming — Ben compreso, pattern standard.                                                         │
+     │ - R8: Configurazione policy — API semplice e ben documentata.                                                        │
+     │                                                                                                                      │
+     │ 7. Stima di effort per categoria                                                                                     │
+     │                                                                                                                      │
+     │ Banale (giorni)                                                                                                      │
+     │                                                                                                                      │
+     │ - Definizione 13 tool con schema Zod: 2-3 giorni                                                                     │
+     │ - Configurazione policy (ruoli, GDPR): 1-2 giorni                                                                    │
+     │ - Output guardrail base: 1 giorno                                                                                    │
+     │ - Setup provider (OpenAI, Mistral, OpenRouter, Ollama): 1 giorno                                                     │
+     │ - Integrazione logging: 1 giorno                                                                                     │
+     │                                                                                                                      │
+     │ Moderato (1-2 settimane ciascuno)                                                                                    │
+     │                                                                                                                      │
+     │ - Server HTTP (Express/Fastify) con tutti gli endpoint + bridge SSE: 1-2 settimane                                   │
+     │ - Session management con persistenza conversazione: 1-2 settimane                                                    │
+     │ - RunRecord sink verso PostgreSQL: 1 settimana                                                                       │
+     │ - Gestione dialogue state (slot tracking via context): 1-2 settimane                                                 │
+     │ - Response formatting e suggerimenti follow-up: 1 settimana                                                          │
+     │ - Endpoint monitoraggio/analytics: 1-2 settimane                                                                     │
+     │ - Prompt engineering sistema (italiano, dominio specifico): 1-2 settimane                                            │
+     │                                                                                                                      │
+     │ Significativo (3+ settimane ciascuno)                                                                                │
+     │                                                                                                                      │
+     │ - Migrazione data layer (7 dataset, 287K+ record): 4-6 settimane                                                     │
+     │ - Integrazione Qdrant per ricerca semantica: 2-3 settimane                                                           │
+     │ - Valutazione parità classificazione: 2-3 settimane                                                                  │
+     │ - Provider Anthropic custom (se necessario): 1-2 settimane                                                           │
+     │ - Test end-to-end integrati: 3-4 settimane                                                                           │
+     │                                                                                                                      │
+     │ Totale stimato                                                                                                       │
+     │                                                                                                                      │
+     │ - MVP (proof of concept): 2-3 settimane                                                                              │
+     │ - Parità funzionale minima: 10-14 settimane (1 senior dev)                                                           │
+     │ - Parità completa con governance: 16-22 settimane (1-2 dev)                                                          │
+     │ - Production-ready con test: 20-28 settimane (2 dev)                                                                 │
+     │                                                                                                                      │
+     │ 8. Strategia raccomandata: migrazione incrementale a fasi                                                            │
+     │                                                                                                                      │
+     │ Fase 0 — Proof of Concept (2-3 settimane)                                                                            │
+     │                                                                                                                      │
+     │ Validare che il function calling di AIOC eguagli la classificazione GiAs-llm per i 5 intent più comuni.              │
+     │ - Agent con 5 tool (piano_tool, get_piano_attivita, risk_tool, search_piani_by_topic, priority_tool)                 │
+     │ - System prompt in italiano nel dominio veterinario                                                                  │
+     │ - Tool con implementazioni mock (dati statici)                                                                       │
+     │ - Script di valutazione vs dataset test GiAs-llm                                                                     │
+     │ - Decision gate: se accuratezza < 85%, serve layer classificazione pre-flight                                        │
+     │                                                                                                                      │
+     │ Fase 1 — Pipeline core (4-6 settimane)                                                                               │
+     │                                                                                                                      │
+     │ Backend AIOC funzionale con tutti i 13 tool e dati reali.                                                            │
+     │ - Server Express/Fastify con /api/v1/chat e /api/v1/chat/stream                                                      │
+     │ - Tutti i 13 tool con execute reale verso PostgreSQL                                                                 │
+     │ - Session management (Redis o PostgreSQL)                                                                            │
+     │ - Policy base (accesso per ruolo)                                                                                    │
+     │ - RunRecord sink su PostgreSQL                                                                                       │
+     │                                                                                                                      │
+     │ Fase 2 — Parità e governance (4-6 settimane)                                                                         │
+     │                                                                                                                      │
+     │ Feature parity + vantaggi governance AIOC.                                                                           │
+     │ - Qdrant per ricerca semantica piani                                                                                 │
+     │ - Dialogue state multi-turno                                                                                         │
+     │ - Response formatting con suggerimenti follow-up                                                                     │
+     │ - Output guardrail (validazione contenuto)                                                                           │
+     │ - Policy GDPR per provider esterni                                                                                   │
+     │ - Audit trail completo con redazione context                                                                         │
+     │ - Endpoint monitoraggio/analytics                                                                                    │
+     │                                                                                                                      │
+     │ Fase 3 — Validazione e hardening (3-4 settimane)                                                                     │
+     │                                                                                                                      │
+     │ Production readiness.                                                                                                │
+     │ - Test suite end-to-end dai scenari GiAs-llm                                                                         │
+     │ - Benchmark prestazioni (latenza, throughput)                                                                        │
+     │ - Dataset di regressione                                                                                             │
+     │ - Logica fallback e error recovery                                                                                   │
+     │ - Documentazione operativa                                                                                           │
+     │                                                                                                                      │
+     │ Fase 4 (opzionale) — Architettura multi-agent                                                                        │
+     │                                                                                                                      │
+     │ Sfruttare gli handoff AIOC per modularità.                                                                           │
+     │ - Triage Agent → hand off a specialisti (Plan Agent, Risk Agent, Compliance Agent, Priority Agent)                   │
+     │ - Handoff policy per controllare le transizioni                                                                      │
+     │ - Migliore accuratezza selezione tool (meno tool per agente)                                                         │
+     │                                                                                                                      │
+     │ 9. Decisioni architetturali chiave                                                                                   │
+     │                                                                                                                      │
+     │ 1. Agente singolo vs multi-agent — Iniziare con agente singolo (13 tool), migrare a multi-agent solo se              │
+     │ l'accuratezza della selezione tool è insufficiente.                                                                  │
+     │ 2. Python sidecar vs riscrittura TypeScript — Iniziare con PostgreSQL + SQL. Se le operazioni pandas complesse non   │
+     │ sono replicabili in SQL, aggiungere un microservizio Python per le operazioni dati.                                  │
+     │ 3. Layer classificazione — Iniziare con AIOC puro (function calling). Aggiungere pre-flight classification solo se   │
+     │ Fase 0 mostra latenza/accuratezza inaccettabile.                                                                     │
+     │ 4. Strategia provider LLM — Approccio ibrido con policy gate: modello locale per query con dati personali, modello   │
+     │ cloud per query generali.                                                                                            │
+     │ 5. Versione AIOC — Pinnare 0.1.0-alpha.5, fork di sicurezza, contribuire feature necessarie upstream (es.            │
+     │ AnthropicProvider).                                                                                                  │
+     │                                                                                                                      │
+     │ 10. Verdetto                                                                                                         │
+     │                                                                                                                      │
+     │ ┌──────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┐                                                                                                                 │
+     │ │      Dimensione      │                                          Valutazione                                        │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Fattibilità          │ Sì, con effort significativo. Il mapping core è solido.                                     │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Maggiore vantaggio   │ Il modello di governance AIOC (policy gate, audit trail, run record) è materialmente        │
+     │    │                                                                                                                 │
+     │ │                      │ superiore all'approccio ad-hoc di GiAs-llm per un sistema pubblica amministrazione.         │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Maggiore rischio     │ Migrazione data layer (287K record, pandas → TypeScript) e parità classificazione intent.   │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Impatto cambio       │ Medio-alto. Il passaggio da classificazione esplicita a function calling cambia il modello  │
+     │ di │                                                                                                                 │
+     │ │ paradigma            │  controllo.                                                                                 │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Tempo per prima      │ 2-3 settimane per Fase 0 proof of concept.                                                  │
+     │    │                                                                                                                 │
+     │ │ validazione          │                                                                                             │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Effort totale per    │ 16-22 settimane-sviluppatore (senior TypeScript).                                           │
+     │    │                                                                                                                 │
+     │ │ parità               │                                                                                             │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Raccomandazione      │ Procedere con Fase 0 per validare la premessa fondamentale (accuratezza function calling    │
+     │ nel  │                                                                                                               │
+     │ │                      │ dominio GiAs-llm). Gate le fasi successive sui risultati della Fase 0.                      │
+     │    │                                                                                                                 │
+     │ └──────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┘                                                                                                                 │
+     │                                                                                                                      │
+     │ ---                                                                                                                  │
+     │ File coinvolti                                                                                                       │
+     │                                                                                                                      │
+     │ - Da creare: docs/FEASIBILITY-GIAS-AIOC.md — il documento di studio di fattibilità completo                          │
+     │                                                                                                                      │
+     │ File di riferimento chiave                                                                                           │
+     │                                                                                                                      │
+     │ AIOC SDK (/opt/aioc/)                                                                                                │
+     │                                                                                                                      │
+     │ - src/run.ts — loop di orchestrazione core, funzione run(), esecuzione tool, valutazione policy                      │
+     │ - src/tool.ts — interfaccia definizione tool, factory con schema Zod                                                 │
+     │ - src/policy.ts — contratti policy gate (ToolPolicy, HandoffPolicy, allow/deny)                                      │
+     │ - src/providers/chat-completions.ts — base provider per tutti i backend LLM OpenAI-compatibili                       │
+     │ - src/run-record.ts — schema audit trail (RunRecord, RunRecordSink)                                                  │
+     │ - src/agent.ts — configurazione Agent (name, instructions, tools, handoffs, guardrails)                              │
+     │ - src/guardrails.ts — interfaccia output guardrail                                                                   │
+     │                                                                                                                      │
+     │ GiAs-llm (/opt/lang-env/GiAs-llm/)                                                                                   │
+     │                                                                                                                      │
+     │ - app/api.py — server FastAPI, endpoint, session management                                                          │
+     │ - orchestrator/graph.py — state machine LangGraph (classify → dialogue_manager → tools → response)                   │
+     │ - orchestrator/router.py — classificazione intent ibrida a 4 livelli                                                 │
+     │ - orchestrator/tool_nodes.py — registry tool e implementazioni nodo                                                  │
+     │ - llm/client.py — client LLM multi-backend                                                                           │
+     │ - llm/providers.py — implementazioni provider (Ollama, OpenAI, Anthropic, OpenRouter)                                │
+     │ - agents/data_agent.py — DataRetriever, logica business dati                                                         │
+     │ - agents/data.py — caricamento globale dataset (7 CSV/PostgreSQL)                                                    │
+     │ - configs/config.json — configurazione principale                                                                    │
+     │                                                                                                                      │
+     │ Verifica                                                                                                             │
+     │                                                                                                                      │
+     │ Il documento prodotto sarà verificato con:                                                                           │
+     │ 1. Revisione incrociata: ogni claim sul mapping è verificabile leggendo i file sorgente di entrambi i codebase       │
+     │ 2. Le stime di effort sono basate sulla complessità dei file sorgente analizzati                                     │
+     │ 3. I rischi sono derivati da gap concreti identificati nell'analisi                                                  │
+     ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+❯ se non l'hai già fatto, salva il piano docs/FEASIBILITY-GIAS-AIOC.md per un uso futuro
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Non esiste ancora. Sono in plan mode quindi non posso creare file oltre al piano. Per procedere devo prima uscire dal plan
+  mode.
+  ⎿  User rejected Claude's plan:
+     ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+     │ Studio di Fattibilità: Riprodurre GiAs-llm con AIOC SDK                                                              │
+     │                                                                                                                      │
+     │ Contesto                                                                                                             │
+     │                                                                                                                      │
+     │ GiAs-llm è un backend Python/FastAPI/LangGraph per il supporto conversazionale al sistema veterinario GISA della     │
+     │ Regione Campania. Si vuole valutare se e come la stessa funzionalità possa essere riprodotta usando                  │
+     │ @axiastudio/aioc, un SDK TypeScript governance-first per orchestrazione LLM.                                         │
+     │                                                                                                                      │
+     │ Lo studio non produce codice, ma un documento analitico (docs/FEASIBILITY-GIAS-AIOC.md) che copre mapping            │
+     │ architetturale, gap, vantaggi, rischi e strategia di migrazione.                                                     │
+     │                                                                                                                      │
+     │ ---                                                                                                                  │
+     │ Cosa produce questo piano                                                                                            │
+     │                                                                                                                      │
+     │ Un singolo file docs/FEASIBILITY-GIAS-AIOC.md contenente lo studio di fattibilità completo, strutturato nelle        │
+     │ sezioni seguenti.                                                                                                    │
+     │                                                                                                                      │
+     │ ---                                                                                                                  │
+     │ Struttura del documento da produrre                                                                                  │
+     │                                                                                                                      │
+     │ 1. Panoramica dei due sistemi                                                                                        │
+     │                                                                                                                      │
+     │ Tabella sinottica GiAs-llm vs AIOC: stack, architettura, paradigma di orchestrazione.                                │
+     │                                                                                                                      │
+     │ 2. Mapping componente per componente                                                                                 │
+     │                                                                                                                      │
+     │ ┌──────────────────────────────────────────────────────┬─────────────────────────────────────────┬────────────────── │
+     │ ──┐                                                                                                                  │
+     │ │                 Componente GiAs-llm                  │            Equivalente AIOC             │    Livello gap    │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ FastAPI server (porta 5005)                          │ Nessuno — serve Express/Fastify/Hono    │ Da costruire      │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ LangGraph state machine (classify → dialogue_manager │ run() loop in src/run.ts — turni LLM    │ Cambio di         │
+     │   │                                                                                                                  │
+     │ │  → tools → response_generator)                       │ con tool calling nativo                 │ paradigma         │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Classificazione intent ibrida a 4 livelli            │ Eliminata — il LLM sceglie i tool via   │ Cambio di         │
+     │   │                                                                                                                  │
+     │ │ (heuristics → regex → LLM → post-validazione)        │ function calling                        │ paradigma         │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │                                                      │ 13 Tool AIOC con schema Zod; 7 intent   │                   │
+     │   │                                                                                                                  │
+     │ │ 20 intent + 13 tool function                         │ senza tool diventano istruzioni nel     │ Mapping diretto   │
+     │   │                                                                                                                  │
+     │ │                                                      │ system prompt                           │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ DialogueState (slot tracking multi-turno)            │ RunContext<TContext> + session store    │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ esterno                                 │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Multi-backend LLM                                    │ ChatCompletionsProvider per qualsiasi   │ Parziale          │
+     │   │                                                                                                                  │
+     │ │ (Ollama/OpenAI/Anthropic/OpenRouter/Llama.cpp)       │ API OpenAI-compatibile; OpenAIProvider, │ (Anthropic manca) │
+     │   │                                                                                                                  │
+     │ │                                                      │  MistralProvider nativi                 │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ SSE streaming                                        │ StreamedRunResult.toStream() → bridge   │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ verso HTTP SSE                          │ (moderato)        │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Data layer CSV/PostgreSQL (pandas, 287K record)      │ Nessuno — serve layer TypeScript        │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ (Knex/Drizzle + SQL)                    │ (significativo)   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Qdrant vector DB (730 piani indicizzati)             │ Nessuno — serve @qdrant/js-client-rest  │ Da costruire      │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │                                                      │                                         │ Supportato        │
+     │   │                                                                                                                  │
+     │ │ Chat logging PostgreSQL                              │ RunRecord sink + RunLogger              │ nativamente con   │
+     │   │                                                                                                                  │
+     │ │                                                      │                                         │ adattamento       │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Session management                                   │ Nessuno — run() è stateless             │ Da costruire      │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Response formatting + suggerimenti follow-up         │ Nessuno — logica applicativa            │ Da costruire      │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Two-phase check (sommario → dettaglio)               │ Orchestrabile tramite tool chaining o   │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ chiamate run() multiple                 │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Fallback recovery (3 fasi)                           │ Implementabile come error handling a    │ Da costruire      │
+     │   │                                                                                                                  │
+     │ │                                                      │ livello tool o multi-agent handoff      │                   │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ GDPR gating per provider esterni                     │ Policy gate toolPolicy / handoffPolicy  │ Supportato        │
+     │   │                                                                                                                  │
+     │ │                                                      │                                         │ nativamente       │
+     │   │                                                                                                                  │
+     │ ├──────────────────────────────────────────────────────┼─────────────────────────────────────────┼────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Endpoint monitoraggio/analytics                      │ Nessuno — logica applicativa            │ Da costruire      │
+     │   │                                                                                                                  │
+     │ └──────────────────────────────────────────────────────┴─────────────────────────────────────────┴────────────────── │
+     │ ──┘                                                                                                                  │
+     │                                                                                                                      │
+     │ 3. Il cambio di paradigma fondamentale                                                                               │
+     │                                                                                                                      │
+     │ GiAs-llm (flusso esplicito deterministico):                                                                          │
+     │ input → heuristic → regex → LLM classify → post-validate → dialogue_manager → tool_router → tool →                   │
+     │ response_generator → output                                                                                          │
+     │                                                                                                                      │
+     │ AIOC (flusso LLM-driven con policy gate deterministici):                                                             │
+     │ input → LLM(system_prompt, tools_schema, history) → LLM propone tool_call → policy_gate(allow/deny) → tool.execute() │
+     │  → risultato → LLM → output testuale                                                                                 │
+     │                                                                                                                      │
+     │ Implicazioni chiave:                                                                                                 │
+     │ - Eliminazione della classificazione intent: il LLM sceglie direttamente quale tool chiamare. I 7 intent senza tool  │
+     │ (greet, goodbye, help, confirm, decline, fallback, ask_help) diventano istruzioni nel system prompt.                 │
+     │ - Perdita dei fast-path deterministici: ogni richiesta passa per il LLM (niente shortcut regex/heuristici). Impatto  │
+     │ su latenza per query banali.                                                                                         │
+     │ - Guadagno in flessibilità: query mai viste non richiedono un nuovo intent, basta un tool ben descritto.             │
+     │ - Testabilità diversa: si testa la selezione dei tool da parte del LLM, non l'accuratezza di un classificatore.      │
+     │                                                                                                                      │
+     │ 4. Compatibilità provider                                                                                            │
+     │                                                                                                                      │
+     │ ┌────────────────┬───────────────────────────────────────────────────────┬────────────────────────────────────────── │
+     │ ──┐                                                                                                                  │
+     │ │    Backend     │                     Supporto AIOC                     │                    Note                   │
+     │   │                                                                                                                  │
+     │ │    GiAs-llm    │                                                       │                                           │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ OpenAI         │ Nativo (setupOpenAI())                                │ Diretto                                   │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Mistral        │ Nativo (setupMistral())                               │ Diretto                                   │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ OpenRouter     │ Via ChatCompletionsProvider con baseURL:              │ OpenAI-compatibile                        │
+     │   │                                                                                                                  │
+     │ │                │ openrouter.ai/api/v1                                  │                                           │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Ollama         │ Via ChatCompletionsProvider con baseURL:              │ OpenAI-compat mode di Ollama              │
+     │   │                                                                                                                  │
+     │ │                │ localhost:11434/v1                                    │                                           │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Anthropic      │ NON supportato — API non OpenAI-compatibile           │ Serve un AnthropicProvider custom (1-2    │
+     │   │                                                                                                                  │
+     │ │                │                                                       │ settimane)                                │
+     │   │                                                                                                                  │
+     │ ├────────────────┼───────────────────────────────────────────────────────┼────────────────────────────────────────── │
+     │ ──┤                                                                                                                  │
+     │ │ Llama.cpp      │ Parziale — dipende dalla modalità server              │ OpenAI-compat mode se disponibile         │
+     │   │                                                                                                                  │
+     │ └────────────────┴───────────────────────────────────────────────────────┴────────────────────────────────────────── │
+     │ ──┘                                                                                                                  │
+     │                                                                                                                      │
+     │ Vincolo critico: AIOC richiede function calling nativo dal LLM. Modelli locali piccoli (< 7B parametri) potrebbero   │
+     │ non supportare bene il function calling, degradando l'accuratezza della selezione tool.                              │
+     │                                                                                                                      │
+     │ 5. Vantaggi di governance di AIOC                                                                                    │
+     │                                                                                                                      │
+     │ Dove AIOC migliora concretamente rispetto a GiAs-llm:                                                                │
+     │                                                                                                                      │
+     │ 1. Default-deny sui tool: ogni tool call deve passare un policy gate deterministico. Tool senza policy configurata = │
+     │  deny automatico. GiAs-llm non ha equivalente.                                                                       │
+     │ 2. Audit trail completo: RunRecord cattura SHA-256 dei prompt, ogni decisione di policy, decisioni guardrail,        │
+     │ context snapshot con redazione privacy. Molto più profondo del chat log di GiAs-llm.                                 │
+     │ 3. Prompt version governance: Agent.promptVersion + PromptSnapshotRecord tracciano quale versione del prompt era     │
+     │ attiva per ogni interazione.                                                                                         │
+     │ 4. Privacy by design: contextRedactor integrato nell'SDK per redazione dati sensibili prima della persistenza.       │
+     │ 5. GDPR come policy gate: il gating GDPR diventa una toolPolicy auditabile che ispeziona gli argomenti e nega        │
+     │ l'accesso a provider esterni per tool con dati personali.                                                            │
+     │ 6. Non-regression detection: i requestFingerprint permettono di rilevare quando un cambio prompt causa comportamento │
+     │  diverso del LLM.                                                                                                    │
+     │                                                                                                                      │
+     │ 6. Analisi dei rischi                                                                                                │
+     │                                                                                                                      │
+     │ Rischi alti                                                                                                          │
+     │                                                                                                                      │
+     │ - R1: Parità classificazione intent — Il function calling del LLM potrebbe non eguagliare la classificazione         │
+     │ hand-tuned di GiAs-llm per query ambigue nel dominio veterinario italiano. Mitigazione: prompt engineering           │
+     │ estensivo, dataset di valutazione dai test GiAs-llm, gate go/no-go in Fase 0.                                        │
+     │ - R2: Migrazione data layer — 287K+ record, 7 dataset, logica pandas complessa. Riscrittura in TypeScript/SQL è il   │
+     │ lavoro più grande e a maggior rischio di regressione. Mitigazione: PostgreSQL views/functions, opzione Python        │
+     │ sidecar.                                                                                                             │
+     │                                                                                                                      │
+     │ Rischi medi                                                                                                          │
+     │                                                                                                                      │
+     │ - R3: Latenza per query banali — Senza fast-path heuristici, anche "ciao" passa per il LLM. Mitigazione: cache,      │
+     │ pre-flight leggero, modelli veloci.                                                                                  │
+     │ - R4: AIOC in fase alpha — Versione 0.1.0-alpha.5. API potrebbe cambiare. Mitigazione: pin versione, fork di         │
+     │ sicurezza, contribuire upstream.                                                                                     │
+     │ - R5: Fidelità dialogo multi-turno — Il DialogueState esplicito di GiAs-llm diventa dipendente dalla coerenza del    │
+     │ LLM nella history. Mitigazione: context injection via dynamic instructions.                                          │
+     │ - R6: Modelli locali e function calling — Ollama con modelli piccoli potrebbe non funzionare bene con il function    │
+     │ calling. Mitigazione: test con modelli specifici (Llama 3.1 8B+ supporta function calling).                          │
+     │                                                                                                                      │
+     │ Rischi bassi                                                                                                         │
+     │                                                                                                                      │
+     │ - R7: Bridge SSE streaming — Ben compreso, pattern standard.                                                         │
+     │ - R8: Configurazione policy — API semplice e ben documentata.                                                        │
+     │                                                                                                                      │
+     │ 7. Stima di effort per categoria                                                                                     │
+     │                                                                                                                      │
+     │ Banale (giorni)                                                                                                      │
+     │                                                                                                                      │
+     │ - Definizione 13 tool con schema Zod: 2-3 giorni                                                                     │
+     │ - Configurazione policy (ruoli, GDPR): 1-2 giorni                                                                    │
+     │ - Output guardrail base: 1 giorno                                                                                    │
+     │ - Setup provider (OpenAI, Mistral, OpenRouter, Ollama): 1 giorno                                                     │
+     │ - Integrazione logging: 1 giorno                                                                                     │
+     │                                                                                                                      │
+     │ Moderato (1-2 settimane ciascuno)                                                                                    │
+     │                                                                                                                      │
+     │ - Server HTTP (Express/Fastify) con tutti gli endpoint + bridge SSE: 1-2 settimane                                   │
+     │ - Session management con persistenza conversazione: 1-2 settimane                                                    │
+     │ - RunRecord sink verso PostgreSQL: 1 settimana                                                                       │
+     │ - Gestione dialogue state (slot tracking via context): 1-2 settimane                                                 │
+     │ - Response formatting e suggerimenti follow-up: 1 settimana                                                          │
+     │ - Endpoint monitoraggio/analytics: 1-2 settimane                                                                     │
+     │ - Prompt engineering sistema (italiano, dominio specifico): 1-2 settimane                                            │
+     │                                                                                                                      │
+     │ Significativo (3+ settimane ciascuno)                                                                                │
+     │                                                                                                                      │
+     │ - Migrazione data layer (7 dataset, 287K+ record): 4-6 settimane                                                     │
+     │ - Integrazione Qdrant per ricerca semantica: 2-3 settimane                                                           │
+     │ - Valutazione parità classificazione: 2-3 settimane                                                                  │
+     │ - Provider Anthropic custom (se necessario): 1-2 settimane                                                           │
+     │ - Test end-to-end integrati: 3-4 settimane                                                                           │
+     │                                                                                                                      │
+     │ Totale stimato                                                                                                       │
+     │                                                                                                                      │
+     │ - MVP (proof of concept): 2-3 settimane                                                                              │
+     │ - Parità funzionale minima: 10-14 settimane (1 senior dev)                                                           │
+     │ - Parità completa con governance: 16-22 settimane (1-2 dev)                                                          │
+     │ - Production-ready con test: 20-28 settimane (2 dev)                                                                 │
+     │                                                                                                                      │
+     │ 8. Strategia raccomandata: migrazione incrementale a fasi                                                            │
+     │                                                                                                                      │
+     │ Fase 0 — Proof of Concept (2-3 settimane)                                                                            │
+     │                                                                                                                      │
+     │ Validare che il function calling di AIOC eguagli la classificazione GiAs-llm per i 5 intent più comuni.              │
+     │ - Agent con 5 tool (piano_tool, get_piano_attivita, risk_tool, search_piani_by_topic, priority_tool)                 │
+     │ - System prompt in italiano nel dominio veterinario                                                                  │
+     │ - Tool con implementazioni mock (dati statici)                                                                       │
+     │ - Script di valutazione vs dataset test GiAs-llm                                                                     │
+     │ - Decision gate: se accuratezza < 85%, serve layer classificazione pre-flight                                        │
+     │                                                                                                                      │
+     │ Fase 1 — Pipeline core (4-6 settimane)                                                                               │
+     │                                                                                                                      │
+     │ Backend AIOC funzionale con tutti i 13 tool e dati reali.                                                            │
+     │ - Server Express/Fastify con /api/v1/chat e /api/v1/chat/stream                                                      │
+     │ - Tutti i 13 tool con execute reale verso PostgreSQL                                                                 │
+     │ - Session management (Redis o PostgreSQL)                                                                            │
+     │ - Policy base (accesso per ruolo)                                                                                    │
+     │ - RunRecord sink su PostgreSQL                                                                                       │
+     │                                                                                                                      │
+     │ Fase 2 — Parità e governance (4-6 settimane)                                                                         │
+     │                                                                                                                      │
+     │ Feature parity + vantaggi governance AIOC.                                                                           │
+     │ - Qdrant per ricerca semantica piani                                                                                 │
+     │ - Dialogue state multi-turno                                                                                         │
+     │ - Response formatting con suggerimenti follow-up                                                                     │
+     │ - Output guardrail (validazione contenuto)                                                                           │
+     │ - Policy GDPR per provider esterni                                                                                   │
+     │ - Audit trail completo con redazione context                                                                         │
+     │ - Endpoint monitoraggio/analytics                                                                                    │
+     │                                                                                                                      │
+     │ Fase 3 — Validazione e hardening (3-4 settimane)                                                                     │
+     │                                                                                                                      │
+     │ Production readiness.                                                                                                │
+     │ - Test suite end-to-end dai scenari GiAs-llm                                                                         │
+     │ - Benchmark prestazioni (latenza, throughput)                                                                        │
+     │ - Dataset di regressione                                                                                             │
+     │ - Logica fallback e error recovery                                                                                   │
+     │ - Documentazione operativa                                                                                           │
+     │                                                                                                                      │
+     │ Fase 4 (opzionale) — Architettura multi-agent                                                                        │
+     │                                                                                                                      │
+     │ Sfruttare gli handoff AIOC per modularità.                                                                           │
+     │ - Triage Agent → hand off a specialisti (Plan Agent, Risk Agent, Compliance Agent, Priority Agent)                   │
+     │ - Handoff policy per controllare le transizioni                                                                      │
+     │ - Migliore accuratezza selezione tool (meno tool per agente)                                                         │
+     │                                                                                                                      │
+     │ 9. Decisioni architetturali chiave                                                                                   │
+     │                                                                                                                      │
+     │ 1. Agente singolo vs multi-agent — Iniziare con agente singolo (13 tool), migrare a multi-agent solo se              │
+     │ l'accuratezza della selezione tool è insufficiente.                                                                  │
+     │ 2. Python sidecar vs riscrittura TypeScript — Iniziare con PostgreSQL + SQL. Se le operazioni pandas complesse non   │
+     │ sono replicabili in SQL, aggiungere un microservizio Python per le operazioni dati.                                  │
+     │ 3. Layer classificazione — Iniziare con AIOC puro (function calling). Aggiungere pre-flight classification solo se   │
+     │ Fase 0 mostra latenza/accuratezza inaccettabile.                                                                     │
+     │ 4. Strategia provider LLM — Approccio ibrido con policy gate: modello locale per query con dati personali, modello   │
+     │ cloud per query generali.                                                                                            │
+     │ 5. Versione AIOC — Pinnare 0.1.0-alpha.5, fork di sicurezza, contribuire feature necessarie upstream (es.            │
+     │ AnthropicProvider).                                                                                                  │
+     │                                                                                                                      │
+     │ 10. Verdetto                                                                                                         │
+     │                                                                                                                      │
+     │ ┌──────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┐                                                                                                                 │
+     │ │      Dimensione      │                                          Valutazione                                        │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Fattibilità          │ Sì, con effort significativo. Il mapping core è solido.                                     │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Maggiore vantaggio   │ Il modello di governance AIOC (policy gate, audit trail, run record) è materialmente        │
+     │    │                                                                                                                 │
+     │ │                      │ superiore all'approccio ad-hoc di GiAs-llm per un sistema pubblica amministrazione.         │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Maggiore rischio     │ Migrazione data layer (287K record, pandas → TypeScript) e parità classificazione intent.   │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Impatto cambio       │ Medio-alto. Il passaggio da classificazione esplicita a function calling cambia il modello  │
+     │ di │                                                                                                                 │
+     │ │ paradigma            │  controllo.                                                                                 │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Tempo per prima      │ 2-3 settimane per Fase 0 proof of concept.                                                  │
+     │    │                                                                                                                 │
+     │ │ validazione          │                                                                                             │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Effort totale per    │ 16-22 settimane-sviluppatore (senior TypeScript).                                           │
+     │    │                                                                                                                 │
+     │ │ parità               │                                                                                             │
+     │    │                                                                                                                 │
+     │ ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┤                                                                                                                 │
+     │ │ Raccomandazione      │ Procedere con Fase 0 per validare la premessa fondamentale (accuratezza function calling    │
+     │ nel  │                                                                                                               │
+     │ │                      │ dominio GiAs-llm). Gate le fasi successive sui risultati della Fase 0.                      │
+     │    │                                                                                                                 │
+     │ └──────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────── │
+     │ ───┘                                                                                                                 │
+     │                                                    

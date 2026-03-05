@@ -33,9 +33,9 @@ function formatMessage(message) {
 
         // Format specific fields within list items
         cleanContent = cleanContent.replace(/Aggregazione:\s*([^\n]+)/g, '<div class="sub-field"><span class="sub-label">Aggregazione:</span> <span class="sub-value">$1</span></div>');
-        cleanContent = cleanContent.replace(/Attività:\s*([^\n]+)/g, '<div class="sub-field"><span class="sub-label">Attività:</span> <span class="sub-value">$1</span></div>');
+        cleanContent = cleanContent.replace(/Linea di attività:\s*([^\n]+)/g, '<div class="sub-field"><span class="sub-label">Linea di attività:</span> <span class="sub-value">$1</span></div>');
         cleanContent = cleanContent.replace(/Controlli eseguiti:\s*([^\n]+)/g, '<div class="sub-field"><span class="sub-label">Controlli eseguiti:</span> <span class="sub-value highlight">$1</span></div>');
-        cleanContent = cleanContent.replace(/Linea attività:\s*([^\n]+)/g, '<div class="activity-line">Linea attività: <em>$1</em></div>');
+        cleanContent = cleanContent.replace(/Linea di attività:\s*([^\n]+)/g, '<div class="activity-line">Linea di attività: <em>$1</em></div>');
         cleanContent = cleanContent.replace(/Similarità:\s*(\d+\.\d+%)/g, '<span class="similarity">Similarità: <strong>$1</strong></span>');
 
         return `<div class="list-item"><span class="list-number">${number}.</span><div class="list-content">${cleanContent}</div></div>`;
@@ -70,9 +70,9 @@ function formatMessage(message) {
 
     // Format specific standalone fields if they weren't caught in lists
     formatted = formatted.replace(/^Aggregazione:\s*([^\n<]+)/gm, '<div class="sub-field"><span class="sub-label">Aggregazione:</span> <span class="sub-value">$1</span></div>');
-    formatted = formatted.replace(/^Attività:\s*([^\n<]+)/gm, '<div class="sub-field"><span class="sub-label">Attività:</span> <span class="sub-value">$1</span></div>');
+    formatted = formatted.replace(/^Linea di attività:\s*([^\n<]+)/gm, '<div class="sub-field"><span class="sub-label">Linea di attività:</span> <span class="sub-value">$1</span></div>');
     formatted = formatted.replace(/^Controlli eseguiti:\s*([^\n<]+)/gm, '<div class="sub-field"><span class="sub-label">Controlli eseguiti:</span> <span class="sub-value highlight">$1</span></div>');
-    formatted = formatted.replace(/^Linea attività:\s*([^\n<]+)/gm, '<div class="activity-line">Linea attività: <em>$1</em></div>');
+    formatted = formatted.replace(/^Linea di attività:\s*([^\n<]+)/gm, '<div class="activity-line">Linea di attività: <em>$1</em></div>');
     formatted = formatted.replace(/Similarità:\s*(\d+\.\d+%)/g, '<span class="similarity">Similarità: <strong>$1</strong></span>');
 
     // FINAL STEP: Convert newlines to HTML breaks

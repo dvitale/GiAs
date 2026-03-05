@@ -40,33 +40,21 @@ _session_mgr = SessionManager()
 # Timeout per esecuzione grafo (deve essere < timeout Go frontend 60s)
 GRAPH_INVOKE_TIMEOUT = 50
 
-# Intent metadata cache (loaded once from DB)
-_intent_metadata_cache: Dict[str, Dict[str, Any]] = {}
+# Intent metadata via IntentMetadataService (singleton, lazy loading)
+_intent_metadata_service = None
 
 
-def _load_intent_metadata():
-    """Load intent metadata from the intents table (tool, dataretriever, two_phase, sql)."""
-    global _intent_metadata_cache
-    try:
-        from data_sources.postgresql_source import PostgreSQLDataSource
-        engine = PostgreSQLDataSource._engine
-        if engine is None:
-            return
-        from sqlalchemy import text
-        with engine.connect() as conn:
-            rows = conn.execute(text(
-                "SELECT intent, tool, data_retriever, two_phase_threshold, query_equivalent FROM intents"
-            )).fetchall()
-        for row in rows:
-            _intent_metadata_cache[row[0]] = {
-                "tool": row[1],
-                "dataretriever_class": row[2],
-                "two_phase_threshold": row[3],
-                "sql": row[4],
-            }
-        logger.info(f"[ChatLog] Intent metadata cache loaded: {len(_intent_metadata_cache)} intents")
-    except Exception as e:
-        logger.warning(f"[ChatLog] Could not load intent metadata: {e}")
+def _get_intent_metadata_service():
+    """Lazy accessor per IntentMetadataService singleton."""
+    global _intent_metadata_service
+    if _intent_metadata_service is None:
+        try:
+            from orchestrator.intent_metadata_service import get_intent_metadata_service
+            _intent_metadata_service = get_intent_metadata_service()
+            logger.info(f"[ChatLog] IntentMetadataService initialized (source: {_intent_metadata_service.source})")
+        except Exception as e:
+            logger.warning(f"[ChatLog] Could not init IntentMetadataService: {e}")
+    return _intent_metadata_service
 
 
 def log_chat(
@@ -78,6 +66,7 @@ def log_chat(
     slots: Optional[Dict[str, Any]] = None,
     response_time_ms: Optional[int] = None,
     error: Optional[str] = None,
+    message_id: Optional[str] = None,
 ):
     """Insert a record into chat_log in a background thread.
 
@@ -90,6 +79,7 @@ def log_chat(
         slots: Extracted slots as dict (stored as JSONB)
         response_time_ms: Total execution time in milliseconds
         error: Error message if any (separate from answer)
+        message_id: UUID per tracking feedback utente
     """
     def _insert():
         try:
@@ -109,7 +99,8 @@ def log_chat(
             if not who:
                 who = "anonymous"
 
-            intent_meta = _intent_metadata_cache.get(intent, {})
+            service = _get_intent_metadata_service()
+            intent_meta = service.get_intent_metadata_for_chatlog(intent) if service else {}
             tool = intent_meta.get("tool") or None
             dataretriever_class = intent_meta.get("dataretriever_class") or None
             two_phase_threshold = intent_meta.get("two_phase_threshold")
@@ -125,10 +116,11 @@ def log_chat(
                 conn.execute(text(
                     """INSERT INTO chat_log
                     (ask, intent, tool, two_phase_resp, dataretriever_class, sql, who, "when", answer,
-                     session_id, asl, slots, response_time_ms, error)
+                     session_id, asl, slots, response_time_ms, error, message_id)
                     VALUES
                     (:ask, :intent, :tool, :two_phase_resp, :dataretriever_class, :sql, :who, NOW(), :answer,
-                     :session_id, :asl, CAST(:slots AS jsonb), :response_time_ms, :error)"""
+                     :session_id, :asl, CAST(:slots AS jsonb), :response_time_ms, :error,
+                     CAST(:message_id AS uuid))"""
                 ), {
                     "ask": ask,
                     "intent": intent,
@@ -143,6 +135,7 @@ def log_chat(
                     "slots": slots_json,
                     "response_time_ms": response_time_ms,
                     "error": error,
+                    "message_id": message_id,
                 })
                 conn.commit()
             logger.debug(f"[ChatLog] Logged: intent={intent}, who={who}, asl={asl}, time={response_time_ms}ms")
@@ -193,8 +186,8 @@ async def lifespan(app: FastAPI):
             _conversation_graph = ConversationGraph()
             logger.info("[Startup] ✓ ConversationGraph initialized")
 
-            # Load intent metadata for chat_log
-            _load_intent_metadata()
+            # Init IntentMetadataService (lazy, carica da DB alla prima chiamata)
+            _get_intent_metadata_service()
 
             logger.info("[Startup] ✓ Server ready to handle requests")
 
@@ -256,7 +249,9 @@ async def health_check():
 
 from app.models import (
     ChatMessage, ChatResponse as ChatResponseV1, ChatResult,
-    ExecutionInfo, Suggestion, ParseRequest, ParseResult, SSEFinalEvent,
+    ExecutionInfo, Suggestion, FallbackIntentSuggestion,
+    ParseRequest, ParseResult, SSEFinalEvent,
+    FeedbackRequest,
 )
 
 
@@ -289,11 +284,29 @@ def _build_chat_result(result: Dict[str, Any]) -> ChatResult:
     if error:
         response_text = f"❌ Errore: {error}" if not response_text else response_text
 
+    # Guided learning: converti fallback_suggestions in FallbackIntentSuggestion
+    fallback_intents = []
+    from configs.config import AppConfig
+    if (result.get("intent") == "fallback"
+            and result.get("fallback_suggestions")
+            and AppConfig.is_guided_learning_enabled()):
+        for fs in result["fallback_suggestions"]:
+            if isinstance(fs, dict) and fs.get("type") == "intent" and fs.get("intent"):
+                fallback_intents.append(FallbackIntentSuggestion(
+                    intent=fs["intent"],
+                    label=fs.get("label", fs["intent"]),
+                    description=fs.get("description", ""),
+                    emoji=fs.get("emoji", ""),
+                    category=fs.get("category", ""),
+                    type="intent",
+                ))
+
     return ChatResult(
         text=response_text or "Non ho capito la tua richiesta. Puoi riformularla?",
         intent=result.get("intent", ""),
         slots=result.get("slots", {}),
         suggestions=suggestions,
+        fallback_intents=fallback_intents,
         execution=execution,
         needs_clarification=result.get("needs_clarification", False),
         has_more_details=result.get("has_more_details", False),
@@ -327,6 +340,16 @@ async def chat_v1(message: ChatMessage) -> ChatResponseV1:
                 resolved_uoc = get_uoc_from_user_id(metadata['user_id'])
                 if resolved_uoc:
                     metadata['uoc'] = resolved_uoc
+            except Exception:
+                pass
+
+        # Risolvi UOS
+        if not metadata.get('uos') and metadata.get('user_id'):
+            try:
+                from agents.data import get_uos_from_user_id
+                resolved_uos = get_uos_from_user_id(metadata['user_id'])
+                if resolved_uos:
+                    metadata['uos'] = resolved_uos
             except Exception:
                 pass
 
@@ -373,8 +396,13 @@ async def chat_v1(message: ChatMessage) -> ChatResponseV1:
         # Aggiorna sessione
         _session_mgr.update_session(message.sender, result)
 
+        # Genera message_id per tracking feedback
+        import uuid
+        msg_id = str(uuid.uuid4())
+
         # Log
         chat_result = _build_chat_result(result)
+        chat_result.message_id = msg_id
         log_chat(
             ask=message.message,
             intent=result.get("intent", ""),
@@ -384,6 +412,7 @@ async def chat_v1(message: ChatMessage) -> ChatResponseV1:
             slots=result.get("slots"),
             response_time_ms=result.get("total_execution_ms"),
             error=result.get("error") if result.get("error") else None,
+            message_id=msg_id,
         )
 
         return ChatResponseV1(sender=message.sender, result=chat_result)
@@ -397,6 +426,94 @@ async def chat_v1(message: ChatMessage) -> ChatResponseV1:
                 error=str(e),
             )
         )
+
+
+@app.post("/api/v1/session/reset")
+async def session_reset(req: ChatMessage):
+    """Reset sessione utente: rimuove contesto, slot, stato fallback."""
+    sender = req.sender
+    _session_mgr.clear_session(sender)
+    logger.info(f"[SessionReset] Session cleared for sender={sender}")
+    return {"status": "ok", "sender": sender}
+
+
+@app.post("/api/v1/chat/feedback")
+async def chat_feedback(req: FeedbackRequest):
+    """Registra il feedback utente (rating 1-5) su una risposta."""
+    if req.rating < 1 or req.rating > 5:
+        raise HTTPException(status_code=400, detail="Rating deve essere tra 1 e 5")
+
+    engine = _get_db_engine()
+    if not engine:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                """UPDATE chat_log
+                   SET rating = :rating, user_feedback = :feedback
+                   WHERE message_id = CAST(:message_id AS uuid)"""
+            ), {
+                "message_id": req.message_id,
+                "rating": req.rating,
+                "feedback": req.feedback,
+            })
+            conn.commit()
+
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="message_id non trovato")
+
+        # Feedback loop automatico: alimenta domande_risposte
+        try:
+            _feedback_loop(engine, req.message_id, req.rating)
+        except Exception as fl_err:
+            logger.warning(f"[Feedback] Feedback loop errore (non bloccante): {fl_err}")
+
+        logger.info(f"[Feedback] message_id={req.message_id}, rating={req.rating}")
+        return {"status": "ok", "message_id": req.message_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Feedback] Errore: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _feedback_loop(engine, message_id: str, rating: int):
+    """Feedback loop automatico: inserisce in domande_risposte basandosi sul rating."""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        # Recupera ask e intent dal chat_log
+        row = conn.execute(text(
+            """SELECT ask, intent FROM chat_log
+               WHERE message_id = CAST(:message_id AS uuid)"""
+        ), {"message_id": message_id}).fetchone()
+
+        if not row or not row[0] or not row[1]:
+            return
+
+        ask, intent = row[0], row[1]
+        if intent in ("greet", "goodbye", "ask_help", "fallback",
+                       "confirm_show_details", "decline_show_details"):
+            return
+
+        if rating >= 4:
+            conn.execute(text("""
+                INSERT INTO domande_risposte (domanda, intent, example_type, source, active)
+                VALUES (:domanda, :intent, 'variation', 'feedback_auto', TRUE)
+                ON CONFLICT (domanda, intent) DO NOTHING
+            """), {"domanda": ask, "intent": intent})
+            conn.commit()
+            logger.info(f"[FeedbackLoop] rating={rating}, inserita variazione: '{ask[:50]}' → {intent}")
+        elif rating <= 2:
+            conn.execute(text("""
+                INSERT INTO domande_risposte (domanda, intent, example_type, source, active)
+                VALUES (:domanda, :intent, 'variation', 'feedback_negative', FALSE)
+                ON CONFLICT (domanda, intent) DO NOTHING
+            """), {"domanda": ask, "intent": intent})
+            conn.commit()
+            logger.info(f"[FeedbackLoop] rating={rating}, segnalata per revisione: '{ask[:50]}' → {intent}")
 
 
 @app.post("/api/v1/chat/stream")
@@ -423,6 +540,15 @@ async def chat_stream_v1(message: ChatMessage):
                     resolved_uoc = get_uoc_from_user_id(metadata['user_id'])
                     if resolved_uoc:
                         metadata['uoc'] = resolved_uoc
+                except Exception:
+                    pass
+
+            if not metadata.get('uos') and metadata.get('user_id'):
+                try:
+                    from agents.data import get_uos_from_user_id
+                    resolved_uos = get_uos_from_user_id(metadata['user_id'])
+                    if resolved_uos:
+                        metadata['uos'] = resolved_uos
                 except Exception:
                     pass
 
@@ -581,6 +707,14 @@ async def status():
         llm_model_key = AppConfig.LLM_MODEL
     llm_status = f"{llm_model} ({llm_mode})"
 
+    # RAG cache stats
+    rag_cache_stats = {}
+    try:
+        from tools.rag_cache import get_rag_cache
+        rag_cache_stats = get_rag_cache().get_stats()
+    except Exception:
+        pass
+
     return {
         "status": "ok",
         "model_loaded": True,
@@ -593,7 +727,8 @@ async def status():
         "framework": "LangGraph",
         "llm": llm_status,
         "llm_model_key": llm_model_key,
-        "llm_backend": llm_backend
+        "llm_backend": llm_backend,
+        "rag_cache": rag_cache_stats,
     }
 
 
@@ -1330,6 +1465,434 @@ async def intelligent_monitor_health():
     except Exception as e:
         logger.error(f"[IntelligentMonitor] Error getting health: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# ADMIN - DOMANDE RAG
+# =============================================================================
+
+from pydantic import BaseModel
+
+class DomandaRAGCreate(BaseModel):
+    domanda: str
+    risposta: Optional[str] = None
+    intent: str = "info_procedure"
+    example_type: str = "few_shot"
+    confused_with: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@app.get("/api/admin/domande-rag")
+async def admin_list_domande_rag():
+    """Lista domande attive dalla tabella domande_risposte."""
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT id, domanda, risposta, intent, example_type, confused_with,
+                       source, notes, created_at, updated_at
+                FROM domande_risposte
+                WHERE active = TRUE
+                ORDER BY created_at DESC
+            """)).fetchall()
+
+            return {
+                "total": len(rows),
+                "records": [
+                    {
+                        "id": r[0],
+                        "domanda": r[1],
+                        "risposta": r[2],
+                        "intent": r[3],
+                        "example_type": r[4],
+                        "confused_with": r[5],
+                        "source": r[6],
+                        "notes": r[7],
+                        "created_at": r[8].isoformat() if r[8] else None,
+                        "updated_at": r[9].isoformat() if r[9] else None,
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[AdminRAG] Error listing domande: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/domande-rag")
+async def admin_create_domanda_rag(payload: DomandaRAGCreate):
+    """Inserisce una nuova domanda nella tabella domande_risposte."""
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    if not payload.domanda.strip():
+        raise HTTPException(status_code=400, detail="Il campo 'domanda' è obbligatorio")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                INSERT INTO domande_risposte (domanda, risposta, intent, example_type, confused_with, source, notes)
+                VALUES (:domanda, :risposta, :intent, :example_type, :confused_with, :source, :notes)
+                RETURNING id, created_at
+            """), {
+                "domanda": payload.domanda.strip(),
+                "risposta": payload.risposta.strip() if payload.risposta else None,
+                "intent": payload.intent,
+                "example_type": payload.example_type,
+                "confused_with": payload.confused_with,
+                "source": payload.source.strip() if payload.source else None,
+                "notes": payload.notes.strip() if payload.notes else None,
+            })
+            row = result.fetchone()
+            conn.commit()
+
+            logger.info(f"[AdminRAG] Nuova domanda id={row[0]}: {payload.domanda[:80]}")
+            return {
+                "status": "ok",
+                "id": row[0],
+                "created_at": row[1].isoformat() if row[1] else None,
+            }
+    except Exception as e:
+        logger.error(f"[AdminRAG] Error creating domanda: {e}")
+        if "uq_domande_risposte_domanda_intent" in str(e):
+            raise HTTPException(status_code=409, detail="Domanda già esistente per questo intent")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/admin/domande-rag/{domanda_id}")
+async def admin_delete_domanda_rag(domanda_id: int):
+    """Disattiva una domanda (soft delete: active=FALSE)."""
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                UPDATE domande_risposte
+                SET active = FALSE, updated_at = NOW()
+                WHERE id = :id AND active = TRUE
+            """), {"id": domanda_id})
+            conn.commit()
+
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Domanda non trovata o già disattivata")
+
+            logger.info(f"[AdminRAG] Domanda id={domanda_id} disattivata")
+            return {"status": "ok", "id": domanda_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AdminRAG] Error deleting domanda {domanda_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/domande-rag/reindex")
+async def admin_reindex_domande_rag():
+    """Esegue sync domande_risposte -> intent_examples -> Qdrant."""
+    import subprocess
+
+    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sync_script = os.path.join(script_dir, "scripts", "sync_domande_risposte.py")
+
+    if not os.path.exists(sync_script):
+        raise HTTPException(status_code=500, detail="Script sync_domande_risposte.py non trovato")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, sync_script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=script_dir,
+        )
+
+        logger.info(f"[AdminRAG] Reindex completato: rc={result.returncode}")
+
+        # Auto-reload router dopo reindex riuscito
+        reload_status = None
+        if result.returncode == 0:
+            try:
+                reload_status = _do_router_reload()
+                logger.info("[AdminRAG] Auto-reload router completato post-reindex")
+            except Exception as rl_err:
+                reload_status = {"error": str(rl_err)}
+                logger.warning(f"[AdminRAG] Auto-reload fallito (non bloccante): {rl_err}")
+
+        resp = {
+            "status": "ok" if result.returncode == 0 else "error",
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+        if reload_status:
+            resp["router_reload"] = reload_status
+        return resp
+
+    except subprocess.TimeoutExpired:
+        logger.error("[AdminRAG] Reindex timeout (120s)")
+        raise HTTPException(status_code=504, detail="Reindicizzazione timeout (120s)")
+    except Exception as e:
+        logger.error(f"[AdminRAG] Reindex error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _do_router_reload() -> dict:
+    """Esegue reload di IntentMetadataService + Router + FewShotRetriever."""
+    global _conversation_graph, _intent_metadata_service
+
+    stats = {}
+
+    # 1. Reload IntentMetadataService
+    if _intent_metadata_service:
+        _intent_metadata_service.reload()
+        stats["intent_metadata"] = "reloaded"
+
+    # 2. Reload Router (prompt + cache)
+    if _conversation_graph and hasattr(_conversation_graph, 'router'):
+        _conversation_graph.router.reload()
+        stats["router"] = "reloaded"
+
+    # 3. Clear FewShotRetriever cache
+    try:
+        from orchestrator.few_shot_retriever import get_few_shot_retriever
+        retriever = get_few_shot_retriever()
+        retriever.clear_cache()
+        stats["few_shot_cache"] = "cleared"
+    except Exception as e:
+        stats["few_shot_cache"] = f"error: {e}"
+
+    return stats
+
+
+@app.post("/api/admin/router/reload")
+async def admin_router_reload():
+    """Hot-reload: ricarica metadati intent, ricostruisce prompt, svuota cache."""
+    try:
+        stats = _do_router_reload()
+        logger.info(f"[AdminReload] Reload completato: {stats}")
+        return {"status": "ok", **stats}
+    except Exception as e:
+        logger.error(f"[AdminReload] Errore: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Guided Learning ──────────────────────────────────────────────────
+
+_guided_reindex_running = False
+
+
+class GuidedLearnRequest(BaseModel):
+    domanda: str
+    intent: str
+    session_id: Optional[str] = None
+
+
+@app.post("/api/admin/guided-learn")
+async def admin_guided_learn(payload: GuidedLearnRequest):
+    """Salva associazione domanda→intent appresa dall'utente e lancia reindex FSIC."""
+    from configs.config import AppConfig
+    if not AppConfig.is_guided_learning_enabled():
+        raise HTTPException(status_code=403, detail="Guided learning non abilitato")
+
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    if not payload.domanda.strip() or not payload.intent.strip():
+        raise HTTPException(status_code=400, detail="domanda e intent sono obbligatori")
+
+    from sqlalchemy import text
+
+    inserted = False
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                INSERT INTO domande_risposte (domanda, intent, source, example_type, active)
+                VALUES (:domanda, :intent, 'guided_learning', 'variation', TRUE)
+                ON CONFLICT (domanda, intent) DO NOTHING
+                RETURNING id
+            """), {
+                "domanda": payload.domanda.strip(),
+                "intent": payload.intent.strip(),
+            })
+            row = result.fetchone()
+            conn.commit()
+            inserted = row is not None
+    except Exception as e:
+        logger.error(f"[GuidedLearn] DB error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Reindex FSIC in background (con debounce)
+    reindex_status = "skipped"
+    global _guided_reindex_running
+    if inserted and not _guided_reindex_running:
+        import threading
+        _guided_reindex_running = True
+
+        def _background_reindex():
+            global _guided_reindex_running
+            try:
+                import subprocess
+                script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                sync_script = os.path.join(script_dir, "scripts", "sync_domande_risposte.py")
+                if os.path.exists(sync_script):
+                    subprocess.run(
+                        [sys.executable, sync_script],
+                        capture_output=True, text=True, timeout=120,
+                        cwd=script_dir,
+                    )
+                    logger.info("[GuidedLearn] Reindex completato")
+                try:
+                    _do_router_reload()
+                    logger.info("[GuidedLearn] Router reload completato")
+                except Exception as rl_err:
+                    logger.warning(f"[GuidedLearn] Router reload fallito: {rl_err}")
+            except Exception as e:
+                logger.error(f"[GuidedLearn] Reindex error: {e}")
+            finally:
+                _guided_reindex_running = False
+
+        threading.Thread(target=_background_reindex, daemon=True).start()
+        reindex_status = "started_background"
+
+    logger.info(f"[GuidedLearn] domanda='{payload.domanda[:80]}', intent={payload.intent}, inserted={inserted}")
+    return {
+        "status": "ok",
+        "inserted": inserted,
+        "domanda": payload.domanda,
+        "intent": payload.intent,
+        "reindex": reindex_status,
+    }
+
+
+@app.get("/api/admin/intents")
+async def admin_list_intents():
+    """Lista intent disponibili con descrizione."""
+    from orchestrator.intent_metadata import INTENT_REGISTRY
+    result = []
+    for intent_id, meta in INTENT_REGISTRY.items():
+        result.append({
+            "intent": intent_id,
+            "label": meta.label,
+            "description": meta.description,
+            "category": meta.category,
+        })
+    return {"intents": result}
+
+
+@app.get("/api/admin/documents")
+async def admin_list_documents():
+    """Lista PDF nella directory data/documents/."""
+    docs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "documents")
+
+    if not os.path.isdir(docs_dir):
+        return {"documents": []}
+
+    files = []
+    for fname in sorted(os.listdir(docs_dir)):
+        if fname.lower().endswith(".pdf"):
+            fpath = os.path.join(docs_dir, fname)
+            stat = os.stat(fpath)
+            files.append({
+                "filename": fname,
+                "size_bytes": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+
+    return {"documents": files}
+
+
+@app.get("/api/admin/documents/{filename}")
+async def admin_get_document(filename: str):
+    """Serve un file PDF dalla directory data/documents/."""
+    from fastapi.responses import FileResponse
+
+    # Sicurezza: impedisci path traversal
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Nome file non valido")
+
+    docs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "documents")
+    file_path = os.path.join(docs_dir, filename)
+
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File non trovato")
+
+    return FileResponse(file_path, media_type="application/pdf", filename=filename)
+
+
+# =============================================================================
+# ADMIN - Re-indicizzazione documenti RAG
+# =============================================================================
+
+_reindex_state = {
+    "status": "idle",  # idle | running | completed | error
+    "last_run": None,
+    "documents_count": 0,
+    "chunks_count": 0,
+    "error": None,
+}
+_reindex_lock = threading.Lock()
+
+
+@app.post("/api/admin/documents/reindex")
+async def admin_reindex_documents():
+    """Lancia re-indicizzazione documenti in background thread."""
+    with _reindex_lock:
+        if _reindex_state["status"] == "running":
+            raise HTTPException(status_code=409, detail="Re-indicizzazione gia' in corso")
+        _reindex_state["status"] = "running"
+        _reindex_state["error"] = None
+
+    def _do_reindex():
+        try:
+            from tools.indexing.build_docs_index import run_indexing
+            result = run_indexing()
+
+            with _reindex_lock:
+                _reindex_state["status"] = result.get("status", "error")
+                _reindex_state["last_run"] = datetime.now().isoformat()
+                _reindex_state["documents_count"] = result.get("documents_count", 0)
+                _reindex_state["chunks_count"] = result.get("chunks_count", 0)
+                _reindex_state["error"] = result.get("error")
+
+            # Svuota RAG cache dopo re-indicizzazione riuscita
+            if result.get("status") == "completed":
+                try:
+                    from tools.rag_cache import get_rag_cache
+                    cleared = get_rag_cache().clear_all()
+                    logger.info(f"[Reindex] RAG cache svuotata: {cleared} entry rimosse")
+                except Exception:
+                    pass
+
+            logger.info(f"[Reindex] Completato: {result}")
+        except Exception as e:
+            logger.error(f"[Reindex] Errore: {e}")
+            with _reindex_lock:
+                _reindex_state["status"] = "error"
+                _reindex_state["error"] = str(e)
+                _reindex_state["last_run"] = datetime.now().isoformat()
+
+    threading.Thread(target=_do_reindex, daemon=True).start()
+    return {"status": "started", "message": "Re-indicizzazione avviata in background"}
+
+
+@app.get("/api/admin/documents/reindex/status")
+async def admin_reindex_status():
+    """Ritorna lo stato corrente della re-indicizzazione."""
+    with _reindex_lock:
+        return dict(_reindex_state)
 
 
 if __name__ == "__main__":

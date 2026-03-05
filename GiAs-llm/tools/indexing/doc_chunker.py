@@ -345,6 +345,77 @@ class DocumentChunker:
                 break
         return current_page
 
+    def chunk_text_with_parents(
+        self,
+        text: str,
+        base_metadata: Dict,
+        page_map: Optional[Dict] = None,
+        parent_chunk_size: int = 1800,
+        parent_chunk_overlap: int = 200
+    ) -> List[Dict]:
+        """
+        Genera child chunks (per retrieval) con riferimento ai parent chunks (per contesto LLM).
+
+        Args:
+            text: Testo completo del documento.
+            base_metadata: Metadata di base.
+            page_map: Mappa offset -> page_num (per PDF).
+            parent_chunk_size: Dimensione parent chunk in caratteri.
+            parent_chunk_overlap: Sovrapposizione parent chunk.
+
+        Returns:
+            Lista di child chunk dict con 'content', 'parent_content' e 'metadata'.
+        """
+        # Genera parent chunks (ampi, per contesto)
+        parent_chunker = DocumentChunker(
+            chunk_size=parent_chunk_size,
+            chunk_overlap=parent_chunk_overlap
+        )
+        parent_chunks = parent_chunker.chunk_text(text, base_metadata, page_map=page_map)
+
+        # Genera child chunks (stretti, per retrieval preciso)
+        child_chunks = self.chunk_text(text, base_metadata, page_map=page_map)
+
+        # Mappa ogni child al parent che lo contiene
+        for child in child_chunks:
+            child_content = child["content"]
+            best_parent = None
+            best_overlap = 0
+
+            for parent in parent_chunks:
+                parent_content = parent["content"]
+                # Match: il contenuto child e' contenuto nel parent
+                if child_content in parent_content:
+                    best_parent = parent
+                    break
+                # Fallback: trova il parent con maggiore sovrapposizione
+                overlap = self._compute_overlap(child_content, parent_content)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_parent = parent
+
+            if best_parent:
+                child["parent_content"] = best_parent["content"]
+                child["parent_metadata"] = best_parent.get("metadata", {})
+            else:
+                child["parent_content"] = child_content
+                child["parent_metadata"] = child.get("metadata", {})
+
+        return child_chunks
+
+    @staticmethod
+    def _compute_overlap(text_a: str, text_b: str) -> int:
+        """Calcola sovrapposizione approssimativa tra due testi."""
+        # Usa i primi 50 e ultimi 50 caratteri del child per verificare contenimento
+        prefix = text_a[:50]
+        suffix = text_a[-50:] if len(text_a) > 50 else text_a
+        overlap = 0
+        if prefix in text_b:
+            overlap += 50
+        if suffix in text_b:
+            overlap += 50
+        return overlap
+
     def _extract_title_from_filename(self, filename: str) -> str:
         """Estrae un titolo leggibile dal nome del file."""
         name = os.path.splitext(filename)[0]

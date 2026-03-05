@@ -255,9 +255,9 @@ def _enhance_fallback_response(original_response: str, error_msg: str) -> str:
     # Aggiunge nota metodologica specifica per fallback ML
     enhanced += f"\n\n**📝 Metodologia Fallback (da Sistema ML):**\n"
     enhanced += f"- **Algoritmo:** Rule-based deterministico (fallback da XGBoost V4)\n"
-    enhanced += f"- **Score:** Punteggio rischio attività P(NC) × Impatto × 100\n"
+    enhanced += f"- **Score:** Punteggio rischio linea di attività P(NC) × Impatto × 100\n"
     enhanced += f"- **Conversione:** Score normalizzato 0.0-1.0 per compatibilità ML\n"
-    enhanced += f"- **Dati:** Storico NC territoriale 2016-2025 per tipologia attività\n"
+    enhanced += f"- **Dati:** Storico NC territoriale 2016-2025 per linea di attività\n"
     enhanced += f"- **Limitazioni:** Non include pattern ML avanzati e predizioni individuali"
 
     return enhanced
@@ -279,10 +279,10 @@ def _replace_rule_based_legend(response: str) -> str:
 
     # Legenda migliorata per il contesto ML fallback
     new_legend = """**📋 Legenda Score (Rule-Based Fallback):**
-• **Punteggio Rischio:** Calcolato su attività, non sul singolo stabilimento
+• **Punteggio Rischio:** Calcolato sulla linea di attività, non sul singolo stabilimento
 • **Formula:** P(NC) × Impatto × 100, normalizzato 0.0-1.0 per compatibilità ML
-• **P(NC):** Probabilità NC = (NC totali) / (controlli totali) per l'attività
-• **Impatto:** Severità = (NC gravi) / (controlli totali) per l'attività
+• **P(NC):** Probabilità NC = (NC totali) / (controlli totali) per la linea di attività
+• **Impatto:** Severità = (NC gravi) / (controlli totali) per la linea di attività
 • **Dati:** Aggregati regionali 2016-2025, stesso dataset training XGBoost V4
 • **Nota:** Fallback deterministico del sistema ML predittivo"""
 

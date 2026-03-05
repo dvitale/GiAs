@@ -186,6 +186,13 @@ class SessionManager:
             with self._lock:
                 self._store[sender] = existing
 
+    def clear_session(self, sender: str) -> None:
+        """Rimuove completamente la sessione per un sender."""
+        with self._lock:
+            removed = self._store.pop(sender, None)
+        if removed:
+            logger.info(f"[Session] Cleared session for {sender}")
+
     def invalidate_workflow(self, sender: str) -> None:
         """Rimuove solo workflow_context per un sender."""
         with self._lock:

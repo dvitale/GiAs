@@ -71,33 +71,46 @@ def goodbye_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     return state
 
 
+_HARDCODED_HELP = (
+    "**Come posso aiutarti?**\n\n"
+    "Ecco cosa posso fare, con esempi di domande:\n\n"
+    "**📋 Piani di Controllo**\n"
+    "- [Di cosa tratta il piano A1?]\n"
+    "- [Quali stabilimenti sono controllati per l'indicatore A1_A?]\n"
+    "- [Quanti indicatori ha il piano A1?]\n"
+    "\n**🔍 Ricerca Piani**\n"
+    "- [Cerca piani sulla sicurezza alimentare]\n"
+    "- [Piani sul benessere animale]\n"
+    "\n**⏰ Ritardi**\n"
+    "- [Piani in ritardo]\n"
+    "- [Quali indicatori del piano A1 sono in ritardo?]\n"
+    "\n**⚠️ Priorità e Rischio**\n"
+    "- [Stabilimenti prioritari]\n"
+    "- [Stabilimenti a rischio]\n"
+    "- [Stabilimenti mai controllati]\n"
+    "- [Quali sono i motivi di ispezione più rischiosi?]\n"
+    "\n**📍 Ricerca per Prossimità**\n"
+    "- [Stabilimenti vicino a Piazza Risorgimento, Benevento]\n"
+    "- [Controlli nei dintorni di Via Roma 15, Napoli entro 3 km]\n"
+    "\n**📜 Storico e Analisi**\n"
+    "- [Storico controlli stabilimento]\n"
+    "- [Analisi NC per categoria]\n"
+    "\n**📋 Procedure Operative**\n"
+    "- [Qual e' la procedura per ispezione semplice?]\n"
+    "- [Come si esegue un controllo ufficiale?]\n"
+)
+
+
 def help_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
-    formatted_response = "**Come posso aiutarti?**\n\n"
-    formatted_response += "Ecco cosa posso fare, con esempi di domande:\n\n"
-    formatted_response += "**📋 Piani di Controllo**\n"
-    formatted_response += "- [Di cosa tratta il piano A1?]\n"
-    formatted_response += "- [Quali stabilimenti per piano A1?]\n"
-    formatted_response += "- [Statistiche piano A1]\n"
-    formatted_response += "\n**🔍 Ricerca Piani**\n"
-    formatted_response += "- [Cerca piani sulla sicurezza alimentare]\n"
-    formatted_response += "- [Piani sul benessere animale]\n"
-    formatted_response += "\n**⏰ Ritardi**\n"
-    formatted_response += "- [Piani in ritardo]\n"
-    formatted_response += "- [Il piano A1 è in ritardo?]\n"
-    formatted_response += "\n**⚠️ Priorità e Rischio**\n"
-    formatted_response += "- [Stabilimenti prioritari]\n"
-    formatted_response += "- [Stabilimenti a rischio]\n"
-    formatted_response += "- [Stabilimenti mai controllati]\n"
-    formatted_response += "- [Attività più rischiose]\n"
-    formatted_response += "\n**📍 Ricerca per Prossimità**\n"
-    formatted_response += "- [Stabilimenti vicino a Piazza Risorgimento, Benevento]\n"
-    formatted_response += "- [Controlli nei dintorni di Via Roma 15, Napoli entro 3 km]\n"
-    formatted_response += "\n**📜 Storico e Analisi**\n"
-    formatted_response += "- [Storico controlli stabilimento]\n"
-    formatted_response += "- [Analisi NC per categoria]\n"
-    formatted_response += "\n**📋 Procedure Operative**\n"
-    formatted_response += "- [Qual e' la procedura per ispezione semplice?]\n"
-    formatted_response += "- [Come si esegue un controllo ufficiale?]\n"
+    try:
+        from orchestrator.intent_metadata_service import get_intent_metadata_service
+        service = get_intent_metadata_service()
+        formatted_response = service.get_help_content()
+    except Exception:
+        formatted_response = ""
+
+    if not formatted_response:
+        formatted_response = _HARDCODED_HELP
 
     state["tool_output"] = {
         "type": "help",
@@ -299,7 +312,7 @@ def search_piani_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
 # =============================================================================
 
 def priority_establishment_tool(state: Dict[str, Any], event_callback=None, **_) -> Dict[str, Any]:
-    from agents.data import get_uoc_from_user_id
+    from agents.data import get_uoc_from_user_id, get_uos_from_user_id
 
     if event_callback:
         event_callback({
@@ -310,12 +323,16 @@ def priority_establishment_tool(state: Dict[str, Any], event_callback=None, **_)
 
     asl = state["metadata"].get("asl")
     uoc = state["metadata"].get("uoc")
+    uos = state["metadata"].get("uos")
 
     if not uoc and state["metadata"].get("user_id"):
         uoc = get_uoc_from_user_id(state["metadata"].get("user_id"))
 
+    if not uos and state["metadata"].get("user_id"):
+        uos = get_uos_from_user_id(state["metadata"].get("user_id"))
+
     piano_code = state["slots"].get("piano_code")
-    result = priority_tool(asl=asl, uoc=uoc, piano_code=piano_code)
+    result = priority_tool(asl=asl, uoc=uoc, piano_code=piano_code, uos=uos)
 
     if isinstance(result, dict):
         total_found = result.get("total_found", 0)
@@ -486,32 +503,40 @@ def suggest_controls_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
 
 
 def delayed_plans_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
-    from agents.data import get_uoc_from_user_id
+    from agents.data import get_uoc_from_user_id, get_uos_from_user_id
 
     asl = state["metadata"].get("asl")
     uoc = state["metadata"].get("uoc")
+    uos = state["metadata"].get("uos")
 
     if not uoc and state["metadata"].get("user_id"):
         uoc = get_uoc_from_user_id(state["metadata"].get("user_id"))
 
-    result = priority_tool(asl=asl, uoc=uoc, action="delayed_plans")
+    if not uos and state["metadata"].get("user_id"):
+        uos = get_uos_from_user_id(state["metadata"].get("user_id"))
+
+    result = priority_tool(asl=asl, uoc=uoc, action="delayed_plans", uos=uos)
     state["tool_output"] = {"type": "delayed_plans", "data": result}
     return state
 
 
 def check_plan_delayed_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
-    from agents.data import get_uoc_from_user_id
+    from agents.data import get_uoc_from_user_id, get_uos_from_user_id
     from tools.priority_tools import get_delayed_plans
 
     asl = state["metadata"].get("asl")
     uoc = state["metadata"].get("uoc")
+    uos = state["metadata"].get("uos")
     piano_code = state["slots"].get("piano_code")
 
     if not uoc and state["metadata"].get("user_id"):
         uoc = get_uoc_from_user_id(state["metadata"].get("user_id"))
 
+    if not uos and state["metadata"].get("user_id"):
+        uos = get_uos_from_user_id(state["metadata"].get("user_id"))
+
     delayed_func = _unwrap_tool(get_delayed_plans)
-    result = delayed_func(asl=asl, uoc=uoc, piano_code=piano_code)
+    result = delayed_func(asl=asl, uoc=uoc, piano_code=piano_code, uos=uos)
     state["tool_output"] = {"type": "check_plan_delayed", "data": result}
     return state
 
@@ -580,9 +605,15 @@ def info_procedure_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     """RAG tool per informazioni su procedure operative documentate."""
     query = state.get("message", "")
 
+    # Contesto conversazionale dalla sessione
+    conversation_context = ""
+    session_summary = state.get("metadata", {}).get("_session_summary", "")
+    if session_summary:
+        conversation_context = session_summary
+
     from tools.procedure_tools import get_procedure_info
     func = get_procedure_info.func if hasattr(get_procedure_info, 'func') else get_procedure_info
-    result = func(query=query)
+    result = func(query=query, conversation_context=conversation_context)
 
     state["tool_output"] = {"type": "info_procedure", "data": result}
     return state

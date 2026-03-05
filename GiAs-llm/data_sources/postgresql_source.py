@@ -172,13 +172,21 @@ class PostgreSQLDataSource(DataSource):
 
     def load_personale(self) -> pd.DataFrame:
         """
-        Load personale data with deduplication.
+        Load personale data filtered by current_year and deduplicated.
 
-        PostgreSQL contains duplicates (4x per record).
-        This method deduplicates based on user_id.
+        La tabella contiene snapshot annuali (colonna 'anno').
+        Filtra per anno == current_year da config, poi deduplica per user_id.
         """
         df = self._load_table("personale")
         if not df.empty and 'user_id' in df.columns:
+            # Filter by current year if anno column exists
+            if 'anno' in df.columns:
+                from configs.config_loader import get_config
+                current_year = get_config().get_current_year()
+                before = len(df)
+                df = df[df['anno'] == current_year]
+                print(f"[PostgreSQLDataSource] Filtered personale by anno={current_year}: {len(df)}/{before} rows")
+
             # Deduplicate keeping first occurrence per user_id
             df = df.drop_duplicates(subset=['user_id'], keep='first')
             print(f"[PostgreSQLDataSource] Deduplicated personale: {len(df)} unique users")

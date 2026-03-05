@@ -166,7 +166,7 @@ class LangGraphDebugChatBot {
                 'ask_delayed_plans': 'Piani in ritardo',
                 'check_if_plan_delayed': 'Verifica ritardo piano specifico',
                 'ask_establishment_history': 'Storico controlli stabilimento',
-                'ask_top_risk_activities': 'Attività a maggior rischio',
+                'ask_top_risk_activities': 'Linee di attività a maggior rischio',
                 'analyze_nc_by_category': 'Analisi non conformità per categoria',
                 'info_procedure': 'Informazioni procedura operativa (RAG)',
                 'confirm_show_details': 'Conferma visualizzazione dettagli',

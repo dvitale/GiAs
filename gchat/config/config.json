@@ -23,9 +23,9 @@
     },
     {
       "id": "q2",
-      "text": "⚠️ Attività più rischiose",
-      "title": "Risposta immediata: classifica attività per rischio (P(NC) × Impatto)",
-      "question": "Attività più rischiose",
+      "text": "⚠️ Motivi di ispezione più rischiosi",
+      "title": "Risposta immediata: classifica indicatori/motivi di ispezione per rischio (P(NC) × Impatto)",
+      "question": "Quali sono i motivi di ispezione più rischiosi?",
       "category": "single_turn",
       "color": "#059669",
       "order": 2
@@ -50,9 +50,9 @@
     },
     {
       "id": "q5",
-      "text": "💬 Verifica ritardo piano",
-      "title": "Conversazione: ti chiederò quale piano verificare (es. A1, B2)",
-      "question": "Voglio verificare se un piano è in ritardo",
+      "text": "💬 Indicatori in ritardo",
+      "title": "Conversazione: ti chiederò quale piano verificare per mostrare gli indicatori in ritardo",
+      "question": "Quali indicatori del piano sono in ritardo?",
       "category": "multiturn",
       "color": "#f97316",
       "order": 5

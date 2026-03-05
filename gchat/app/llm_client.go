@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,16 +40,18 @@ type ChatRequest struct {
 	UserID        string `json:"user_id,omitempty"`
 	CodiceFiscale string `json:"codice_fiscale,omitempty"`
 	Username      string `json:"username,omitempty"`
-	UOC           string `json:"uoc,omitempty"` // NUOVO: Unità Operativa Complessa
+	UOC           string `json:"uoc,omitempty"` // Unità Operativa Complessa
+	UOS           string `json:"uos,omitempty"` // Unità Operativa Semplice
 }
 
 type ChatResponse struct {
-	Message     string                   `json:"message"`
-	Status      string                   `json:"status"`
-	Error       string                   `json:"error,omitempty"`
-	FullData    interface{}              `json:"full_data,omitempty"`
-	DataType    string                   `json:"data_type,omitempty"`
-	Suggestions []map[string]interface{} `json:"suggestions,omitempty"`
+	Message         string                   `json:"message"`
+	Status          string                   `json:"status"`
+	Error           string                   `json:"error,omitempty"`
+	FullData        interface{}              `json:"full_data,omitempty"`
+	DataType        string                   `json:"data_type,omitempty"`
+	Suggestions     []map[string]interface{} `json:"suggestions,omitempty"`
+	FallbackIntents []map[string]interface{} `json:"fallback_intents,omitempty"`
 }
 
 // SSE Event structures for streaming
@@ -163,6 +166,7 @@ type NativeUserMetadata struct {
 	CodiceFiscale string `json:"codice_fiscale,omitempty"`
 	Username      string `json:"username,omitempty"`
 	UOC           string `json:"uoc,omitempty"`
+	UOS           string `json:"uos,omitempty"`
 }
 
 type NativeChatMessage struct {
@@ -182,15 +186,25 @@ type ExecutionInfoV1 struct {
 	TotalExecutionMs float64            `json:"total_execution_ms"`
 }
 
+type FallbackIntentSuggestionV1 struct {
+	Intent      string `json:"intent"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+	Emoji       string `json:"emoji,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Type        string `json:"type"`
+}
+
 type ChatResultV1 struct {
-	Text               string                 `json:"text"`
-	Intent             string                 `json:"intent"`
-	Slots              map[string]interface{} `json:"slots"`
-	Suggestions        []SuggestionV1         `json:"suggestions"`
-	Execution          *ExecutionInfoV1       `json:"execution,omitempty"`
-	NeedsClarification bool                   `json:"needs_clarification"`
-	HasMoreDetails     bool                   `json:"has_more_details"`
-	Error              string                 `json:"error,omitempty"`
+	Text               string                       `json:"text"`
+	Intent             string                       `json:"intent"`
+	Slots              map[string]interface{}        `json:"slots"`
+	Suggestions        []SuggestionV1               `json:"suggestions"`
+	FallbackIntents    []FallbackIntentSuggestionV1 `json:"fallback_intents"`
+	Execution          *ExecutionInfoV1             `json:"execution,omitempty"`
+	NeedsClarification bool                         `json:"needs_clarification"`
+	HasMoreDetails     bool                         `json:"has_more_details"`
+	Error              string                       `json:"error,omitempty"`
 }
 
 type NativeChatResponse struct {
@@ -228,6 +242,9 @@ func SendToLLMV1(message, sender, llmServerURL string, timeout int, context map[
 	}
 	if v, ok := context["uoc"].(string); ok {
 		meta.UOC = v
+	}
+	if v, ok := context["uos"].(string); ok {
+		meta.UOS = v
 	}
 
 	chatMsg := NativeChatMessage{
@@ -301,6 +318,9 @@ func SendToLLMStreamV1(message, sender, llmServerURL string, timeout int, contex
 	if v, ok := context["uoc"].(string); ok {
 		meta.UOC = v
 	}
+	if v, ok := context["uos"].(string); ok {
+		meta.UOS = v
+	}
 
 	chatMsg := NativeChatMessage{
 		Sender:   sender,
@@ -363,6 +383,20 @@ func SendToLLMStreamV1(message, sender, llmServerURL string, timeout int, contex
 								suggsIface[i] = map[string]interface{}{"text": s.Text, "query": s.Query}
 							}
 							metaMap["suggestions"] = suggsIface
+						}
+						if len(finalEvent.Result.FallbackIntents) > 0 {
+							fiIface := make([]interface{}, len(finalEvent.Result.FallbackIntents))
+							for i, fi := range finalEvent.Result.FallbackIntents {
+								fiIface[i] = map[string]interface{}{
+									"intent":      fi.Intent,
+									"label":       fi.Label,
+									"description": fi.Description,
+									"emoji":       fi.Emoji,
+									"category":    fi.Category,
+									"type":        fi.Type,
+								}
+							}
+							metaMap["fallback_intents"] = fiIface
 						}
 						eventChan <- SSEEvent{
 							Type:      "final",
@@ -494,21 +528,28 @@ func HandleChat(c *gin.Context) {
 	log.Printf("CHAT_PROCESSING: client_ip=%s, sender=%s, message_length=%d, asl=%s, asl_id=%s, user_id=%s",
 		clientIP, req.Sender, len(req.Message), req.ASL, req.ASLID, req.UserID)
 
-	// NUOVO: Se UOC non fornito nel request, prova a recuperarlo da personale via user_id
+	// Se UOC non fornito nel request, prova a recuperarlo da personale via user_id
 	uoc := req.UOC
-	if uoc == "" && req.UserID != "" {
+	uos := req.UOS
+	if req.UserID != "" {
 		if userID, err := strconv.Atoi(req.UserID); err == nil {
 			if personale, err := GetPersonaleByUserID(userID); err == nil {
-				uoc = personale.DescrizioneAreaStrutturaComplessa
-				// Fallback: se UOC è "NULL" o vuoto, estrai dal campo Descrizione
-				if uoc == "" || uoc == "NULL" {
-					parts := strings.Split(personale.Descrizione, "->")
-					if len(parts) >= 2 {
-						uoc = strings.TrimSpace(parts[1])
-						log.Printf("CHAT_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", req.UserID, uoc)
+				if uoc == "" {
+					uoc = personale.DescrizioneAreaStrutturaComplessa
+					// Fallback: se UOC è "NULL" o vuoto, estrai dal campo Descrizione
+					if uoc == "" || uoc == "NULL" {
+						parts := strings.Split(personale.Descrizione, "->")
+						if len(parts) >= 2 {
+							uoc = strings.TrimSpace(parts[1])
+							log.Printf("CHAT_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", req.UserID, uoc)
+						}
+					} else {
+						log.Printf("CHAT_UOC_LOADED: user_id=%s, uoc=%s", req.UserID, uoc)
 					}
-				} else {
-					log.Printf("CHAT_UOC_LOADED: user_id=%s, uoc=%s", req.UserID, uoc)
+				}
+				if uos == "" && personale.UOS != "" {
+					uos = personale.UOS
+					log.Printf("CHAT_UOS_LOADED: user_id=%s, uos=%s", req.UserID, uos)
 				}
 			} else {
 				log.Printf("CHAT_UOC_ERROR: user_id=%s, error=%v", req.UserID, err)
@@ -532,9 +573,11 @@ func HandleChat(c *gin.Context) {
 	if req.Username != "" {
 		context["username"] = req.Username
 	}
-	// NUOVO: Passa UOC se disponibile
 	if uoc != "" {
 		context["uoc"] = uoc
+	}
+	if uos != "" {
+		context["uos"] = uos
 	}
 
 	// Check LLM server health before sending message
@@ -567,13 +610,27 @@ func HandleChat(c *gin.Context) {
 		suggestions = append(suggestions, map[string]interface{}{"text": s.Text, "query": s.Query})
 	}
 
+	// Converti fallback_intents V1 → []map[string]interface{}
+	var fallbackIntents []map[string]interface{}
+	for _, fi := range v1Resp.Result.FallbackIntents {
+		fallbackIntents = append(fallbackIntents, map[string]interface{}{
+			"intent":      fi.Intent,
+			"label":       fi.Label,
+			"description": fi.Description,
+			"emoji":       fi.Emoji,
+			"category":    fi.Category,
+			"type":        fi.Type,
+		})
+	}
+
 	log.Printf("CHAT_SUCCESS: client_ip=%s, sender=%s, intent=%s, response_length=%d, duration=%v",
 		clientIP, req.Sender, v1Resp.Result.Intent, len(v1Resp.Result.Text), totalDuration)
 
 	c.JSON(http.StatusOK, ChatResponse{
-		Message:     v1Resp.Result.Text,
-		Status:      "success",
-		Suggestions: suggestions,
+		Message:         v1Resp.Result.Text,
+		Status:          "success",
+		Suggestions:     suggestions,
+		FallbackIntents: fallbackIntents,
 	})
 }
 
@@ -602,21 +659,28 @@ func HandleChatStream(c *gin.Context) {
 	log.Printf("CHAT_STREAM_PROCESSING: client_ip=%s, sender=%s, message_length=%d, asl=%s, asl_id=%s, user_id=%s",
 		clientIP, req.Sender, len(req.Message), req.ASL, req.ASLID, req.UserID)
 
-	// NUOVO: Se UOC non fornito nel request, prova a recuperarlo da personale via user_id
+	// Se UOC/UOS non forniti nel request, prova a recuperarli da personale via user_id
 	uoc := req.UOC
-	if uoc == "" && req.UserID != "" {
+	uos := req.UOS
+	if req.UserID != "" {
 		if userID, err := strconv.Atoi(req.UserID); err == nil {
 			if personale, err := GetPersonaleByUserID(userID); err == nil {
-				uoc = personale.DescrizioneAreaStrutturaComplessa
-				// Fallback: se UOC è "NULL" o vuoto, estrai dal campo Descrizione
-				if uoc == "" || uoc == "NULL" {
-					parts := strings.Split(personale.Descrizione, "->")
-					if len(parts) >= 2 {
-						uoc = strings.TrimSpace(parts[1])
-						log.Printf("CHAT_STREAM_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", req.UserID, uoc)
+				if uoc == "" {
+					uoc = personale.DescrizioneAreaStrutturaComplessa
+					// Fallback: se UOC è "NULL" o vuoto, estrai dal campo Descrizione
+					if uoc == "" || uoc == "NULL" {
+						parts := strings.Split(personale.Descrizione, "->")
+						if len(parts) >= 2 {
+							uoc = strings.TrimSpace(parts[1])
+							log.Printf("CHAT_STREAM_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", req.UserID, uoc)
+						}
+					} else {
+						log.Printf("CHAT_STREAM_UOC_LOADED: user_id=%s, uoc=%s", req.UserID, uoc)
 					}
-				} else {
-					log.Printf("CHAT_STREAM_UOC_LOADED: user_id=%s, uoc=%s", req.UserID, uoc)
+				}
+				if uos == "" && personale.UOS != "" {
+					uos = personale.UOS
+					log.Printf("CHAT_STREAM_UOS_LOADED: user_id=%s, uos=%s", req.UserID, uos)
 				}
 			} else {
 				log.Printf("CHAT_STREAM_UOC_ERROR: user_id=%s, error=%v", req.UserID, err)
@@ -640,9 +704,11 @@ func HandleChatStream(c *gin.Context) {
 	if req.Username != "" {
 		context["username"] = req.Username
 	}
-	// NUOVO: Passa UOC se disponibile
 	if uoc != "" {
 		context["uoc"] = uoc
+	}
+	if uos != "" {
+		context["uos"] = uos
 	}
 
 	// Check LLM server health
@@ -777,6 +843,118 @@ func ProxyChatLogAPI(c *gin.Context, llmServerURL string, timeout int) {
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 }
 
+// ProxyAdminAPI proxies admin API requests to the backend (GET, POST, DELETE)
+func ProxyAdminAPI(c *gin.Context, llmServerURL string, timeout int) {
+	// Reconstruct the backend URL from the original request path
+	originalPath := c.Request.URL.Path
+	// Find "/api/admin/" in the path and use everything from there
+	apiIdx := strings.Index(originalPath, "/api/admin/")
+	if apiIdx == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid API path"})
+		return
+	}
+	apiPath := originalPath[apiIdx:]
+	backendURL := llmServerURL + apiPath
+	if c.Request.URL.RawQuery != "" {
+		backendURL += "?" + c.Request.URL.RawQuery
+	}
+
+	log.Printf("ADMIN_PROXY: %s %s -> %s", c.Request.Method, originalPath, backendURL)
+
+	client := &http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
+
+	var resp *http.Response
+	var err error
+
+	switch c.Request.Method {
+	case "GET":
+		resp, err = client.Get(backendURL)
+	case "POST":
+		body, readErr := io.ReadAll(c.Request.Body)
+		if readErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+			return
+		}
+		resp, err = client.Post(backendURL, "application/json", bytes.NewBuffer(body))
+	case "DELETE":
+		req, reqErr := http.NewRequest("DELETE", backendURL, nil)
+		if reqErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+			return
+		}
+		resp, err = client.Do(req)
+	default:
+		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "Method not allowed"})
+		return
+	}
+
+	if err != nil {
+		log.Printf("ADMIN_PROXY_ERROR: url=%s, error=%v", backendURL, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Backend not available"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("ADMIN_PROXY_ERROR: read error=%v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read backend response"})
+		return
+	}
+
+	// Forward essential headers (Content-Type, Content-Disposition for file downloads)
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		c.Header("Content-Disposition", cd)
+	}
+	c.Data(resp.StatusCode, contentType, body)
+}
+
+// ProxySessionReset proxies session reset to backend and clears Go session cookie
+func ProxySessionReset(c *gin.Context, llmServerURL string, timeout int) {
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		return
+	}
+
+	backendURL := llmServerURL + "/api/v1/session/reset"
+	log.Printf("SESSION_RESET_PROXY: -> %s", backendURL)
+
+	client := &http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
+
+	resp, err := client.Post(backendURL, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		log.Printf("SESSION_RESET_PROXY_ERROR: url=%s, error=%v", backendURL, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Backend not available"})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read backend response"})
+		return
+	}
+
+	// Clear Go session cookie
+	session := sessions.Default(c)
+	session.Clear()
+	if saveErr := session.Save(); saveErr != nil {
+		log.Printf("SESSION_RESET_COOKIE_ERROR: %v", saveErr)
+	}
+
+	c.Data(resp.StatusCode, "application/json", respBody)
+}
+
 // Debug mode structures
 type LLMParseResponse struct {
 	Text               string                 `json:"text"`
@@ -794,7 +972,8 @@ type DebugChatRequest struct {
 	UserID        string `json:"user_id,omitempty"`
 	CodiceFiscale string `json:"codice_fiscale,omitempty"`
 	Username      string `json:"username,omitempty"`
-	UOC           string `json:"uoc,omitempty"` // NUOVO: Unità Operativa Complessa
+	UOC           string `json:"uoc,omitempty"` // Unità Operativa Complessa
+	UOS           string `json:"uos,omitempty"` // Unità Operativa Semplice
 }
 
 type DebugChatResponse struct {
@@ -838,6 +1017,9 @@ func ParseMessage(message, llmServerURL string, timeout int, context map[string]
 	}
 	if v, ok := context["uoc"].(string); ok {
 		meta.UOC = v
+	}
+	if v, ok := context["uos"].(string); ok {
+		meta.UOS = v
 	}
 
 	payload := map[string]interface{}{
@@ -914,21 +1096,28 @@ func HandleDebugChat(c *gin.Context) {
 
 	log.Printf("DEBUG_CHAT_REQUEST: client_ip=%s, sender=%s, message=%s", clientIP, req.Sender, req.Message)
 
-	// NUOVO: Se UOC non fornito nel request, prova a recuperarlo da personale via user_id
+	// Se UOC/UOS non forniti nel request, prova a recuperarli da personale via user_id
 	uoc := req.UOC
-	if uoc == "" && req.UserID != "" {
+	uos := req.UOS
+	if req.UserID != "" {
 		if userID, err := strconv.Atoi(req.UserID); err == nil {
 			if personale, err := GetPersonaleByUserID(userID); err == nil {
-				uoc = personale.DescrizioneAreaStrutturaComplessa
-				// Fallback: se UOC è "NULL" o vuoto, estrai dal campo Descrizione
-				if uoc == "" || uoc == "NULL" {
-					parts := strings.Split(personale.Descrizione, "->")
-					if len(parts) >= 2 {
-						uoc = strings.TrimSpace(parts[1])
-						log.Printf("DEBUG_CHAT_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", req.UserID, uoc)
+				if uoc == "" {
+					uoc = personale.DescrizioneAreaStrutturaComplessa
+					// Fallback: se UOC è "NULL" o vuoto, estrai dal campo Descrizione
+					if uoc == "" || uoc == "NULL" {
+						parts := strings.Split(personale.Descrizione, "->")
+						if len(parts) >= 2 {
+							uoc = strings.TrimSpace(parts[1])
+							log.Printf("DEBUG_CHAT_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", req.UserID, uoc)
+						}
+					} else {
+						log.Printf("DEBUG_CHAT_UOC_LOADED: user_id=%s, uoc=%s", req.UserID, uoc)
 					}
-				} else {
-					log.Printf("DEBUG_CHAT_UOC_LOADED: user_id=%s, uoc=%s", req.UserID, uoc)
+				}
+				if uos == "" && personale.UOS != "" {
+					uos = personale.UOS
+					log.Printf("DEBUG_CHAT_UOS_LOADED: user_id=%s, uos=%s", req.UserID, uos)
 				}
 			} else {
 				log.Printf("DEBUG_CHAT_UOC_ERROR: user_id=%s, error=%v", req.UserID, err)
@@ -944,9 +1133,11 @@ func HandleDebugChat(c *gin.Context) {
 		"codice_fiscale": req.CodiceFiscale,
 		"username":       req.Username,
 	}
-	// NUOVO: Passa UOC se disponibile
 	if uoc != "" {
 		context["uoc"] = uoc
+	}
+	if uos != "" {
+		context["uos"] = uos
 	}
 
 	// Step 1: Parse message to get NLU predictions

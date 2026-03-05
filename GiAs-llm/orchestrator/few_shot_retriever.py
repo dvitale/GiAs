@@ -10,6 +10,7 @@ Architettura:
 """
 
 import os
+import re
 from typing import List, Dict, Any, Optional
 from collections import OrderedDict
 import logging
@@ -108,11 +109,30 @@ class FewShotRetriever:
             self._available = False
             return False
 
+    @staticmethod
+    def _normalize_cache_key(text: str) -> str:
+        """Normalizza testo per cache key: lowercase, strip, rimuovi punteggiatura finale, collassa spazi."""
+        key = text.lower().strip()
+        key = key.rstrip("?!.,;:")
+        key = re.sub(r'\s+', ' ', key)
+        return key
+
+    @staticmethod
+    def _adaptive_threshold(query: str) -> float:
+        """Calcola threshold adattivo basato sulla lunghezza della query."""
+        word_count = len(query.split())
+        if word_count <= 2:
+            return 0.50
+        elif word_count <= 5:
+            return 0.45
+        else:
+            return 0.40
+
     def retrieve(
         self,
         query: str,
         top_k: int = 6,
-        score_threshold: float = 0.40,
+        score_threshold: Optional[float] = None,
         max_per_intent: int = 2
     ) -> List[Dict[str, Any]]:
         """
@@ -121,7 +141,7 @@ class FewShotRetriever:
         Args:
             query: Messaggio utente
             top_k: Numero max risultati da Qdrant (prima del filtraggio)
-            score_threshold: Score minimo (0-1, cosine similarity)
+            score_threshold: Score minimo (0-1, cosine similarity). Se None, usa threshold adattivo.
             max_per_intent: Max esempi per stesso intent (diversity)
 
         Returns:
@@ -133,8 +153,12 @@ class FewShotRetriever:
 
         query = query.strip()
 
-        # Check cache
-        cache_key = f"{query}:{top_k}:{score_threshold}"
+        # Threshold adattivo se non specificato esplicitamente
+        if score_threshold is None:
+            score_threshold = self._adaptive_threshold(query)
+
+        # Check cache con chiave normalizzata
+        cache_key = f"{self._normalize_cache_key(query)}:{top_k}:{score_threshold}"
         if cache_key in self._cache:
             # Move to end (LRU)
             self._cache.move_to_end(cache_key)

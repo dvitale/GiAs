@@ -48,14 +48,20 @@ _MODEL_CONFIDENCE_THRESHOLDS = {
     "llama3.2":     {"high": 0.60, "min": 0.35, "delta": 0.15},
     "ministral":    {"high": 0.65, "min": 0.40, "delta": 0.18},
     "falcon":       {"high": 0.65, "min": 0.40, "delta": 0.18},
+    "google/gemini-2.5-flash": {"high": 0.80, "min": 0.50, "delta": 0.20},
 }
 _DEFAULT_THRESHOLDS = {"high": 0.80, "min": 0.50, "delta": 0.20}
 
 def _get_thresholds():
     """Restituisce soglie confidence basate sul modello configurato."""
     try:
-        from configs.config import AppConfig
+        from configs.config import AppConfig, LLMBackendConfig
         model_key = AppConfig.LLM_MODEL
+        # Per provider esterni il modello reale e' nel backend config
+        backend_type = LLMBackendConfig.get_backend_type()
+        if backend_type in ("openai", "anthropic", "openai_compat", "openrouter"):
+            backend_cfg = LLMBackendConfig.get_backend_config()
+            model_key = backend_cfg.get("model", model_key)
         return _MODEL_CONFIDENCE_THRESHOLDS.get(model_key, _DEFAULT_THRESHOLDS)
     except Exception:
         return _DEFAULT_THRESHOLDS

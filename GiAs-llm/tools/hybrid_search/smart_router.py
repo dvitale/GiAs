@@ -51,6 +51,7 @@ class SmartRouter:
     def __init__(self, config: RoutingConfig = None):
         self.config = config or RoutingConfig()
         self._cpu_mode = None  # Lazy loaded from config.json
+        self._llm_cloud = None  # Lazy loaded: True se backend LLM e' cloud
         self.query_analyzer = QueryAnalyzer()
         self.performance_history = {}
         self.routing_stats = {
@@ -76,8 +77,9 @@ class SmartRouter:
         if not query or not query.strip():
             return SearchStrategy.VECTOR_ONLY  # Default for empty queries
 
-        # CPU-mode: forza vector_only per risparmiare LLM calls
-        if self._is_cpu_mode():
+        # cpu_mode con LLM locale: forza vector_only
+        # cpu_mode con LLM cloud: lascia decidere alle routing rules (reranking non impatta CPU)
+        if self._is_cpu_mode() and not self._is_llm_cloud_based():
             analysis = self.query_analyzer.analyze(query)
             self._track_routing_decision(query, analysis, SearchStrategy.VECTOR_ONLY)
             return SearchStrategy.VECTOR_ONLY
@@ -192,6 +194,17 @@ class SmartRouter:
         except Exception:
             self._cpu_mode = False
         return self._cpu_mode
+
+    def _is_llm_cloud_based(self) -> bool:
+        """Check se il backend LLM e' cloud (non risente di cpu_mode)."""
+        if self._llm_cloud is not None:
+            return self._llm_cloud
+        try:
+            from configs.config import LLMBackendConfig
+            self._llm_cloud = LLMBackendConfig.is_external_provider()
+        except Exception:
+            self._llm_cloud = False
+        return self._llm_cloud
 
     def _track_routing_decision(self, query: str, analysis: QueryAnalysis,
                               strategy: SearchStrategy) -> None:

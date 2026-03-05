@@ -98,10 +98,10 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
 
             if rischio_per_attivita.empty:
                 return {
-                    "info": f"Nessuna attività a rischio per piano {piano_code}",
+                    "info": f"Nessuna linea di attività a rischio per piano {piano_code}",
                     "asl": asl,
                     "piano_code": piano_code,
-                    "formatted_response": f"✅ Le attività correlate al piano **{piano_code}** non mostrano criticità significative nei dati storici."
+                    "formatted_response": f"✅ Le linee di attività correlate al piano **{piano_code}** non mostrano criticità significative nei dati storici."
                 }
 
         osa_rischiosi_display, osa_rischiosi_full = RiskAnalyzer.rank_osa_by_risk(
@@ -243,7 +243,7 @@ def _format_risk_analysis_for_controlled_establishments(
     for i, row in enumerate(stabilimenti_rischiosi.itertuples(index=False), 1):
         response += f"**{i}. {row.macroarea_cu}**\n"
         response += f"   📊 **Aggregazione:** {row.aggregazione_cu}\n"
-        response += f"   🏭 **Attività:** {row.attivita_cu}\n"
+        response += f"   🏭 **Linea di attività:** {row.attivita_cu}\n"
         response += f"   🔍 **Controlli eseguiti:** {row.count}\n"
 
         if hasattr(row, 'numero_nc_gravi') and hasattr(row, 'numero_nc_non_gravi'):
@@ -264,7 +264,7 @@ def _format_risk_analysis_for_controlled_establishments(
     response += "• **Risk Score** = P(NC) × Impatto × 100\n"
     response += "• **P(NC)** = probabilità non conformità (NC totali / controlli)\n"
     response += "• **Impatto** = gravità (NC gravi / controlli)\n"
-    response += "• Dati aggregati a livello regionale per tipologia di attività\n"
+    response += "• Dati aggregati a livello regionale per linea di attività\n"
 
     return response
 
@@ -475,14 +475,14 @@ def analyze_nc_by_category(categoria: str, asl: Optional[str] = None) -> Dict[st
 @tool("predict_high_risk_categories")
 def predict_high_risk_categories(macroarea: str, aggregazione: str) -> Dict[str, Any]:
     """
-    Predice categorie NC più probabili per tipo attività.
+    Predice categorie NC più probabili per linea di attività.
 
     Args:
-        macroarea: Macroarea di attività (es. 'RISTORAZIONE')
-        aggregazione: Aggregazione attività (es. 'RISTORANTI')
+        macroarea: Macroarea della linea di attività (es. 'RISTORAZIONE')
+        aggregazione: Aggregazione linea di attività (es. 'RISTORANTI')
 
     Returns:
-        Dict con categorie NC ad alto rischio per l'attività
+        Dict con categorie NC ad alto rischio per la linea di attività
     """
     try:
         # Ottieni risk scores categorizzati
@@ -503,7 +503,7 @@ def predict_high_risk_categories(macroarea: str, aggregazione: str) -> Dict[str,
         if filtered_risks.empty:
             return {
                 "error": f"Nessun dato trovato per {macroarea} - {aggregazione}",
-                "formatted_response": f"Non sono stati trovati dati storici per l'attività {macroarea} - {aggregazione}."
+                "formatted_response": f"Non sono stati trovati dati storici per la linea di attività {macroarea} - {aggregazione}."
             }
 
         # Ordina per punteggio rischio e prendi top 5 categorie
@@ -518,7 +518,7 @@ def predict_high_risk_categories(macroarea: str, aggregazione: str) -> Dict[str,
 
         # Formatta response italiana (temporaneo - simplified formatter)
         formatted_response = f"**🔮 Predizione Rischio - {macroarea}**\n\n"
-        formatted_response += f"**🎯 Attività:** {aggregazione}\n\n"
+        formatted_response += f"**🎯 Linea di attività:** {aggregazione}\n\n"
         formatted_response += f"**📊 Top 3 Categorie NC Alto Rischio:**\n"
         for idx, row in enumerate(top_categories.head(3).itertuples(index=False), 1):
             formatted_response += f"{idx}. **{row.categoria_nc}** (Score: {row.punteggio_rischio_categoria:.1f})\n"

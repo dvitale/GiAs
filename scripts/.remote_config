@@ -1,0 +1,25 @@
+#!/bin/bash
+# Configurazione centralizzata per script di sincronizzazione remota
+# Modificare questo file per cambiare l'host remoto per tutti gli script
+
+# --- Connessione SSH al server remoto ---
+REMOTE_USER="root"
+#REMOTE_HOST="192.168.10.10"
+# Configurazioni alternative (commentate):
+#REMOTE_HOST="gias.u-s.it"
+#REMOTE_HOST="100.83.250.3"
+#REMOTE_HOST="5.189.160.238"
+REMOTE_HOST="144.91.81.163"
+REMOTE_SSH_PORT="22"
+
+# --- Credenziali database remoto (sul server remoto) ---
+REMOTE_DBUSER="gisa_owner"
+REMOTE_DBPASSWORD="5XRe4g8Q5QSg"
+REMOTE_DB="gias_db"
+REMOTE_DBPORT="5432"
+
+# --- Credenziali database locale ---
+LOCAL_DBUSER="gisa_owner"
+LOCAL_DBPASSWORD="5XRe4g8Q5QSg"
+LOCAL_DB="gias_db"
+LOCAL_DBPORT="5432"

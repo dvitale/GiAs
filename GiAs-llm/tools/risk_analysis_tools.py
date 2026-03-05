@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tool per analisi del rischio - Top attività rischiose
+Tool per analisi del rischio - Top linee di attività rischiose
 """
 
 from typing import Dict, Any
@@ -32,23 +32,23 @@ except ImportError:
 @tool("get_top_risk_activities")
 def get_top_risk_activities(limit: int = 10) -> Dict[str, Any]:
     """
-    Estrae le top N attività con risk score più elevato dal dataset OCSE.
+    Estrae le top N linee di attività con risk score più elevato dal dataset OCSE.
 
     Args:
-        limit: Numero di attività da restituire (default: 10)
+        limit: Numero di linee di attività da restituire (default: 10)
 
     Returns:
-        Dict con lista delle attività più rischiose ordinate per risk score
+        Dict con lista delle linee di attività più rischiose ordinate per risk score
     """
     try:
-        # Calcola risk scores per tutte le attività
+        # Calcola risk scores per tutte le linee di attività
         risk_scores_df = RiskAnalyzer.calculate_risk_scores()
 
         if risk_scores_df.empty:
             return {
                 "info": "Nessun dato di rischio disponibile",
                 "total": 0,
-                "formatted_response": "Non sono disponibili dati di rischio per le attività al momento."
+                "formatted_response": "Non sono disponibili dati di rischio per le linee di attività al momento."
             }
 
         # Limita ai top N
@@ -103,6 +103,6 @@ def get_top_risk_activities(limit: int = 10) -> Dict[str, Any]:
 
     except Exception as e:
         return {
-            "error": f"Errore nel calcolo delle attività a rischio: {str(e)}",
-            "formatted_response": f"Si è verificato un errore nel recupero delle attività a rischio: {str(e)}"
+            "error": f"Errore nel calcolo delle linee di attività a rischio: {str(e)}",
+            "formatted_response": f"Si è verificato un errore nel recupero delle linee di attività a rischio: {str(e)}"
         }

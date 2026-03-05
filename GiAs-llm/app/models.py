@@ -15,6 +15,7 @@ class UserMetadata(BaseModel):
     codice_fiscale: Optional[str] = None
     username: Optional[str] = None
     uoc: Optional[str] = None
+    uos: Optional[str] = None
 
 
 class ChatMessage(BaseModel):
@@ -37,16 +38,28 @@ class Suggestion(BaseModel):
     query: Optional[str] = None
 
 
+class FallbackIntentSuggestion(BaseModel):
+    """Suggerimento intent dal fallback recovery per guided learning."""
+    intent: str
+    label: str
+    description: str = ""
+    emoji: str = ""
+    category: str = ""
+    type: str = "intent"
+
+
 class ChatResult(BaseModel):
     """Risultato chat completo. Espone TUTTI i campi del grafo."""
     text: str
     intent: str = ""
     slots: Dict[str, Any] = {}
     suggestions: List[Suggestion] = []
+    fallback_intents: List[FallbackIntentSuggestion] = []
     execution: Optional[ExecutionInfo] = None
     needs_clarification: bool = False
     has_more_details: bool = False
     error: Optional[str] = None
+    message_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -68,6 +81,13 @@ class ParseResult(BaseModel):
     confidence: float
     slots: Dict[str, Any] = {}
     needs_clarification: bool = False
+
+
+class FeedbackRequest(BaseModel):
+    """Richiesta feedback utente su una risposta."""
+    message_id: str
+    rating: int  # 1-5
+    feedback: Optional[str] = None
 
 
 class SSEFinalEvent(BaseModel):
