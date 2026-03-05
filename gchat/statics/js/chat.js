@@ -120,6 +120,40 @@ class ChatBot {
         localStorage.setItem('theme', isDark ? 'dark' : 'light');
     }
 
+    async resetSession() {
+        // 1. Invia reset al backend
+        try {
+            await fetch(window.basePath + '/session/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sender: this.senderId, message: '' })
+            });
+        } catch (e) {
+            console.warn('Session reset backend call failed:', e);
+        }
+
+        // 2. Rigenera senderId (nuova identità)
+        this.senderId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        // 3. Svuota messaggi e torna alla welcome screen
+        if (this.chatMessages) {
+            this.chatMessages.innerHTML = '';
+        }
+        this.isInChatMode = false;
+        if (this.chatScreen) this.chatScreen.classList.add('hidden');
+        if (this.welcomeScreen) this.welcomeScreen.classList.remove('hidden');
+
+        // 4. Reset input
+        if (this.messageInput) { this.messageInput.value = ''; this.sendButton.disabled = true; }
+        if (this.chatMessageInput) { this.chatMessageInput.value = ''; this.chatSendButton.disabled = true; }
+
+        // 5. Nascondi typing indicator
+        if (this.typingIndicator) this.typingIndicator.style.display = 'none';
+
+        // 6. Focus sull'input della welcome screen
+        if (this.messageInput) this.messageInput.focus();
+    }
+
     initLogoDebugLink() {
         const giasLogo = document.getElementById('giasLogo');
         if (giasLogo) {
@@ -211,7 +245,7 @@ class ChatBot {
             this.hideTypingIndicator();
 
             if (response.status === 'success') {
-                this.addBotMessage(response.message, message, response.full_data, response.data_type, response.suggestions);
+                this.addBotMessage(response.message, message, response.full_data, response.data_type, response.suggestions, response.fallback_intents);
             } else {
                 this.addBotMessage('Mi dispiace, si è verificato un errore. Riprova più tardi.');
                 console.error('Server error:', response.error);
@@ -342,14 +376,14 @@ class ChatBot {
         this.scrollToBottom();
     }
 
-    addBotMessage(message, userQuestion = null, fullData = null, dataType = null, suggestions = null) {
-        const messageElement = this.createMessageElement(message, 'bot-message', userQuestion, fullData, dataType, suggestions);
+    addBotMessage(message, userQuestion = null, fullData = null, dataType = null, suggestions = null, fallbackIntents = null) {
+        const messageElement = this.createMessageElement(message, 'bot-message', userQuestion, fullData, dataType, suggestions, fallbackIntents);
         this.chatMessages.appendChild(messageElement);
         this.applyCollapsing(messageElement);
         this.scrollToBottom();
     }
 
-    createMessageElement(message, className, userQuestion = null, fullData = null, dataType = null, suggestions = null) {
+    createMessageElement(message, className, userQuestion = null, fullData = null, dataType = null, suggestions = null, fallbackIntents = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${className}`;
 
@@ -372,6 +406,11 @@ class ChatBot {
         if (className === 'bot-message' && suggestions && suggestions.length > 0) {
             const suggestionsContainer = this.createSuggestionsContainer(suggestions);
             messageDiv.appendChild(suggestionsContainer);
+        }
+
+        if (className === 'bot-message' && fallbackIntents && fallbackIntents.length > 0 && userQuestion) {
+            const glContainer = this.createGuidedLearningContainer(fallbackIntents, userQuestion);
+            messageDiv.appendChild(glContainer);
         }
 
         if (className === 'bot-message') {
@@ -518,6 +557,7 @@ class ChatBot {
         return text
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="doc-download-link" target="_blank" rel="noopener">$1</a>')
             .replace(/\[\[([^\]]+)\]\]/g, '<a href="#" class="question-link" data-question="$1">$1</a>');
     }
 
@@ -618,7 +658,7 @@ class ChatBot {
             this.hideTypingIndicator();
 
             if (response.status === 'success') {
-                this.addBotMessage(response.message, question, response.full_data, response.data_type, response.suggestions);
+                this.addBotMessage(response.message, question, response.full_data, response.data_type, response.suggestions, response.fallback_intents);
             } else {
                 this.addBotMessage('Mi dispiace, si è verificato un errore. Riprova più tardi.');
             }
@@ -735,6 +775,110 @@ ${cleanAnswer}
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
         return tmp.textContent || tmp.innerText || '';
+    }
+
+    // =========================================================================
+    // Guided Learning
+    // =========================================================================
+
+    createGuidedLearningContainer(fallbackIntents, originalQuestion) {
+        const container = document.createElement('div');
+        container.className = 'guided-learning-container';
+
+        const header = document.createElement('div');
+        header.className = 'guided-learning-header';
+        header.textContent = 'A quale operazione si riferiva la tua domanda?';
+        container.appendChild(header);
+
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'guided-learning-buttons';
+
+        fallbackIntents.forEach(fi => {
+            const btn = document.createElement('button');
+            btn.className = 'guided-learning-btn';
+            btn.innerHTML = `
+                <span class="gl-btn-emoji">${fi.emoji || '🔹'}</span>
+                <span class="gl-btn-text">
+                    <span class="gl-btn-label">${this.escapeHtml(fi.label)}</span>
+                    ${fi.description ? `<span class="gl-btn-desc">${this.escapeHtml(fi.description)}</span>` : ''}
+                </span>
+            `;
+            btn.addEventListener('click', () => {
+                this.handleGuidedLearn(originalQuestion, fi.intent, fi.label, btn, container);
+            });
+            buttonsDiv.appendChild(btn);
+        });
+
+        container.appendChild(buttonsDiv);
+
+        const dismiss = document.createElement('a');
+        dismiss.className = 'guided-learning-dismiss';
+        dismiss.href = '#';
+        dismiss.textContent = 'Nessuna di queste';
+        dismiss.addEventListener('click', (e) => {
+            e.preventDefault();
+            container.classList.add('fade-out');
+            setTimeout(() => {
+                if (container.parentNode) container.parentNode.removeChild(container);
+            }, 300);
+        });
+        container.appendChild(dismiss);
+
+        return container;
+    }
+
+    async handleGuidedLearn(domanda, intent, label, clickedBtn, container) {
+        // Disabilita tutti i bottoni
+        container.querySelectorAll('.guided-learning-btn').forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('gl-btn-disabled');
+        });
+        clickedBtn.classList.add('gl-btn-selected');
+
+        try {
+            const response = await fetch(window.basePath + '/api/admin/guided-learn', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domanda, intent })
+            });
+
+            const data = await response.json();
+
+            // Feedback visuale
+            const feedback = document.createElement('div');
+            if (response.ok) {
+                feedback.className = 'guided-learning-feedback';
+                feedback.textContent = data.inserted
+                    ? `Grazie! Ho imparato che "${domanda.substring(0, 40)}${domanda.length > 40 ? '...' : ''}" si riferisce a "${label}".`
+                    : `Questa associazione era gia' nota.`;
+            } else {
+                feedback.className = 'guided-learning-error';
+                feedback.textContent = 'Non sono riuscito a salvare. Riprova piu\' tardi.';
+            }
+
+            // Sostituisci bottoni con feedback
+            const buttonsDiv = container.querySelector('.guided-learning-buttons');
+            const dismissLink = container.querySelector('.guided-learning-dismiss');
+            if (buttonsDiv) buttonsDiv.style.display = 'none';
+            if (dismissLink) dismissLink.style.display = 'none';
+            container.querySelector('.guided-learning-header').textContent = '';
+            container.appendChild(feedback);
+
+            // Auto-dismiss dopo 4s
+            setTimeout(() => {
+                container.classList.add('fade-out');
+                setTimeout(() => {
+                    if (container.parentNode) container.parentNode.removeChild(container);
+                }, 300);
+            }, 4000);
+
+        } catch (error) {
+            console.error('Guided learn error:', error);
+            const errDiv = document.createElement('div');
+            errDiv.className = 'guided-learning-error';
+            errDiv.textContent = 'Errore di connessione. Riprova.';
+            container.appendChild(errDiv);
+        }
     }
 
     // =========================================================================
@@ -901,7 +1045,7 @@ ${cleanAnswer}
                 this.hideTypingIndicator();
 
                 if (response.status === 'success') {
-                    this.addBotMessage(response.message, message, response.full_data, response.data_type, response.suggestions);
+                    this.addBotMessage(response.message, message, response.full_data, response.data_type, response.suggestions, response.fallback_intents);
                 } else {
                     this.addBotMessage('Mi dispiace, si è verificato un errore. Riprova più tardi.');
                 }
@@ -973,6 +1117,7 @@ ${cleanAnswer}
                                     finalMetadata = {
                                         intent: data.result.intent,
                                         suggestions: data.result.suggestions,
+                                        fallback_intents: data.result.fallback_intents,
                                         needs_clarification: data.result.needs_clarification,
                                     };
                                 } else {
@@ -998,7 +1143,8 @@ ${cleanAnswer}
                 message,
                 finalMetadata.full_data,
                 finalMetadata.data_type,
-                finalMetadata.suggestions
+                finalMetadata.suggestions,
+                finalMetadata.fallback_intents
             );
         }
     }
@@ -1030,5 +1176,5 @@ ${cleanAnswer}
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    new ChatBot();
+    window.chatBot = new ChatBot();
 });
