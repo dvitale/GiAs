@@ -878,6 +878,19 @@ func ProxyAdminAPI(c *gin.Context, llmServerURL string, timeout int) {
 			return
 		}
 		resp, err = client.Post(backendURL, "application/json", bytes.NewBuffer(body))
+	case "PUT":
+		body, readErr := io.ReadAll(c.Request.Body)
+		if readErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+			return
+		}
+		req, reqErr := http.NewRequest("PUT", backendURL, bytes.NewBuffer(body))
+		if reqErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err = client.Do(req)
 	case "DELETE":
 		req, reqErr := http.NewRequest("DELETE", backendURL, nil)
 		if reqErr != nil {

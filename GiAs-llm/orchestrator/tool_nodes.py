@@ -281,7 +281,8 @@ def piano_statistics_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
 
 def search_piani_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     topic = state["slots"].get("topic")
-    result = search_tool(query=topic)
+    sezione = state["slots"].get("sezione")
+    result = search_tool(query=topic, sezione=sezione)
 
     if isinstance(result, dict):
         total_found = result.get("total_found", 0)
@@ -619,6 +620,150 @@ def info_procedure_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     return state
 
 
+def query_data_tool(state: Dict[str, Any], event_callback=None, **_) -> Dict[str, Any]:
+    """Tool per interrogazioni dati su misura non coperte dagli intent specifici."""
+    if event_callback:
+        event_callback({
+            "type": "reasoning",
+            "node": "query_data_tool",
+            "message": "Analizzando la richiesta dati..."
+        })
+
+    message = state.get("message", "")
+
+    try:
+        from tools.query_builder_tools import build_query_with_llm, SafeQueryExecutor
+        from llm.client import LLMClient
+
+        # 1. LLM genera Operation Descriptor
+        llm_client = LLMClient()
+        descriptor = build_query_with_llm(message, llm_client)
+        if descriptor:
+            logger.info(f"[QueryData] Descriptor LLM: table={descriptor.table}, op={descriptor.operation}, "
+                        f"filters={[f'{f.column} {f.op} {f.value}' for f in descriptor.filters]}, "
+                        f"group_by={descriptor.group_by}")
+
+        if descriptor is None:
+            state["tool_output"] = {
+                "type": "query_data",
+                "data": {
+                    "error": True,
+                    "formatted_response": (
+                        "Non sono riuscito a interpretare la tua richiesta come interrogazione dati.\n\n"
+                        "Prova a riformulare specificando:\n"
+                        "- **Quale tabella** vuoi interrogare (controlli, piani, stabilimenti)\n"
+                        "- **Quale operazione** (conteggio, distribuzione, top N)\n"
+                        "- **Eventuali filtri** (ASL, anno, macroarea)"
+                    )
+                }
+            }
+            return state
+
+        # 2. Esegui query sicura
+        executor = SafeQueryExecutor()
+        result = executor.execute(descriptor)
+
+        if result.get("error"):
+            state["tool_output"] = {
+                "type": "query_data",
+                "data": {
+                    "error": True,
+                    "formatted_response": f"Errore nell'interrogazione: {result['error']}"
+                }
+            }
+            return state
+
+        # 3. Formatta risultato
+        data_records = result.get("data", [])
+        total = result.get("total", 0)
+        showing = result.get("showing", total)
+
+        # Se nessun risultato, mostra messaggio con diagnostica
+        if not data_records and result.get("message"):
+            state["tool_output"] = {
+                "type": "query_data",
+                "data": {
+                    "formatted_response": result["message"],
+                    "query_descriptor": descriptor.model_dump(),
+                }
+            }
+            return state
+
+        # Formatta come tabella markdown
+        formatted = _format_query_data_response(
+            descriptor.table, descriptor.operation, data_records, total, showing
+        )
+
+        logger.info(f"[QueryData] Risultato: {len(data_records)} record, total={total}")
+
+        state["tool_output"] = {
+            "type": "query_data",
+            "data": {
+                "query_descriptor": descriptor.model_dump(),
+                "records": data_records[:20],  # max 20 nel payload
+                "total": total,
+                "formatted_response": formatted
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"[QueryData] Errore: {e}")
+        state["tool_output"] = {
+            "type": "query_data",
+            "data": {
+                "error": True,
+                "formatted_response": f"Errore nell'elaborazione della query: {str(e)}"
+            }
+        }
+
+    return state
+
+
+def _format_query_data_response(table: str, operation: str, records: list, total: int, showing: int) -> str:
+    """Formatta i risultati della query in markdown leggibile."""
+    if not records:
+        return "Nessun risultato trovato per la query specificata."
+
+    lines = [f"**Risultati interrogazione** ({operation} su `{table}`):\n"]
+
+    if operation == "count":
+        count = records[0].get("count", 0)
+        lines.append(f"📊 **Totale:** {count:,} record\n")
+
+    elif operation in ("group_count", "sum", "mean", "top_n", "filter"):
+        # Genera tabella markdown
+        if records:
+            cols = list(records[0].keys())
+            # Header
+            lines.append("| " + " | ".join(str(c) for c in cols) + " |")
+            lines.append("| " + " | ".join("---" for _ in cols) + " |")
+            # Righe
+            for r in records[:20]:
+                values = []
+                for c in cols:
+                    v = r.get(c, "")
+                    if isinstance(v, float):
+                        v = f"{v:,.2f}"
+                    elif isinstance(v, int):
+                        v = f"{v:,}"
+                    values.append(str(v))
+                lines.append("| " + " | ".join(values) + " |")
+
+        if showing and showing < total:
+            lines.append(f"\n*Mostrati {showing} di {total:,} risultati totali*")
+
+    elif operation == "distinct":
+        if records and "values" in records[0]:
+            col = records[0].get("column", "")
+            values = records[0].get("values", [])
+            total_distinct = records[0].get("total_distinct", len(values))
+            lines.append(f"📋 **Valori unici** di `{col}` ({total_distinct} totali):\n")
+            for v in values[:30]:
+                lines.append(f"- {v}")
+
+    return "\n".join(lines)
+
+
 def nearby_priority_tool(state: Dict[str, Any], event_callback=None, **_) -> Dict[str, Any]:
     """Tool per ricerca stabilimenti per prossimità geografica."""
     if event_callback:
@@ -682,6 +827,7 @@ TOOL_REGISTRY = {
     "top_risk_activities_tool": top_risk_activities_tool,
     "analyze_nc_tool": analyze_nc_tool,
     "info_procedure_tool": info_procedure_tool,
+    "query_data_tool": query_data_tool,
     "confirm_details_tool": confirm_details_tool,
     "decline_details_tool": decline_details_tool,
 }
@@ -705,6 +851,7 @@ INTENT_TO_TOOL = {
     "ask_top_risk_activities": "top_risk_activities_tool",
     "analyze_nc_by_category": "analyze_nc_tool",
     "info_procedure": "info_procedure_tool",
+    "query_data": "query_data_tool",
     "confirm_show_details": "confirm_details_tool",
     "decline_show_details": "decline_details_tool",
 }

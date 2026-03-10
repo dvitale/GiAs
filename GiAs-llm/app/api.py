@@ -1895,6 +1895,183 @@ async def admin_reindex_status():
         return dict(_reindex_state)
 
 
+# ── Schema Metadata Admin ────────────────────────────────────────────
+
+
+@app.get("/api/admin/schema-metadata")
+async def admin_list_schema_metadata():
+    """Lista tutte le tabelle schema_metadata attive."""
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT table_key, table_name, df_variable, description_it,
+                       columns, relationships, valid_values, pii_columns,
+                       row_count_approx, is_active, updated_at
+                FROM schema_metadata
+                ORDER BY table_key
+            """)).fetchall()
+
+            return {
+                "total": len(rows),
+                "records": [
+                    {
+                        "table_key": r[0],
+                        "table_name": r[1],
+                        "df_variable": r[2],
+                        "description_it": r[3],
+                        "columns": r[4],
+                        "relationships": r[5],
+                        "valid_values": r[6],
+                        "pii_columns": list(r[7]) if r[7] else [],
+                        "row_count_approx": r[8],
+                        "is_active": r[9],
+                        "updated_at": r[10].isoformat() if r[10] else None,
+                    }
+                    for r in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"[AdminSchema] Error listing schema: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/admin/schema-metadata/{table_key}")
+async def admin_get_schema_metadata(table_key: str):
+    """Dettaglio singola tabella schema_metadata."""
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT table_key, table_name, df_variable, description_it,
+                       columns, relationships, valid_values, pii_columns,
+                       row_count_approx, is_active, updated_at
+                FROM schema_metadata
+                WHERE table_key = :key
+            """), {"key": table_key}).fetchone()
+
+            if not row:
+                raise HTTPException(status_code=404, detail=f"Tabella '{table_key}' non trovata")
+
+            return {
+                "table_key": row[0],
+                "table_name": row[1],
+                "df_variable": row[2],
+                "description_it": row[3],
+                "columns": row[4],
+                "relationships": row[5],
+                "valid_values": row[6],
+                "pii_columns": list(row[7]) if row[7] else [],
+                "row_count_approx": row[8],
+                "is_active": row[9],
+                "updated_at": row[10].isoformat() if row[10] else None,
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AdminSchema] Error getting schema {table_key}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/admin/schema-metadata/{table_key}")
+async def admin_update_schema_metadata(table_key: str, payload: dict):
+    """Aggiorna schema di una tabella in schema_metadata."""
+    engine = _get_db_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+
+    from sqlalchemy import text
+    import json as json_mod
+
+    try:
+        with engine.connect() as conn:
+            # Verifica che la tabella esista
+            exists = conn.execute(text(
+                "SELECT 1 FROM schema_metadata WHERE table_key = :key"
+            ), {"key": table_key}).fetchone()
+            if not exists:
+                raise HTTPException(status_code=404, detail=f"Tabella '{table_key}' non trovata")
+
+            # Aggiorna solo i campi forniti nel payload
+            update_fields = []
+            params = {"key": table_key}
+
+            updatable = {
+                "description_it": "description_it",
+                "columns": "columns",
+                "relationships": "relationships",
+                "valid_values": "valid_values",
+                "pii_columns": "pii_columns",
+                "row_count_approx": "row_count_approx",
+                "is_active": "is_active",
+            }
+
+            for field, col in updatable.items():
+                if field in payload:
+                    value = payload[field]
+                    if field in ("columns", "relationships", "valid_values"):
+                        # JSONB: converti a stringa JSON
+                        params[field] = json_mod.dumps(value)
+                        update_fields.append(f"{col} = :{field}::jsonb")
+                    elif field == "pii_columns":
+                        params[field] = value if isinstance(value, list) else []
+                        update_fields.append(f"{col} = :{field}")
+                    else:
+                        params[field] = value
+                        update_fields.append(f"{col} = :{field}")
+
+            if not update_fields:
+                return {"status": "ok", "message": "Nessun campo da aggiornare"}
+
+            update_fields.append("updated_at = NOW()")
+            sql = f"UPDATE schema_metadata SET {', '.join(update_fields)} WHERE table_key = :key"
+            conn.execute(text(sql), params)
+            conn.commit()
+
+            logger.info(f"[AdminSchema] Schema '{table_key}' aggiornato: {list(payload.keys())}")
+            return {"status": "ok", "table_key": table_key}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AdminSchema] Error updating schema {table_key}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/schema-metadata/reload")
+async def admin_reload_schema_catalog():
+    """Ricarica il catalogo schema in memoria dal DB."""
+    try:
+        from orchestrator.schema_catalog import get_schema_catalog
+        catalog = get_schema_catalog()
+        catalog.reload()
+
+        # Ricostruisci anche il prompt del router con il nuovo schema
+        global _conversation_graph
+        if _conversation_graph and hasattr(_conversation_graph, 'router'):
+            _conversation_graph.router.reload()
+
+        logger.info("[AdminSchema] Schema catalog ricaricato")
+        return {
+            "status": "ok",
+            "tables_count": len(catalog.get_full_schema()),
+            "message": "Catalogo schema ricaricato e prompt aggiornato"
+        }
+    except Exception as e:
+        logger.error(f"[AdminSchema] Error reloading: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
 

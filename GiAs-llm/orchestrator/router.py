@@ -40,14 +40,16 @@ class Router:
         "ask_nearby_priority",
         "ask_delayed_plans", "check_if_plan_delayed", "ask_establishment_history",
         "ask_top_risk_activities", "analyze_nc_by_category",
-        "info_procedure",
+        "info_procedure", "query_data",
         "confirm_show_details", "decline_show_details", "fallback"
     ]
 
     VALID_SLOT_KEYS = {
         "piano_code", "asl", "topic", "num_registrazione", "numero_riconoscimento",
         "partita_iva", "ragione_sociale", "categoria",
-        "location", "radius_km"
+        "location", "radius_km",
+        "sezione", "macroarea", "aggregazione", "anno", "comune",
+        "table", "operation", "filters", "group_by", "order_by", "limit",
     }
 
     # Intent che richiedono slot obbligatori
@@ -76,7 +78,12 @@ Se sei incerto (confidence < 0.85), aggiungi fino a 2 alternative:
 INTENT PER CATEGORIA:
 {intent_catalog}
 
-SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km
+SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km, sezione(A-G), macroarea, aggregazione, anno(2016-2025), comune
+
+DATI DISPONIBILI:
+{schema_catalog}
+
+Quando l'utente filtra per colonne strutturate (sezione, macroarea, anno, comune), estrai il valore come slot.
 
 REGOLE DISAMBIGUAZIONE:
 {disambiguation_rules}
@@ -109,7 +116,7 @@ INTENT PER CATEGORIA:
 [Piani]
 ask_piano_description(piano_code) - descrizione/info piano
 ask_piano_stabilimenti(piano_code) - stabilimenti controllati da piano
-ask_piano_statistics - statistiche/frequenza piani
+ask_piano_statistics - statistiche/frequenza PIANI (top piani per controlli, quanti indicatori ha un piano). Richiede contesto piano, NON per conteggi generici di controlli per ASL/macroarea.
 search_piani_by_topic(topic) - cerca piani per argomento
 
 [Priorità]
@@ -130,6 +137,9 @@ ask_establishment_history(num_registrazione|partita_iva|ragione_sociale) - stori
 info_procedure - procedure operative, come si fa, passi per, definizioni termini GISA/Matrix (cos'e X)
 analyze_nc_by_category(categoria) - analisi NC per categoria
 
+[Dati]
+query_data - interrogazione dati su misura NON coperta dagli intent sopra (usa SOLO se nessun intent specifico corrisponde). Confidence MAI > 0.80.
+
 [Base]
 greet - saluti e convenevoli (ciao, salve, buongiorno, buonasera, buonanotte, buon pomeriggio, ehilà, come stai, ecc.), MAI domande operative
 goodbye - commiato (arrivederci, tanti saluti, alla prossima, ci vediamo, a domani, ecc.)
@@ -138,7 +148,20 @@ confirm_show_details - sì/ok/mostrami (in risposta a offerta dettagli)
 decline_show_details - no/basta (in risposta a offerta dettagli)
 fallback - fuori dominio
 
-SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km
+SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km, sezione(A-G), macroarea, aggregazione, anno(2016-2025), comune
+
+DATI DISPONIBILI:
+- piani_monitoraggio ~730 righe: Piani di controllo veterinario per sezione PRISCAV
+  Filtri: sezione(SEZIONE A,SEZIONE B,SEZIONE C), alias(A1,A22,B2), alias_indicatore, campionamento
+  Valori: sezione: SEZIONE A=Sicurezza Alimentare, SEZIONE B=Sanità Animale, SEZIONE C=Igiene Allevamenti, SEZIONE D=Alimentazione Animale, SEZIONE E=Farmacosorveglianza, SEZIONE F=Benessere Animale, SEZIONE G=Sottoprodotti
+- masterlist ~105,000 righe: Tassonomia attività (norma, macroarea, aggregazione, linea_di_attivita)
+- cu_eseguiti ~3,200,000 righe: Controlli eseguiti 2025 (ASL, UOC, piano, macroarea, comune, NC)
+- osa_mai_controllati ~643,000 righe: Stabilimenti mai controllati (ASL, comune, macroarea)
+- ocse_isp_semp: NC storiche 2016-2025 (macroarea, anno, nc_gravi, nc_non_gravi)
+- cu_diff_programmati_eseguiti: Programmati vs eseguiti per indicatore, ASL, UOC
+- personale ~100,000 righe: Struttura organizzativa (user_id, ASL, UOC)
+
+Quando l'utente filtra per colonne strutturate (sezione, macroarea, anno, comune), estrai il valore come slot.
 
 REGOLE DISAMBIGUAZIONE:
 1. "STABILIMENTI a rischio" → ask_risk_based_priority (NON ask_top_risk_activities)
@@ -151,6 +174,10 @@ REGOLE DISAMBIGUAZIONE:
 8. CAMBIO TOPIC: Se il messaggio è chiaramente un NUOVO ARGOMENTO (es. "linee di attività rischiose" dopo aver parlato di "piani"), IGNORA la sessione precedente e classifica il messaggio in isolamento
 9. "PIANI controllare per primi" → ask_delayed_plans (priorità PIANI); "STABILIMENTI controllare per primi" → ask_priority_establishment (priorità STABILIMENTI)
 10. Se la domanda potrebbe corrispondere a 2+ intent con confidence simile, restituisci il migliore come intent principale e gli altri in "alternatives". NON indovinare: è meglio chiedere all'utente che classificare male.
+11. "piani della sezione X" con X in (A-G) → search_piani_by_topic con slot sezione=X
+12. Filtro per MACROAREA/AGGREGAZIONE → estrai come slot per filtrare i risultati dell'intent più vicino
+13. "quanti controlli nell'ASL X" / "controlli eseguiti a BENEVENTO" → query_data (conteggio su cu_eseguiti filtrato per ASL). NON è ask_piano_statistics (che riguarda statistiche dei PIANI, non conteggi grezzi di controlli).
+14. query_data per domande su dati tabulari NON coperte dagli intent specifici. Confidence MAI > 0.80.
 
 ESEMPI CRITICI (coppie confuse):
 "stabilimenti a rischio" → {"reasoning":"chiede stabilimenti con alto rischio","intent":"ask_risk_based_priority","slots":{},"needs_clarification":false,"confidence":0.95}
@@ -171,6 +198,15 @@ ESEMPI CRITICI (coppie confuse):
 "NC categoria HACCP" → {"reasoning":"analisi NC HACCP","intent":"analyze_nc_by_category","slots":{"categoria":"HACCP"},"needs_clarification":false,"confidence":0.95}
 "procedura ispezione" → {"reasoning":"come si fa ispezione","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.90}
 "cos'e il borsellino in Matrix" → {"reasoning":"definizione termine Matrix","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.95}
+"piani della sezione A" → {"reasoning":"cerca piani sezione A=Sicurezza Alimentare","intent":"search_piani_by_topic","slots":{"topic":"sezione A","sezione":"A"},"needs_clarification":false,"confidence":0.95}
+"piani sezione B su bovini" → {"reasoning":"cerca piani sezione B con keyword bovini","intent":"search_piani_by_topic","slots":{"topic":"bovini","sezione":"B"},"needs_clarification":false,"confidence":0.95}
+"stabilimenti mai controllati a Benevento" → {"reasoning":"OSA mai controllati filtro comune","intent":"ask_suggest_controls","slots":{"comune":"Benevento"},"needs_clarification":false,"confidence":0.95}
+"quanti controlli per macroarea?" → {"reasoning":"interrogazione dati aggregati su controlli","intent":"query_data","slots":{"table":"controlli","operation":"group_count","group_by":["macroarea_cu"]},"needs_clarification":false,"confidence":0.75}
+"quanti controlli sono stati eseguiti nell'ASL Benevento?" → {"reasoning":"conteggio controlli filtrato per ASL, non è statistiche piani","intent":"query_data","slots":{"table":"controlli","operation":"count","filters":[{"column":"descrizione_asl","op":"contains","value":"BENEVENTO"}]},"needs_clarification":false,"confidence":0.80}
+"quanti controlli ha fatto l'ASL Napoli nel 2025?" → {"reasoning":"conteggio semplice per ASL, query_data non ask_piano_statistics","intent":"query_data","slots":{"table":"controlli","operation":"count","filters":[{"column":"descrizione_asl","op":"contains","value":"NAPOLI"}]},"needs_clarification":false,"confidence":0.80}
+"distribuzione NC per anno" → {"reasoning":"aggregazione NC storiche per anno","intent":"query_data","slots":{"table":"nc_storiche","operation":"group_count","group_by":["anno"]},"needs_clarification":false,"confidence":0.75}
+"statistiche piani" → {"reasoning":"statistiche aggregate sui piani di controllo","intent":"ask_piano_statistics","slots":{},"needs_clarification":false,"confidence":0.90}
+"quanti indicatori ha il piano A1" → {"reasoning":"statistiche di un piano specifico","intent":"ask_piano_statistics","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.95}
 "storico IT 2287" → {"reasoning":"storico stabilimento","intent":"ask_establishment_history","slots":{"num_registrazione":"IT 2287"},"needs_clarification":false,"confidence":0.95}
 "ciao" → {"reasoning":"saluto","intent":"greet","slots":{},"needs_clarification":false,"confidence":0.99}
 "buonanotte" → {"reasoning":"saluto serale","intent":"greet","slots":{},"needs_clarification":false,"confidence":0.99}
@@ -287,6 +323,12 @@ OUTPUT:"""
     # Topic: estrae argomento dopo "piani su/per/riguardanti/che trattano"
     RE_TOPIC = re.compile(
         r"\bpiani\s+(?:su|per|riguardant[io]|(?:che\s+)?riguardano|(?:che\s+)?trattano\s+(?:di\s+)?)\s*(?:la\s+|il\s+|i\s+|le\s+|gli\s+|l['\u2019])?(.+)",
+        re.IGNORECASE
+    )
+
+    # Sezione piani: "sezione A", "della sezione B", "sez. C"
+    RE_SEZIONE = re.compile(
+        r'\bsez(?:ione|\.)\s+([A-Z])\b',
         re.IGNORECASE
     )
 
@@ -642,6 +684,15 @@ OUTPUT:"""
 
     def _build_system_prompt(self):
         """Costruisce il prompt di classificazione dal servizio DB o fallback hardcoded."""
+        # Carica schema catalog (indipendente dal servizio intent)
+        schema_catalog = ""
+        try:
+            from .schema_catalog import get_schema_catalog
+            schema_catalog = get_schema_catalog().get_compact_catalog()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[Router] Schema catalog non disponibile: {e}")
+
         try:
             from .intent_metadata_service import get_intent_metadata_service
             service = get_intent_metadata_service()
@@ -654,6 +705,7 @@ OUTPUT:"""
                         intent_catalog=catalog,
                         disambiguation_rules=rules,
                         critical_examples=examples,
+                        schema_catalog=schema_catalog or self._static_schema_fallback(),
                     )
                     print(f"📋 Prompt classificazione costruito da DB ({service.source})")
                     return
@@ -664,6 +716,12 @@ OUTPUT:"""
         # Fallback al prompt hardcoded
         self.CLASSIFICATION_SYSTEM_PROMPT = self._CLASSIFICATION_PROMPT_FALLBACK
         print(f"📋 Prompt classificazione: fallback hardcoded")
+
+    @staticmethod
+    def _static_schema_fallback() -> str:
+        """Schema statico minimo per il prompt quando DB non disponibile."""
+        from .schema_catalog import SchemaCatalog
+        return SchemaCatalog()._static_fallback()
 
     def classify(self, message: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -938,6 +996,11 @@ OUTPUT:"""
             piva_match = self.RE_PARTITA_IVA.search(message)
             if piva_match:
                 slots["partita_iva"] = piva_match.group(1)
+
+        # Sezione piani: "sezione A", "della sezione B"
+        sezione_match = self.RE_SEZIONE.search(message)
+        if sezione_match:
+            slots["sezione"] = sezione_match.group(1).upper()
 
         # Topic: estrai argomento dopo "piani su/per/riguardanti"
         topic_match = self.RE_TOPIC.search(message)

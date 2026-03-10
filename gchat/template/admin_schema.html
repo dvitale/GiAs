@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}}</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --border-color: #475569;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-green: #4ade80;
+            --accent-red: #f87171;
+            --accent-yellow: #fbbf24;
+            --accent-purple: #a78bfa;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e293b 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 20px 24px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header h1 { font-size: 1.5rem; font-weight: 600; }
+
+        .header-nav { display: flex; gap: 16px; font-size: 0.85rem; }
+        .header-nav a { color: #60a5fa; text-decoration: none; }
+        .header-nav a:hover { text-decoration: underline; }
+
+        .section {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .section h2 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            color: var(--accent-blue);
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary { background: var(--accent-blue); color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-success { background: var(--accent-green); color: #0f172a; }
+        .btn-success:hover { background: #22c55e; }
+        .btn-danger { background: var(--accent-red); color: white; }
+        .btn-danger:hover { background: #ef4444; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .table-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 16px;
+        }
+
+        .table-card {
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            padding: 16px;
+            border: 1px solid var(--border-color);
+            transition: border-color 0.2s;
+        }
+
+        .table-card:hover { border-color: var(--accent-blue); }
+
+        .table-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .table-card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--accent-yellow);
+        }
+
+        .table-card-badge {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+        }
+
+        .table-card-desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .column-list {
+            list-style: none;
+            font-size: 0.8rem;
+        }
+
+        .column-list li {
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .column-list li:last-child { border-bottom: none; }
+
+        .col-name { color: var(--accent-purple); font-family: monospace; }
+        .col-desc { color: var(--text-muted); font-size: 0.75rem; }
+        .col-filter {
+            font-size: 0.65rem;
+            padding: 1px 6px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .valid-values {
+            margin-top: 8px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: var(--bg-primary);
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        .valid-values strong { color: var(--accent-green); }
+
+        .status-msg {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            display: none;
+        }
+
+        .status-msg.success { display: block; background: rgba(74, 222, 128, 0.1); border: 1px solid var(--accent-green); color: var(--accent-green); }
+        .status-msg.error { display: block; background: rgba(248, 113, 113, 0.1); border: 1px solid var(--accent-red); color: var(--accent-red); }
+
+        /* Edit modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h3 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            color: var(--accent-yellow);
+        }
+
+        .form-group { margin-bottom: 14px; }
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            font-family: inherit;
+        }
+
+        .form-group textarea { min-height: 80px; resize: vertical; }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pii-tag {
+            font-size: 0.65rem;
+            padding: 1px 6px;
+            border-radius: 6px;
+            background: rgba(248, 113, 113, 0.2);
+            color: var(--accent-red);
+        }
+
+        .relations-section {
+            margin-top: 10px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .relations-section span {
+            color: var(--accent-blue);
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <h1>🗄️ Gestione Schema Metadata</h1>
+                <div class="header-nav">
+                    <a href="{{.basePath}}/">← Chat</a>
+                    <a href="{{.basePath}}/admin/rag">Domande RAG</a>
+                    <a href="{{.basePath}}/analytics">Analytics</a>
+                    <a href="{{.basePath}}/monitor">Monitor</a>
+                </div>
+            </div>
+        </div>
+
+        <div id="statusMsg" class="status-msg"></div>
+
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h2>Tabelle Applicative</h2>
+                <div class="toolbar" style="margin-bottom:0;">
+                    <button class="btn btn-success" onclick="reloadCatalog()">🔄 Ricarica Catalogo</button>
+                    <button class="btn btn-primary" onclick="loadTables()">↻ Aggiorna</button>
+                </div>
+            </div>
+
+            <div id="tableGrid" class="table-grid">
+                <p style="color:var(--text-muted)">Caricamento...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal-overlay">
+        <div class="modal">
+            <h3 id="modalTitle">Modifica Tabella</h3>
+            <div class="form-group">
+                <label>Descrizione (italiano)</label>
+                <textarea id="editDescription"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Valori Validi (JSON)</label>
+                <textarea id="editValidValues" style="min-height:120px; font-family:monospace; font-size:0.8rem;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Colonne PII (comma-separated)</label>
+                <input type="text" id="editPiiColumns" placeholder="codice_fiscale, partita_iva">
+            </div>
+            <div class="form-group">
+                <label>Righe Approssimative</label>
+                <input type="number" id="editRowCount">
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="editIsActive" checked> Attiva
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" onclick="closeModal()">Annulla</button>
+                <button class="btn btn-success" onclick="saveEdit()">💾 Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE = '{{.basePath}}';
+        let currentEditKey = null;
+
+        async function loadTables() {
+            try {
+                const res = await fetch(`${BASE}/api/admin/schema-metadata`);
+                const data = await res.json();
+                renderTables(data.records || []);
+            } catch (err) {
+                showStatus('Errore caricamento: ' + err.message, 'error');
+            }
+        }
+
+        function renderTables(tables) {
+            const grid = document.getElementById('tableGrid');
+            if (!tables.length) {
+                grid.innerHTML = '<p style="color:var(--text-muted)">Nessuna tabella trovata. Esegui sql/create_schema_metadata.sql.</p>';
+                return;
+            }
+
+            grid.innerHTML = tables.map(t => {
+                const cols = (t.columns || []).map(c => {
+                    const tags = [];
+                    if (c.filterable) tags.push('<span class="col-filter">filtro</span>');
+                    if ((t.pii_columns || []).includes(c.name)) tags.push('<span class="pii-tag">PII</span>');
+                    return `<li>
+                        <span><span class="col-name">${esc(c.name)}</span> <span class="col-desc">${esc(c.description_it || '')}</span></span>
+                        <span>${tags.join(' ')}</span>
+                    </li>`;
+                }).join('');
+
+                let validHtml = '';
+                const vv = t.valid_values || {};
+                const vvKeys = Object.keys(vv);
+                if (vvKeys.length > 0) {
+                    const items = vvKeys.map(k => {
+                        const vals = Array.isArray(vv[k]) ? vv[k].join(', ') : String(vv[k]);
+                        return `<strong>${esc(k)}</strong>: ${esc(vals)}`;
+                    }).join('<br>');
+                    validHtml = `<div class="valid-values">${items}</div>`;
+                }
+
+                let relHtml = '';
+                const rels = t.relationships || [];
+                if (rels.length > 0) {
+                    relHtml = '<div class="relations-section">Relazioni: ' +
+                        rels.map(r => `<span>${esc(r.source_col)}</span> → ${esc(r.target_table)}.${esc(r.target_col)}`).join(', ') +
+                        '</div>';
+                }
+
+                const badge = t.row_count_approx ? `~${Number(t.row_count_approx).toLocaleString('it')} righe` : '';
+                const activeClass = t.is_active ? '' : 'style="opacity:0.5"';
+
+                return `<div class="table-card" ${activeClass}>
+                    <div class="table-card-header">
+                        <span class="table-card-title">${esc(t.table_name)}</span>
+                        <span class="table-card-badge">${badge}</span>
+                    </div>
+                    <div class="table-card-desc">${esc(t.description_it)}</div>
+                    <ul class="column-list">${cols}</ul>
+                    ${validHtml}
+                    ${relHtml}
+                    <div style="margin-top:10px; text-align:right;">
+                        <button class="btn btn-primary" style="padding:4px 12px; font-size:0.75rem;" onclick="openEdit('${esc(t.table_key)}')">✏️ Modifica</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function openEdit(tableKey) {
+            currentEditKey = tableKey;
+            try {
+                const res = await fetch(`${BASE}/api/admin/schema-metadata/${tableKey}`);
+                const data = await res.json();
+
+                document.getElementById('modalTitle').textContent = `Modifica: ${data.table_name}`;
+                document.getElementById('editDescription').value = data.description_it || '';
+                document.getElementById('editValidValues').value = JSON.stringify(data.valid_values || {}, null, 2);
+                document.getElementById('editPiiColumns').value = (data.pii_columns || []).join(', ');
+                document.getElementById('editRowCount').value = data.row_count_approx || '';
+                document.getElementById('editIsActive').checked = data.is_active !== false;
+
+                document.getElementById('editModal').classList.add('active');
+            } catch (err) {
+                showStatus('Errore: ' + err.message, 'error');
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('editModal').classList.remove('active');
+            currentEditKey = null;
+        }
+
+        async function saveEdit() {
+            if (!currentEditKey) return;
+
+            let validValues;
+            try {
+                validValues = JSON.parse(document.getElementById('editValidValues').value || '{}');
+            } catch (e) {
+                showStatus('JSON valori validi non valido: ' + e.message, 'error');
+                return;
+            }
+
+            const piiStr = document.getElementById('editPiiColumns').value;
+            const piiCols = piiStr ? piiStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+            const payload = {
+                description_it: document.getElementById('editDescription').value,
+                valid_values: validValues,
+                pii_columns: piiCols,
+                row_count_approx: parseInt(document.getElementById('editRowCount').value) || null,
+                is_active: document.getElementById('editIsActive').checked,
+            };
+
+            try {
+                const res = await fetch(`${BASE}/api/admin/schema-metadata/${currentEditKey}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    showStatus(`Tabella "${currentEditKey}" aggiornata con successo`, 'success');
+                    closeModal();
+                    loadTables();
+                } else {
+                    showStatus('Errore: ' + (data.detail || JSON.stringify(data)), 'error');
+                }
+            } catch (err) {
+                showStatus('Errore salvataggio: ' + err.message, 'error');
+            }
+        }
+
+        async function reloadCatalog() {
+            try {
+                const res = await fetch(`${BASE}/api/admin/schema-metadata/reload`, { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    showStatus(`Catalogo ricaricato: ${data.tables_count} tabelle. Prompt aggiornato.`, 'success');
+                } else {
+                    showStatus('Errore: ' + (data.detail || JSON.stringify(data)), 'error');
+                }
+            } catch (err) {
+                showStatus('Errore reload: ' + err.message, 'error');
+            }
+        }
+
+        function showStatus(msg, type) {
+            const el = document.getElementById('statusMsg');
+            el.textContent = msg;
+            el.className = 'status-msg ' + type;
+            setTimeout(() => { el.className = 'status-msg'; }, 5000);
+        }
+
+        function esc(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        // Init
+        loadTables();
+    </script>
+</body>
+</html>

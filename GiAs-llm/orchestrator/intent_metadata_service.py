@@ -383,6 +383,10 @@ class IntentMetadataService:
             '8. CAMBIO TOPIC: Se il messaggio è chiaramente un NUOVO ARGOMENTO, IGNORA la sessione precedente',
             '9. "PIANI controllare per primi" → ask_delayed_plans; "STABILIMENTI controllare per primi" → ask_priority_establishment',
             '10. Se la domanda potrebbe corrispondere a 2+ intent con confidence simile, restituisci il migliore come intent principale e gli altri in "alternatives".',
+            '11. "piani della sezione X" con X in (A-G) → search_piani_by_topic con slot sezione=X',
+            '12. Filtro per MACROAREA/AGGREGAZIONE → estrai come slot per filtrare i risultati dell\'intent più vicino',
+            '13. "quanti controlli nell\'ASL X" / "controlli eseguiti a X" → query_data (conteggio su cu_eseguiti). NON ask_piano_statistics (che riguarda statistiche dei PIANI).',
+            '14. query_data SOLO per domande su dati tabulari non coperte dagli intent specifici. Confidence MAI > 0.80 (preferire sempre intent specifici).',
         ]
         return "\n".join(rules)
 

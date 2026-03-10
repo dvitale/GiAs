@@ -91,7 +91,8 @@ INTENT_DESCRIPTIONS = {
     "ask_top_risk_activities": "top attività con risk score più elevato",
     "analyze_nc_by_category": "analisi non conformità per categoria specifica",
     "ask_help": "informazioni sulle funzionalità disponibili",
-    "info_procedure": "informazioni su procedure operative da documentazione"
+    "info_procedure": "informazioni su procedure operative da documentazione",
+    "query_data": "interrogazione dati su misura"
 }
 
 # Intent che restituiscono risposte dirette senza passaggio LLM

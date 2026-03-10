@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 try:
     from langchain_core.tools import tool
@@ -36,7 +36,7 @@ def _get_hybrid_engine():
 
 
 @tool("search_piani")
-def search_piani_by_topic(query: str, similarity_threshold: float = 0.4) -> Dict[str, Any]:
+def search_piani_by_topic(query: str, similarity_threshold: float = 0.4, sezione: str = None) -> Dict[str, Any]:
     """
     Cerca piani di controllo per argomento sul database in memoria.
 
@@ -46,10 +46,15 @@ def search_piani_by_topic(query: str, similarity_threshold: float = 0.4) -> Dict
     Args:
         query: Termine di ricerca (es. "scrofe", "bovini", "residui")
         similarity_threshold: Non usato, mantenuto per compatibilita'
+        sezione: Lettera sezione opzionale (es. "A", "B") per filtrare per colonna sezione
 
     Returns:
         Dict con piani trovati e risposta formattata
     """
+    # Quando c'e' un filtro sezione, salta hybrid search (serve filtro strutturato, non semantico)
+    if sezione:
+        return _search_piani_by_sezione(query, sezione)
+
     if not query or not query.strip():
         return {"error": "Query di ricerca non specificata"}
 
@@ -99,18 +104,70 @@ def search_piani_by_topic(query: str, similarity_threshold: float = 0.4) -> Dict
         }
 
 
-def search_tool(query: str = None) -> Dict[str, Any]:
+def _search_piani_by_sezione(query: str, sezione: str) -> Dict[str, Any]:
+    """
+    Ricerca piani filtrata per sezione (colonna strutturata del DataFrame).
+    Quando l'utente chiede "piani della sezione A", usa il filtro sulla colonna sezione
+    invece della ricerca testuale nelle descrizioni.
+    """
+    try:
+        # Pulisci topic: rimuovi "sezione X" dal topic se presente
+        clean_query = None
+        if query:
+            import re
+            clean_query = re.sub(r'\bsez(?:ione|\.)\s+[A-Z]\b', '', query, flags=re.IGNORECASE).strip()
+            if not clean_query or len(clean_query) < 2:
+                clean_query = None
+
+        matches = DataRetriever.search_piani_by_db(query=clean_query, sezione=sezione)
+
+        search_label = f"sezione {sezione.upper()}"
+        if clean_query:
+            search_label = f"'{clean_query}' nella sezione {sezione.upper()}"
+
+        if not matches:
+            return {
+                "error": f"Nessun piano trovato per {search_label}",
+                "search_term": search_label,
+                "total_found": 0,
+                "search_strategy": "sezione_filter",
+                "formatted_response": f"Non ho trovato piani di monitoraggio nella **{search_label}**."
+            }
+
+        response = ResponseFormatter.format_search_results(
+            search_term=search_label,
+            matches=matches,
+            max_display=10
+        )
+
+        return {
+            "search_term": search_label,
+            "total_found": len(matches),
+            "matches": matches,
+            "search_strategy": "sezione_filter",
+            "formatted_response": response
+        }
+
+    except Exception as e:
+        return {
+            "error": f"Errore durante la ricerca per sezione: {str(e)}",
+            "search_strategy": "sezione_filter_failed"
+        }
+
+
+def search_tool(query: str = None, sezione: str = None) -> Dict[str, Any]:
     """
     Router per funzionalità di ricerca.
 
     Args:
         query: Termine di ricerca
+        sezione: Lettera sezione opzionale (es. "A", "B")
 
     Returns:
         Dict con risultati ricerca
     """
     try:
         search_func = search_piani_by_topic.func if hasattr(search_piani_by_topic, 'func') else search_piani_by_topic
-        return search_func(query)
+        return search_func(query, sezione=sezione)
     except Exception as e:
         return {"error": f"Errore in search_tool: {str(e)}"}

@@ -92,6 +92,7 @@ class FollowUpSuggestionEngine:
             "ask_top_risk_activities": self._suggest_top_risk,
             "analyze_nc_by_category": self._suggest_nc_analysis,
             "info_procedure": self._suggest_info_procedure,
+            "query_data": self._suggest_query_data,
         }
 
         handler = dispatch.get(intent)
@@ -518,6 +519,21 @@ class FollowUpSuggestionEngine:
         if len(text) <= max_len:
             return text
         return text[:max_len-3].rsplit(" ", 1)[0] + "..."
+
+    def _suggest_query_data(
+        self, slots: Dict, data: Dict
+    ) -> List[Dict[str, str]]:
+        """Suggerimenti generici per interrogazioni dati su misura."""
+        return [
+            {
+                "text": "Distribuzione controlli per ASL",
+                "query": "quanti controlli per ogni ASL?"
+            },
+            {
+                "text": "Top macroaree con più NC",
+                "query": "quali macroaree hanno più non conformità?"
+            },
+        ]
 
     def _fallback_procedure_suggestions(self) -> List[Dict[str, str]]:
         """Suggerimenti fallback quando non ci sono metadati chunk."""

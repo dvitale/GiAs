@@ -268,8 +268,8 @@ class FallbackRecoveryEngine:
 
             # Chiamata LLM con timeout
             start_time = time.time()
-            response = self.llm_client.chat(
-                [{"role": "user", "content": prompt}],
+            response = self.llm_client.query(
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=300
             )

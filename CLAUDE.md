@@ -117,6 +117,10 @@ curl -X POST http://localhost:5005/api/v1/chat \
 | `localhost:8080/gias/webchat/monitor` | GET | Monitor qualita' conversazioni |
 | `localhost:5005/api/admin/documents/reindex` | POST | Lancia re-indicizzazione RAG in background |
 | `localhost:5005/api/admin/documents/reindex/status` | GET | Stato re-indicizzazione |
+| `localhost:5005/api/admin/schema-metadata` | GET | Lista tabelle schema metadata |
+| `localhost:5005/api/admin/schema-metadata/{key}` | GET/PUT | Dettaglio/aggiornamento schema tabella |
+| `localhost:5005/api/admin/schema-metadata/reload` | POST | Ricarica catalogo schema in memoria |
+| `localhost:8080/gias/webchat/admin/schema` | GET | Pagina admin gestione schema metadata |
 
 ## Convenzioni codice
 
@@ -144,6 +148,73 @@ curl -X POST http://localhost:5005/api/v1/chat \
 - **Timeout chain**: JS (75s) > Go (60s) > Backend streaming (120s). Il client deve avere timeout maggiore del server.
 - **Health check**: il frontend verifica la disponibilita' del backend prima di ogni richiesta chat.
 - **Refactoring docs**: il piano di refactoring completo (architettura, migrazione, rollback) e' in `GiAs-llm/docs/refactoring-dialogue-manager.md`.
+
+## Metodologia SDD (Software Design Description)
+
+Il progetto adotta una metodologia di sviluppo requirement-driven basata su SDD con requisiti in notazione EARS.
+
+### Flusso di lavoro
+
+```
+Committente (Word/email)
+       ↓   /req <descrizione richiesta>
+Claude estrae + formalizza in EARS
+       ↓
+Revisione e approvazione in SDD/requirements/
+       ↓   /implement <ID requisiti>
+Claude implementa con tag # REQ: [ID]
+       ↓
+Claude aggiorna traceability.md
+```
+
+### Comandi
+
+| Comando | Scopo |
+|---------|-------|
+| `/req <descrizione>` | Analizza richiesta, propone requisiti EARS, mostra impact analysis. **Non modifica file** — attende approvazione |
+| `/implement <ID-001, ID-002>` | Implementa requisiti specificati, aggiunge `# REQ: [ID]` nel codice, aggiorna status e traceability |
+
+### Struttura SDD
+
+Ogni componente ha la propria directory SDD:
+
+```
+GiAs-llm/SDD/
+├── requirements/          # 19 file requisiti EARS (backend)
+│   ├── langgraph-pipeline.md
+│   ├── intent-classification.md
+│   ├── tool-execution.md
+│   ├── api-endpoints.md
+│   └── ...
+└── traceability.md        # Matrice tracciabilita' (387 requisiti)
+
+gchat/SDD/
+├── requirements/          # 13 file requisiti EARS (frontend)
+│   ├── server-routing.md
+│   ├── chat-ui.md
+│   ├── llm-proxy.md
+│   └── ...
+└── traceability.md        # Matrice tracciabilita' (242 requisiti)
+```
+
+### Convenzioni SDD
+
+- **Notazione EARS**: ogni requisito usa pattern WHEN/IF/WHILE/WHERE/ubiquitous
+- **ID progressivi**: prefisso per componente (LG-, IC-, TE-, API-, SR-, CU-, etc.)
+- **Tag nel codice**: `# REQ: [ID]` sulla prima riga delle funzioni che implementano un requisito
+- **Status**: DA IMPLEMENTARE → IMPLEMENTATO (aggiornato in requirements/ dopo implementazione)
+- **Assunti**: marcati con `[ASSUNTO - DA CONFERMARE]` quando la specifica e' ambigua
+- **Tracciabilita'**: ogni riga mappa ID → file sorgente → funzione/classe → status
+
+### Regole di manutenzione SDD
+
+| Modifica al codice | Azione SDD |
+|---------------------|------------|
+| Nuova funzionalita' richiesta | `/req` → approvazione → `/implement` |
+| Nuovo requisito approvato | Aggiungere in `SDD/requirements/` con ID progressivo |
+| Requisito implementato | Aggiornare status + `SDD/traceability.md` |
+| Refactoring che sposta codice | Aggiornare file/funzione in `traceability.md` |
+| Requisito rimosso | Marcare come RIMOSSO (non cancellare) |
 
 ## Mappa documentazione CLAUDE.md
 
@@ -179,6 +250,7 @@ Aggiornare il CLAUDE.md pertinente CONTESTUALMENTE alla modifica del codice:
 | Nuovo endpoint API | Root `CLAUDE.md` (tabella endpoint) |
 | Nuova convenzione di progetto | Root `CLAUDE.md` (sezione convenzioni) |
 | Modifica comandi avvio/test | Root `CLAUDE.md` (sezione comandi) |
+| Nuovo requisito implementato | `SDD/traceability.md` del componente + status in `SDD/requirements/` |
 
 ### Sincronizzazione tabella intents nel database
 

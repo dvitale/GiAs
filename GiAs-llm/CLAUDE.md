@@ -95,7 +95,7 @@ User Message
 - `ask_delayed_plans` — "piani in ritardo" senza codice piano (disambigua da `check_if_plan_delayed`)
 - `ask_nearby_priority` — pattern prossimita' geografica
 
-**Valid Intents** (20):
+**Valid Intents** (21):
 - `greet`, `goodbye`, `ask_help`
 - `ask_piano_description`, `ask_piano_stabilimenti`, `ask_piano_statistics`
 - `search_piani_by_topic`
@@ -105,6 +105,7 @@ User Message
 - `ask_establishment_history`, `ask_top_risk_activities`
 - `analyze_nc_by_category`
 - `info_procedure` (RAG su documentazione procedure operative)
+- `query_data` (interrogazione dati su misura con query builder vincolato)
 - `ask_nearby_priority` (ricerca per prossimita' geografica con geocoding)
 - `confirm_show_details`, `decline_show_details` (two-phase flow)
 - `fallback`
@@ -115,6 +116,7 @@ User Message
 - `ask_establishment_history`: almeno uno tra `[num_registrazione, partita_iva, ragione_sociale]`
 - `analyze_nc_by_category`: `[categoria]`
 - `ask_nearby_priority`: `[location]` (obbligatorio), `[radius_km]` (opzionale, default 5)
+- `query_data`: nessun slot obbligatorio (table, operation, filters, group_by estratti dal query builder LLM)
 
 **Slot fill location via LLM** (`_extract_location_with_llm`):
 - Quando il sistema chiede "Dove ti trovi?" (LAYER 1 pending slot fill), l'estrazione usa una chiamata LLM dedicata (`temperature=0.0, max_tokens=150, json_mode=True, timeout=10s`)
@@ -235,10 +237,12 @@ GiAs-llm/
 │   ├── followup_suggestions.py # Suggerimenti follow-up contestuali post-risposta
 │   ├── intent_metadata.py      # INTENT_REGISTRY con keywords, examples per intent
 │   ├── intent_cache.py         # Cache MD5+TTL per classificazioni
+│   ├── intent_metadata_service.py # Broker centrale metadati intent (singleton, DB-first)
+│   ├── schema_catalog.py       # SchemaCatalog singleton - metadati schema per prompt LLM
 │   ├── fallback_recovery.py    # Recovery 3 fasi (keyword → LLM → menu categorie)
 │   ├── workflow_strategies.py  # Strategie multi-turno, FILTER_PATTERNS, VALID_COMUNI
 │   └── workflow_validator.py   # Validazione sicurezza workflow
-├── tools/                      # Tool implementations (unchanged)
+├── tools/                      # Tool implementations
 │   ├── piano_tools.py          # @tool decorators for plan queries
 │   ├── priority_tools.py       # @tool for priority/delayed plans
 │   ├── risk_tools.py           # @tool for statistical risk analysis
@@ -247,6 +251,7 @@ GiAs-llm/
 │   ├── establishment_tools.py  # @tool for establishment history
 │   ├── search_tools.py         # @tool for hybrid semantic search
 │   ├── procedure_tools.py      # @tool RAG per procedure operative (retrieve + BM25/RRF + LLM)
+│   ├── query_builder_tools.py  # QueryDescriptor + SafeQueryExecutor per intent query_data
 │   ├── rag_cache.py            # RAGCache singleton (TTL 30min, max 200 entry)
 │   ├── proximity_tools.py      # @tool per ricerca stabilimenti per prossimità
 │   ├── geo_utils.py            # Geocoding service (Nominatim + SimpleRequestsAdapter)
@@ -325,6 +330,9 @@ GiAs-llm/
 │   └── *.py                   # Performance benchmarking
 ├── debug/                      # Debug scripts
 │   └── *.py                   # Debugging utilities
+├── SDD/                        # Software Design Description (requisiti EARS)
+│   ├── requirements/          # 19 file requisiti per componente
+│   └── traceability.md        # Matrice tracciabilita' (409 requisiti)
 ├── docs/                       # Documentation
 │   ├── CLAUDE.md              # This file
 │   ├── README.md              # Project overview
@@ -463,6 +471,40 @@ Il sistema RAG gestisce l'intent `info_procedure` per rispondere a domande su pr
 - `DataRetriever.search_procedure_docs()` restituisce `parent_content` quando disponibile (backward-compatible: `payload.get("parent_content", payload.get("content"))`)
 - Configurazione in `config.json` sezione `rag_documents`: `parent_chunk_size`, `parent_chunk_overlap`
 - Re-indicizzazione: `python3 tools/indexing/build_docs_index.py` (richiesta dopo modifica parametri)
+
+## Schema-Aware LLM e Query Data
+
+Il sistema rende accessibili all'LLM i metadati strutturali delle 7 tabelle applicative per migliorare la classificazione e abilitare interrogazioni ad-hoc.
+
+### Schema Catalog (`orchestrator/schema_catalog.py`)
+
+- **Singleton con lazy loading**: pattern identico a `IntentMetadataService` (DB-first, fallback statico)
+- **Tabella DB**: `schema_metadata` (table_key PK, columns JSONB, relationships JSONB, valid_values JSONB, pii_columns TEXT[])
+- **`get_compact_catalog()`**: ~300 token, iniettato nel prompt classificazione come "DATI DISPONIBILI"
+- **`get_full_schema()`**: schema completo per il prompt del query builder (seconda chiamata LLM)
+- **`get_pii_columns()`** / **`get_all_pii_columns()`**: blacklist colonne PII
+
+### Intent `query_data` (`tools/query_builder_tools.py`)
+
+Copre domande su dati tabulari non mappabili ai 20 intent specifici (es. "quanti controlli per ASL nel 2025?").
+
+**Flusso**:
+1. Router classifica `query_data` (confidence max 0.80)
+2. `query_data_tool()` chiama LLM con schema completo → Operation Descriptor JSON
+3. `QueryDescriptor` (Pydantic) valida struttura
+4. `SafeQueryExecutor._preprocess_filters()` traduce alias colonne (anno→data_inizio_controllo, asl→descrizione_asl)
+5. Esecuzione su DataFrame in memoria (pandas, no SQL diretto)
+6. Formattazione risultato come tabella markdown
+
+**Sicurezza**: whitelist tabelle (7), whitelist operazioni (7), whitelist operatori filtro (7), blacklist PII, limite 100 righe.
+
+**Operazioni supportate**: `count`, `sum`, `mean`, `filter`, `group_count`, `top_n`, `distinct`
+
+### Admin Schema Metadata
+
+- **Pagina**: `/gias/webchat/admin/schema` (template `admin_schema.html`)
+- **Endpoint API**: GET/PUT `/api/admin/schema-metadata/{key}`, POST `/api/admin/schema-metadata/reload`
+- **Pattern**: identico a pagina admin RAG (self-contained, dark theme)
 
 ## Data Source Architecture
 
@@ -647,14 +689,14 @@ When writing prompts or responses, use correct Italian veterinary terms:
 - Multi-model LLM support with performance profiles
 - Hybrid search system with intelligent routing
 - Vector database with 730 indexed plans + collection `intent_examples` per few-shot retrieval
-- 20-intent classification LLM-first con confidence reale e few-shot dinamico
+- 21-intent classification LLM-first con confidence reale e few-shot dinamico (incl. query_data schema-aware)
 - **NLU migliorato**: prompt V2 con disambiguazione, `MINIMAL_HEURISTICS=True`, `FewShotRetriever` Qdrant
 - Test suite v4.0: unit/integration/e2e/legacy (100% intent coverage)
 - FastAPI deployment con API V1 nativa
 - 323,146 veterinary records processed
 - **Configurable risk predictor** (ML or statistical) via `GIAS_RISK_PREDICTOR`
 
-**Last Updated**: February 2026 (LLM multi-provider, singleton Qdrant/embedding, test suite v4.0, CORS proxy chat-log)
+**Last Updated**: March 2026 (Schema-Aware LLM, intent query_data, admin schema metadata, fallback ATT indicatori)
 
 ## Regole di manutenzione
 
@@ -670,3 +712,5 @@ Quando modifichi il backend, aggiorna questo file se tocchi:
 - Configurazione risk predictor → aggiornare sezione "Risk Predictor Configuration"
 - `CLASSIFICATION_SYSTEM_PROMPT` o heuristics essenziali → aggiornare sezione "Intent Classification"
 - `MINIMAL_HEURISTICS` flag → aggiornare sezione "Intent Classification"
+- Nuovo requisito implementato → aggiornare `SDD/traceability.md` e status in `SDD/requirements/`
+- Nuova funzione con `# REQ:` tag → verificare corrispondenza in traceability

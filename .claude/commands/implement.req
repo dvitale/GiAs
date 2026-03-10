@@ -1,0 +1,23 @@
+Implementa i requisiti indicati.
+
+1. Leggi i requisiti specificati in SDD/requirements/
+2. Per ogni requisito:
+   - Individua i file da creare o modificare
+   - Aggiungi # REQ: [ID] sulla prima riga di ogni funzione che lo implementa
+   - Scrivi i test corrispondenti
+3. Aggiorna Status da DA IMPLEMENTARE a IMPLEMENTATO in SDD/requirements/
+4. Aggiorna SDD/traceability.md con le nuove righe
+5. Non implementare nulla che non sia coperto dai requisiti indicati
+
+Requisiti da implementare: $ARGUMENTS
+```
+
+Uso: `/implement CONV-007, CONV-008`
+
+---
+
+Con questi due comandi il workflow diventa:
+```
+/req "descrizione informale"     → proposta EARS
+tu approvi e salvi in requirements/
+/implement ID-001, ID-002        → codice + traceability aggiornata

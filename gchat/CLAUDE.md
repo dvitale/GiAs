@@ -63,6 +63,10 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
   - `analytics.html`: Dashboard analytics chat
   - `monitor.html`: Monitor qualita' conversazioni
 
+- **SDD/**: Software Design Description (requisiti EARS)
+  - `requirements/`: 13 file requisiti per componente (SR-, SM-, LP-, CU-, etc.)
+  - `traceability.md`: Matrice tracciabilita' (242 requisiti)
+
 - **config/**: File di configurazione
   - `config.json`: Configurazione server, LLM backend, logging, UI
 
@@ -1012,3 +1016,5 @@ Quando modifichi gchat, aggiorna questo file se tocchi:
 - Template HTML → aggiornare sezione "Struttura del Progetto" (template/)
 - Route proxy → aggiornare sezione "Proxy CORS per API Chat-Log"
 - Session/parametri → aggiornare sezione "Gestione Contesto Utente"
+- Nuovo requisito implementato → aggiornare `SDD/traceability.md` e status in `SDD/requirements/`
+- Nuova funzione con `# REQ:` tag → verificare corrispondenza in traceability

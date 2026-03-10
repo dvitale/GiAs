@@ -280,6 +280,30 @@ func main() {
 		ProxyChatLogAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
 	})
 
+	// Admin Schema Metadata Management Page
+	api.GET("/admin/schema", func(c *gin.Context) {
+		log.Printf("ADMIN_SCHEMA_PAGE_REQUEST: client_ip=%s", c.ClientIP())
+		templateData := gin.H{
+			"title":    "GIAS Gestione Schema Metadata",
+			"basePath": basePath,
+		}
+		c.HTML(http.StatusOK, "admin_schema.html", templateData)
+	})
+
+	// Admin Schema Metadata API proxy
+	api.GET("/api/admin/schema-metadata", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.GET("/api/admin/schema-metadata/:key", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.PUT("/api/admin/schema-metadata/:key", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+	api.POST("/api/admin/schema-metadata/reload", func(c *gin.Context) {
+		ProxyAdminAPI(c, config.LLMServer.URL, config.LLMServer.Timeout)
+	})
+
 	// Admin RAG Management Page
 	api.GET("/admin/rag", func(c *gin.Context) {
 		log.Printf("ADMIN_RAG_PAGE_REQUEST: client_ip=%s", c.ClientIP())

@@ -78,10 +78,18 @@ class DataRetriever:
         if piani_df.empty or not piano_id:
             return None
 
+        pid = piano_id.upper().strip()
         piano_rows = piani_df[
-            (piani_df["alias"].str.upper() == piano_id.upper()) |
-            (piani_df["alias_indicatore"].str.upper() == piano_id.upper())
+            (piani_df["alias"].str.upper() == pid) |
+            (piani_df["alias_indicatore"].str.upper() == pid)
         ]
+
+        # Fallback: alias_indicatore ha prefisso "ATT " (es. "ATT AO5_A")
+        # Se l'utente cerca "AO5_A", prova con prefisso
+        if piano_rows.empty and not pid.startswith("ATT "):
+            piano_rows = piani_df[
+                piani_df["alias_indicatore"].str.upper() == f"ATT {pid}"
+            ]
 
         return piano_rows if not piano_rows.empty else None
 
@@ -162,29 +170,54 @@ class DataRetriever:
         return result
 
     @staticmethod
-    def search_piani_by_db(query: str) -> List[Dict[str, Any]]:
+    def search_piani_by_db(query: str, sezione: str = None) -> List[Dict[str, Any]]:
         """
         Cerca piani per keyword direttamente sul DataFrame piani_monitoraggio in memoria.
         Equivalente a SQL ILIKE '%query%' su colonne descrizione e descrizione-2.
 
         Args:
             query: Termine di ricerca (es. "scrofe", "bovini", "latte")
+            sezione: Lettera sezione opzionale (es. "A", "B") per filtrare per colonna sezione
 
         Returns:
             Lista di dict con chiavi: sezione, alias, alias_indicatore, descrizione, descrizione_2, campionamento
         """
-        if piani_df.empty or not query or not query.strip():
+        if piani_df.empty:
             return []
 
-        search_term = query.strip()
-
-        # Cerca in descrizione e descrizione-2 (case-insensitive)
-        mask_desc = piani_df['descrizione'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
-
         desc2_col = 'descrizione-2' if 'descrizione-2' in piani_df.columns else 'descrizione_2'
-        mask_desc2 = piani_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
 
-        matched = piani_df[mask_desc | mask_desc2]
+        # Filtro per sezione (colonna sezione del DataFrame)
+        if sezione:
+            sezione_upper = sezione.strip().upper()
+            # Matcha esattamente "SEZIONE A" (non "SEZIONE AO"), word boundary con regex
+            sezione_mask = piani_df['sezione'].fillna('').str.upper().str.match(
+                rf'^SEZIONE {re.escape(sezione_upper)}(?:\s|$)', na=False
+            )
+            filtered_df = piani_df[sezione_mask]
+
+            if not query or not query.strip():
+                # Solo filtro per sezione, senza keyword
+                matched = filtered_df
+            else:
+                # Filtro per sezione + keyword nelle descrizioni
+                search_term = query.strip()
+                mask_desc = filtered_df['descrizione'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+                mask_desc2 = filtered_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+                matched = filtered_df[mask_desc | mask_desc2]
+                # Se keyword non trova nulla nella sezione, mostra tutti i piani della sezione
+                if matched.empty:
+                    matched = filtered_df
+        else:
+            if not query or not query.strip():
+                return []
+            search_term = query.strip()
+
+            # Cerca in descrizione e descrizione-2 (case-insensitive)
+            mask_desc = piani_df['descrizione'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+            mask_desc2 = piani_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+
+            matched = piani_df[mask_desc | mask_desc2]
 
         if matched.empty:
             return []
