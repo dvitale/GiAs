@@ -777,8 +777,15 @@ def nearby_priority_tool(state: Dict[str, Any], event_callback=None, **_) -> Dic
     radius_km = state["slots"].get("radius_km", 5.0)
     asl = state["metadata"].get("asl")
 
+    # REQ: [GP-13] Use device GPS coordinates if available
+    device_lat = state["metadata"].get("latitude")
+    device_lon = state["metadata"].get("longitude")
+
     nearby_func = _unwrap_tool(get_nearby_priority)
-    result = nearby_func(location=location, radius_km=radius_km, asl=asl)
+    result = nearby_func(
+        location=location, radius_km=radius_km, asl=asl,
+        device_lat=device_lat, device_lon=device_lon
+    )
 
     # Two-phase check se troppi risultati
     if isinstance(result, dict):

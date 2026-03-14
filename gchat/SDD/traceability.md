@@ -1,8 +1,8 @@
 # Matrice di Tracciabilita' — Frontend (gchat)
 
 **Generata**: 2026-03-09
-**Requisiti totali**: 242
-**Tracciati**: 242 | **Non tracciati**: 0
+**Requisiti totali**: 256
+**Tracciati**: 256 | **Non tracciati**: 0
 
 ## Legenda
 
@@ -310,3 +310,23 @@
 | PD-08 | GetPersonaleByUserID lookup | `app/personale.go` | `GetPersonaleByUserID()` | ✅ |
 | PD-NF01 | Logging cache con prefisso PERSONALE_CACHE | `app/personale.go` | `LoadPersonaleData()` (log.Printf) | ✅ |
 | PD-NF02 | Concorrenza sicura sync.RWMutex | `app/personale.go` | `personaleCache` struct | ✅ |
+
+## pwa-geolocation
+
+| ID | Descrizione | File | Funzione/Classe | Status |
+|----|-------------|------|-----------------|--------|
+| PG-01 | PWA manifest con icone e display standalone | `statics/manifest.webmanifest` | — | ✅ |
+| PG-02 | Meta tag PWA in index.html | `template/index.html` | `<head>` section | ✅ |
+| PG-03 | Service Worker cache-first/network-first | `statics/sw.js` | fetch event handler | ✅ |
+| PG-04 | Pagina fallback offline | `statics/offline.html`, `statics/sw.js` | fetch navigate fallback | ✅ |
+| PG-05 | Install banner configurabile con auto-dismiss | `statics/js/chat.js`, `template/index.html` | `ChatBot.initPWAInstall()` | ✅ |
+| PG-06 | Cache versionata per aggiornamenti SW | `statics/sw.js` | `CACHE_VERSION`, activate handler | ✅ |
+| PG-NF01 | Caricamento < 2s da cache | `statics/sw.js` | cache-first strategy | ✅ |
+| PG-07 | GPS on-demand ad ogni invio messaggio | `statics/js/chat.js` | `ChatBot.acquireGPS()` | ✅ |
+| PG-08 | lat/lon/accuracy nel payload chat | `statics/js/chat.js` | `ChatBot.sendToServer()`, `ChatBot.connectSSE()` | ✅ |
+| PG-09 | Funzionamento senza GPS | `statics/js/chat.js` | `ChatBot.acquireGPS()` catch/timeout | ✅ |
+| PG-10 | Indicatore GPS nell'header | `statics/js/chat.js`, `statics/css/style.css` | `ChatBot.updateGPSIndicator()` | ✅ |
+| PG-11 | Campi GPS in struct Go | `app/llm_client.go` | `ChatRequest`, `NativeUserMetadata` | ✅ |
+| PG-12 | Inoltro GPS al backend Python | `app/llm_client.go` | `HandleChat()`, `HandleChatStream()`, `SendToLLMV1()`, `SendToLLMStreamV1()` | ✅ |
+| PG-13 | GPS non in sessione cookie (GDPR) | `app/llm_client.go` | `HandleChat()` context map | ✅ |
+| PG-14 | GPS non loggato né persistito | `app/llm_client.go` | log.Printf statements (GPS excluded) | ✅ |

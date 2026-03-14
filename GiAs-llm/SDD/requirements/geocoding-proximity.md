@@ -72,3 +72,15 @@
 ### GP-NF04 Pulizia warning nell'output
 - **Pattern EARS**: QUANDO l'indirizzo risolto contiene un warning interno ("CENTRO CITTA'"), il sistema DEVE pulire il testo prima di mostrarlo all'utente nel formatter, estraendo indirizzo e comune dal warning.
 - **Status**: IMPLEMENTATO
+
+### GP-13 GPS device diretto per proximity
+- **Pattern EARS**: QUANDO i metadata contengono `latitude`/`longitude` E l'intent e' `ask_nearby_priority`, ALLORA il tool `nearby_priority` DEVE usare le coordinate GPS del device direttamente, SENZA invocare il GeocodingService per geocodificare una stringa testuale.
+- **Status**: IMPLEMENTATO
+
+### GP-14 Slot location preservato con GPS
+- **Pattern EARS**: SE le coordinate GPS del device sono disponibili nei metadata, ALLORA lo slot `location` DEVE essere comunque estratto dal messaggio per display, ma la ricerca di prossimita' DEVE usare le coordinate GPS.
+- **Status**: IMPLEMENTATO
+
+### GP-15 Validazione bounding box Campania
+- **Pattern EARS**: SE le coordinate GPS del device sono fuori dal territorio della Campania (lat 39.9-41.5, lon 13.7-15.8), ALLORA il sistema DEVE ignorare le coordinate e richiedere una localizzazione testuale.
+- **Status**: IMPLEMENTATO

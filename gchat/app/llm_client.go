@@ -33,15 +33,18 @@ var (
 )
 
 type ChatRequest struct {
-	Message       string `json:"message"`
-	Sender        string `json:"sender"`
-	ASL           string `json:"asl,omitempty"`
-	ASLID         string `json:"asl_id,omitempty"`
-	UserID        string `json:"user_id,omitempty"`
-	CodiceFiscale string `json:"codice_fiscale,omitempty"`
-	Username      string `json:"username,omitempty"`
-	UOC           string `json:"uoc,omitempty"` // Unità Operativa Complessa
-	UOS           string `json:"uos,omitempty"` // Unità Operativa Semplice
+	Message       string  `json:"message"`
+	Sender        string  `json:"sender"`
+	ASL           string  `json:"asl,omitempty"`
+	ASLID         string  `json:"asl_id,omitempty"`
+	UserID        string  `json:"user_id,omitempty"`
+	CodiceFiscale string  `json:"codice_fiscale,omitempty"`
+	Username      string  `json:"username,omitempty"`
+	UOC           string  `json:"uoc,omitempty"`     // Unità Operativa Complessa
+	UOS           string  `json:"uos,omitempty"`     // Unità Operativa Semplice
+	Latitude      float64 `json:"latitude,omitempty"` // REQ: [PG-11] GPS device
+	Longitude     float64 `json:"longitude,omitempty"`
+	GPSAccuracyM  float64 `json:"gps_accuracy_m,omitempty"`
 }
 
 type ChatResponse struct {
@@ -160,13 +163,16 @@ func logCurlCommand(endpoint string, curlCmd string, requestData map[string]inte
 }
 
 type NativeUserMetadata struct {
-	ASL           string `json:"asl,omitempty"`
-	ASLID         string `json:"asl_id,omitempty"`
-	UserID        string `json:"user_id,omitempty"`
-	CodiceFiscale string `json:"codice_fiscale,omitempty"`
-	Username      string `json:"username,omitempty"`
-	UOC           string `json:"uoc,omitempty"`
-	UOS           string `json:"uos,omitempty"`
+	ASL           string  `json:"asl,omitempty"`
+	ASLID         string  `json:"asl_id,omitempty"`
+	UserID        string  `json:"user_id,omitempty"`
+	CodiceFiscale string  `json:"codice_fiscale,omitempty"`
+	Username      string  `json:"username,omitempty"`
+	UOC           string  `json:"uoc,omitempty"`
+	UOS           string  `json:"uos,omitempty"`
+	Latitude      float64 `json:"latitude,omitempty"`      // REQ: [PG-12] GPS device
+	Longitude     float64 `json:"longitude,omitempty"`
+	GPSAccuracyM  float64 `json:"gps_accuracy_m,omitempty"`
 }
 
 type NativeChatMessage struct {
@@ -246,6 +252,16 @@ func SendToLLMV1(message, sender, llmServerURL string, timeout int, context map[
 	if v, ok := context["uos"].(string); ok {
 		meta.UOS = v
 	}
+	// REQ: [PG-12] GPS coordinates
+	if v, ok := context["latitude"].(float64); ok {
+		meta.Latitude = v
+	}
+	if v, ok := context["longitude"].(float64); ok {
+		meta.Longitude = v
+	}
+	if v, ok := context["gps_accuracy_m"].(float64); ok {
+		meta.GPSAccuracyM = v
+	}
 
 	chatMsg := NativeChatMessage{
 		Sender:   sender,
@@ -320,6 +336,16 @@ func SendToLLMStreamV1(message, sender, llmServerURL string, timeout int, contex
 	}
 	if v, ok := context["uos"].(string); ok {
 		meta.UOS = v
+	}
+	// REQ: [PG-12] GPS coordinates
+	if v, ok := context["latitude"].(float64); ok {
+		meta.Latitude = v
+	}
+	if v, ok := context["longitude"].(float64); ok {
+		meta.Longitude = v
+	}
+	if v, ok := context["gps_accuracy_m"].(float64); ok {
+		meta.GPSAccuracyM = v
 	}
 
 	chatMsg := NativeChatMessage{
@@ -521,6 +547,18 @@ func HandleChat(c *gin.Context) {
 
 	config := LoadConfig()
 
+	// Require user_id + asl metadata
+	hasASL := req.ASL != "" || req.ASLID != ""
+	if req.UserID == "" || !hasASL {
+		log.Printf("CHAT_DENIED: missing required metadata - client_ip=%s, user_id=%s, asl=%s, asl_id=%s",
+			clientIP, req.UserID, req.ASL, req.ASLID)
+		c.JSON(http.StatusForbidden, ChatResponse{
+			Status: "error",
+			Error:  "Accesso consentito solo da Gisa",
+		})
+		return
+	}
+
 	if req.Sender == "" {
 		req.Sender = "user"
 	}
@@ -578,6 +616,14 @@ func HandleChat(c *gin.Context) {
 	}
 	if uos != "" {
 		context["uos"] = uos
+	}
+	// REQ: [PG-12] GPS coordinates (non loggate per GDPR - PG-14)
+	if req.Latitude != 0 && req.Longitude != 0 {
+		context["latitude"] = req.Latitude
+		context["longitude"] = req.Longitude
+		if req.GPSAccuracyM != 0 {
+			context["gps_accuracy_m"] = req.GPSAccuracyM
+		}
 	}
 
 	// Check LLM server health before sending message
@@ -652,6 +698,18 @@ func HandleChatStream(c *gin.Context) {
 
 	config := LoadConfig()
 
+	// Require user_id + asl metadata
+	hasASL := req.ASL != "" || req.ASLID != ""
+	if req.UserID == "" || !hasASL {
+		log.Printf("CHAT_STREAM_DENIED: missing required metadata - client_ip=%s, user_id=%s, asl=%s, asl_id=%s",
+			clientIP, req.UserID, req.ASL, req.ASLID)
+		c.JSON(http.StatusForbidden, ChatResponse{
+			Status: "error",
+			Error:  "Accesso consentito solo da Gisa",
+		})
+		return
+	}
+
 	if req.Sender == "" {
 		req.Sender = "user"
 	}
@@ -709,6 +767,14 @@ func HandleChatStream(c *gin.Context) {
 	}
 	if uos != "" {
 		context["uos"] = uos
+	}
+	// REQ: [PG-12] GPS coordinates (non loggate per GDPR - PG-14)
+	if req.Latitude != 0 && req.Longitude != 0 {
+		context["latitude"] = req.Latitude
+		context["longitude"] = req.Longitude
+		if req.GPSAccuracyM != 0 {
+			context["gps_accuracy_m"] = req.GPSAccuracyM
+		}
 	}
 
 	// Check LLM server health

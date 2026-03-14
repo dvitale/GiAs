@@ -39,7 +39,9 @@ def get_nearby_priority(
     location: str,
     radius_km: float = 5.0,
     asl: Optional[str] = None,
-    limit: int = 50
+    limit: int = 50,
+    device_lat: Optional[float] = None,
+    device_lon: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Trova stabilimenti mai controllati vicino a una posizione geografica.
@@ -52,48 +54,70 @@ def get_nearby_priority(
         radius_km: Raggio di ricerca in km (default 5)
         asl: Filtra per ASL specifica (opzionale)
         limit: Numero massimo di risultati (default 50)
+        device_lat: Latitudine GPS device (opzionale, REQ: [GP-13])
+        device_lon: Longitudine GPS device (opzionale)
 
     Returns:
         Dict con stabilimenti trovati e metadati ricerca
     """
-    if not location or not location.strip():
-        return {
-            "error": "location_missing",
-            "formatted_response": "Per favore specifica un indirizzo. Esempio: 'stabilimenti vicino a Piazza Garibaldi, Napoli'"
-        }
-
-    location = location.strip()
-
-    # Geocodifica l'indirizzo
-    try:
-        geocoder = get_geocoding_service()
-        geocode_result = geocoder.geocode_with_address(location)
-        center_lat, center_lon, resolved_address = geocode_result
-    except AddressNotFoundError:
-        return {
-            "error": "address_not_found",
-            "location": location,
-            "formatted_response": (
-                f"Non ho trovato l'indirizzo **{location}**. "
-                f"Prova a specificare meglio (es. aggiungi città o provincia)."
+    # REQ: [GP-13] Use device GPS directly if available
+    use_device_gps = False
+    if device_lat is not None and device_lon is not None:
+        # REQ: [GP-15] Validate coordinates are within Campania bounding box
+        if 39.9 <= device_lat <= 41.5 and 13.7 <= device_lon <= 15.8:
+            center_lat, center_lon = device_lat, device_lon
+            resolved_address = f"Posizione GPS ({device_lat:.4f}, {device_lon:.4f})"
+            use_device_gps = True
+            import logging
+            logging.getLogger(__name__).info(
+                f"[nearby_priority] Using device GPS: ({device_lat:.4f}, {device_lon:.4f}), skipping geocoding"
             )
-        }
-    except GeocodingTimeoutError:
-        return {
-            "error": "geocoding_timeout",
-            "location": location,
-            "formatted_response": "Il servizio di geolocalizzazione non risponde. Riprova tra qualche secondo."
-        }
-    except GeocodingError as e:
-        return {
-            "error": "geocoding_error",
-            "location": location,
-            "formatted_response": f"Errore durante la geolocalizzazione: {str(e)}"
-        }
+        else:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"[nearby_priority] Device GPS ({device_lat}, {device_lon}) outside Campania, ignoring"
+            )
+
+    if not use_device_gps:
+        if not location or not location.strip():
+            return {
+                "error": "location_missing",
+                "formatted_response": "Per favore specifica un indirizzo. Esempio: 'stabilimenti vicino a Piazza Garibaldi, Napoli'"
+            }
+
+        location = location.strip()
+
+        # Geocodifica l'indirizzo
+        try:
+            geocoder = get_geocoding_service()
+            geocode_result = geocoder.geocode_with_address(location)
+            center_lat, center_lon, resolved_address = geocode_result
+        except AddressNotFoundError:
+            return {
+                "error": "address_not_found",
+                "location": location,
+                "formatted_response": (
+                    f"Non ho trovato l'indirizzo **{location}**. "
+                    f"Prova a specificare meglio (es. aggiungi città o provincia)."
+                )
+            }
+        except GeocodingTimeoutError:
+            return {
+                "error": "geocoding_timeout",
+                "location": location,
+                "formatted_response": "Il servizio di geolocalizzazione non risponde. Riprova tra qualche secondo."
+            }
+        except GeocodingError as e:
+            return {
+                "error": "geocoding_error",
+                "location": location,
+                "formatted_response": f"Errore durante la geolocalizzazione: {str(e)}"
+            }
 
     # Verifica se la location è nel territorio dell'ASL dell'utente
+    # Skip se usiamo GPS device (già validato nel bounding box Campania - GP-15)
     # Mapping ASL -> province di competenza
-    if asl:
+    if asl and not use_device_gps:
         asl_province_map = {
             'NAPOLI 1 CENTRO': ['napoli'],
             'NAPOLI 2 NORD': ['napoli'],

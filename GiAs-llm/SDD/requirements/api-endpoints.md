@@ -163,3 +163,7 @@
 ### API-NF09 Formato who per chat_log
 - **Pattern EARS**: Il sistema DEVE comporre il campo who nel formato "asl-user_id-codice_fiscale" concatenando i valori disponibili con separatore trattino, usando "anonymous" se nessun campo e' disponibile.
 - **Status**: IMPLEMENTATO
+
+### API-10 Campi GPS in UserMetadata
+- **Pattern EARS**: Il modello `UserMetadata` in `app/models.py` DEVE includere i campi opzionali `latitude: Optional[float]`, `longitude: Optional[float]`, `gps_accuracy_m: Optional[float]` per ricevere coordinate GPS dal device dell'utente.
+- **Status**: IMPLEMENTATO

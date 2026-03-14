@@ -34,13 +34,26 @@ class ChatBot {
         // Unique sender ID per session
         this.senderId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
+        // GPS state (REQ: [PG-07])
+        this.userLocation = null;
+        this.gpsStatus = 'unknown'; // unknown, active, denied, unavailable
+
         // Initialize
         this.initializeEventListeners();
         this.initializeTheme();
         this.initLogoDebugLink();
+
+        // Check required metadata before enabling chat
+        if (!this.hasRequiredMetadata()) {
+            this.showAccessDenied();
+            return;
+        }
+
         this.setGreeting();
         this.loadPredefinedQuestions();
         this.initAccessibility();
+        this.initGPS();
+        this.initPWAInstall();
     }
 
     // =========================================================================
@@ -315,6 +328,9 @@ class ChatBot {
     }
 
     async sendToServer(message) {
+        // REQ: [PG-07] Acquire GPS on-demand
+        const gps = await this.acquireGPS();
+
         const payload = {
             message: message,
             sender: this.senderId
@@ -329,6 +345,13 @@ class ChatBot {
             if (window.queryParams.user_id) payload.user_id = window.queryParams.user_id;
             if (window.queryParams.codice_fiscale) payload.codice_fiscale = window.queryParams.codice_fiscale;
             if (window.queryParams.username) payload.username = window.queryParams.username;
+        }
+
+        // REQ: [PG-08] Include GPS if available
+        if (gps) {
+            payload.latitude = gps.latitude;
+            payload.longitude = gps.longitude;
+            payload.gps_accuracy_m = gps.accuracy;
         }
 
         const controller = new AbortController();
@@ -1059,6 +1082,9 @@ ${cleanAnswer}
     }
 
     async connectSSE(message, thinkingDiv) {
+        // REQ: [PG-07] Acquire GPS on-demand
+        const gps = await this.acquireGPS();
+
         const payload = {
             message: message,
             sender: this.senderId,
@@ -1068,6 +1094,13 @@ ${cleanAnswer}
             codice_fiscale: window.queryParams?.codice_fiscale,
             username: window.queryParams?.username
         };
+
+        // REQ: [PG-08] Include GPS if available
+        if (gps) {
+            payload.latitude = gps.latitude;
+            payload.longitude = gps.longitude;
+            payload.gps_accuracy_m = gps.accuracy;
+        }
 
         const response = await fetch(window.basePath + '/chat/stream', {
             method: 'POST',
@@ -1171,6 +1204,177 @@ ${cleanAnswer}
     escapeHtml(text) {
         const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
         return text.replace(/[&<>"']/g, (m) => map[m]);
+    }
+
+    // =========================================================================
+    // Access Control — Required Metadata
+    // =========================================================================
+
+    hasRequiredMetadata() {
+        const p = window.queryParams;
+        if (!p) return false;
+        const hasUser = p.user_id && p.user_id !== 'null';
+        const hasAsl = (p.asl_name && p.asl_name !== 'null') ||
+                       (p.asl_id && p.asl_id !== 'null');
+        return hasUser && hasAsl;
+    }
+
+    showAccessDenied() {
+        // Hide welcome content and chat
+        const welcomeContent = this.welcomeScreen?.querySelector('.welcome-content');
+        if (welcomeContent) welcomeContent.style.display = 'none';
+        if (this.chatScreen) this.chatScreen.style.display = 'none';
+
+        // Show access denied message in welcome screen
+        if (this.welcomeScreen) {
+            this.welcomeScreen.classList.remove('hidden');
+            const deniedDiv = document.createElement('div');
+            deniedDiv.className = 'access-denied';
+            deniedDiv.innerHTML = `
+                <div class="access-denied-icon">&#x1F6AB;</div>
+                <h2>Accesso consentito solo da Gisa</h2>
+            `;
+            this.welcomeScreen.appendChild(deniedDiv);
+        }
+
+        // Disable all inputs
+        if (this.messageInput) this.messageInput.disabled = true;
+        if (this.chatMessageInput) this.chatMessageInput.disabled = true;
+        if (this.sendButton) this.sendButton.disabled = true;
+        if (this.chatSendButton) this.chatSendButton.disabled = true;
+    }
+
+    // =========================================================================
+    // GPS Geolocation (REQ: [PG-07..PG-10])
+    // =========================================================================
+
+    initGPS() {
+        const indicator = document.getElementById('gpsIndicator');
+        if (!navigator.geolocation) {
+            this.gpsStatus = 'unavailable';
+            return;
+        }
+        // Probe permission state without triggering prompt
+        if (navigator.permissions) {
+            navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+                if (result.state === 'granted') {
+                    this.gpsStatus = 'active';
+                    this.updateGPSIndicator();
+                } else if (result.state === 'denied') {
+                    this.gpsStatus = 'denied';
+                    this.updateGPSIndicator();
+                }
+                // 'prompt' → will be requested on first sendMessage
+                result.addEventListener('change', () => {
+                    if (result.state === 'granted') this.gpsStatus = 'active';
+                    else if (result.state === 'denied') this.gpsStatus = 'denied';
+                    this.updateGPSIndicator();
+                });
+            });
+        }
+    }
+
+    updateGPSIndicator() {
+        const indicator = document.getElementById('gpsIndicator');
+        if (!indicator) return;
+        if (this.gpsStatus === 'active') {
+            indicator.style.display = 'inline-flex';
+            indicator.style.color = '#10b981';
+            indicator.title = 'GPS attivo';
+        } else if (this.gpsStatus === 'denied') {
+            indicator.style.display = 'inline-flex';
+            indicator.style.color = '#94a3b8';
+            indicator.title = 'GPS negato';
+        } else {
+            indicator.style.display = 'none';
+        }
+    }
+
+    // REQ: [PG-07] Acquire GPS on-demand with short timeout
+    acquireGPS() {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                this.gpsStatus = 'unavailable';
+                resolve(null);
+                return;
+            }
+            const timeout = setTimeout(() => resolve(null), 5000);
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    clearTimeout(timeout);
+                    this.gpsStatus = 'active';
+                    this.userLocation = {
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy
+                    };
+                    this.updateGPSIndicator();
+                    resolve(this.userLocation);
+                },
+                (err) => {
+                    clearTimeout(timeout);
+                    if (err.code === err.PERMISSION_DENIED) {
+                        this.gpsStatus = 'denied';
+                    }
+                    this.updateGPSIndicator();
+                    resolve(null);
+                },
+                { enableHighAccuracy: true, timeout: 4500, maximumAge: 60000 }
+            );
+        });
+    }
+
+    // =========================================================================
+    // PWA Install Banner (REQ: [PG-05])
+    // =========================================================================
+
+    initPWAInstall() {
+        this.deferredPrompt = null;
+        const banner = document.getElementById('pwaInstallBanner');
+        const installBtn = document.getElementById('pwaInstallBtn');
+        const dismissBtn = document.getElementById('pwaInstallDismiss');
+        const msgEl = document.getElementById('pwaInstallMessage');
+
+        if (!banner || !installBtn) return;
+
+        // Set message from config
+        if (msgEl && window.pwaConfig && window.pwaConfig.installMessage) {
+            msgEl.textContent = window.pwaConfig.installMessage;
+        }
+
+        // Check if user dismissed in this session
+        if (localStorage.getItem('pwa_install_dismissed') === 'true') return;
+
+        // Check if already installed (standalone mode)
+        if (window.matchMedia('(display-mode: standalone)').matches) return;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            this.deferredPrompt = e;
+            banner.style.display = 'flex';
+        });
+
+        installBtn.addEventListener('click', async () => {
+            if (!this.deferredPrompt) return;
+            this.deferredPrompt.prompt();
+            const result = await this.deferredPrompt.userChoice;
+            if (result.outcome === 'accepted') {
+                // Auto-dismiss after configured timeout
+                const timeoutSecs = (window.pwaConfig && window.pwaConfig.installTimeoutSecs) || 8;
+                setTimeout(() => { banner.style.display = 'none'; }, timeoutSecs * 1000);
+            }
+            this.deferredPrompt = null;
+        });
+
+        dismissBtn.addEventListener('click', () => {
+            banner.style.display = 'none';
+            localStorage.setItem('pwa_install_dismissed', 'true');
+        });
+
+        window.addEventListener('appinstalled', () => {
+            banner.style.display = 'none';
+            this.deferredPrompt = null;
+        });
     }
 }
 

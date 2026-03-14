@@ -126,6 +126,18 @@ func main() {
 	api := r.Group(basePath)
 	api.Static("/static", "./statics")
 
+	// REQ: [PG-01] PWA: serve manifest and service worker from scope root
+	api.GET("/manifest.webmanifest", func(c *gin.Context) {
+		c.File("./statics/manifest.webmanifest")
+	})
+	api.GET("/sw.js", func(c *gin.Context) {
+		c.Header("Service-Worker-Allowed", basePath+"/")
+		c.File("./statics/sw.js")
+	})
+	api.GET("/offline.html", func(c *gin.Context) {
+		c.File("./statics/offline.html")
+	})
+
 	// Main page handler - supports both GET (querystring), POST (JSON body), and session
 	indexHandler := func(c *gin.Context) {
 		// Merge parameters: Session + Query + POST (priority: POST > Query > Session)
@@ -155,6 +167,8 @@ func main() {
 			"basePath":             basePath,
 			"transcriptionEnabled": config.Transcription.Enabled,
 			"streamingEnabled":     config.UI.EnableStreaming,
+			"pwaInstallMessage":    config.UI.PWAInstallMessage,
+			"pwaInstallTimeout":    config.UI.PWAInstallTimeoutSecs,
 			"queryParams": gin.H{
 				"asl_id":         aslID,
 				"asl_name":       aslName,

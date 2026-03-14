@@ -1,8 +1,8 @@
 # Matrice di Tracciabilità — Backend (GiAs-llm)
 
 **Generata**: 2026-03-09
-**Requisiti totali**: 409
-**Tracciati**: 407 | **Non tracciati**: 2
+**Requisiti totali**: 413
+**Tracciati**: 411 | **Non tracciati**: 2
 
 ## Legenda
 
@@ -370,6 +370,7 @@
 | API-NF07 | Validazione workflow context | `app/api.py` | `chat_v1()` (+ `orchestrator/workflow_validator.py`) | ✅ |
 | API-NF08 | SSE headers anti-buffering | `app/api.py` | `chat_stream_v1()` | ✅ |
 | API-NF09 | Formato who per chat_log | `app/api.py` | `log_chat()` | ✅ |
+| API-10 | Campi GPS in UserMetadata | `app/models.py` | `UserMetadata` (latitude, longitude, gps_accuracy_m) | ✅ |
 
 ## data-layer
 
@@ -429,6 +430,9 @@
 | GP-NF02 | Eccezioni custom gerarchiche + geocode_safe | `tools/geo_utils.py` | `GeocodingError`, `AddressNotFoundError`, `GeocodingTimeoutError`, `geocode_safe()` | ✅ |
 | GP-NF03 | Fallback haversine senza geopy | `tools/geo_utils.py` | `calculate_distance_km()` | ✅ |
 | GP-NF04 | Pulizia warning nell'output | `tools/geo_utils.py` | `GeocodingService.geocode_with_address()` | ✅ |
+| GP-13 | GPS device diretto per proximity | `tools/proximity_tools.py`, `orchestrator/tool_nodes.py` | `get_nearby_priority(device_lat, device_lon)`, `nearby_priority_tool()` | ✅ |
+| GP-14 | Slot location preservato con GPS | `tools/proximity_tools.py` | `get_nearby_priority()` | ✅ |
+| GP-15 | Validazione bounding box Campania | `tools/proximity_tools.py` | `get_nearby_priority()` | ✅ |
 
 ## qdrant-embeddings
 

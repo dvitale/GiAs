@@ -121,6 +121,9 @@ curl -X POST http://localhost:5005/api/v1/chat \
 | `localhost:5005/api/admin/schema-metadata/{key}` | GET/PUT | Dettaglio/aggiornamento schema tabella |
 | `localhost:5005/api/admin/schema-metadata/reload` | POST | Ricarica catalogo schema in memoria |
 | `localhost:8080/gias/webchat/admin/schema` | GET | Pagina admin gestione schema metadata |
+| `localhost:8080/gias/webchat/manifest.webmanifest` | GET | PWA manifest |
+| `localhost:8080/gias/webchat/sw.js` | GET | Service Worker PWA |
+| `localhost:8080/gias/webchat/offline.html` | GET | Pagina fallback offline PWA |
 
 ## Convenzioni codice
 

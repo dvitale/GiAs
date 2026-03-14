@@ -5,6 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.title}}</title>
+    <!-- REQ: [PG-02] PWA meta tags -->
+    <link rel="manifest" href="{{.basePath}}/manifest.webmanifest">
+    <meta name="theme-color" content="#f59e0b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="{{.basePath}}/static/img/icon-192.png">
     <link rel="stylesheet" href="{{.basePath}}/static/css/style.css">
     <link rel="stylesheet" href="{{.basePath}}/static/css/new-formatting.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,6 +53,13 @@
                         <polyline points="12 6 12 12 16 14"></polyline>
                     </svg>
                 </a>
+                <!-- REQ: [PG-10] Indicatore stato GPS -->
+                <span id="gpsIndicator" class="gps-indicator" title="GPS non disponibile" style="display:none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                        <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                </span>
                 <button class="theme-toggle" id="themeToggle" aria-label="Cambia tema">
                     <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -147,6 +160,17 @@
         </div>
     </div>
 
+    <!-- REQ: [PG-05] PWA Install Banner -->
+    <div id="pwaInstallBanner" class="pwa-install-banner" style="display:none;">
+        <div class="pwa-install-content">
+            <p id="pwaInstallMessage" class="pwa-install-text"></p>
+            <div class="pwa-install-actions">
+                <button id="pwaInstallBtn" class="pwa-install-btn">Installa</button>
+                <button id="pwaInstallDismiss" class="pwa-install-dismiss" aria-label="Chiudi">&times;</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Base path for API calls
         window.basePath = "{{.basePath}}";
@@ -173,6 +197,25 @@
             codice_fiscale: {{if .queryParams.codice_fiscale}}{{.queryParams.codice_fiscale | json}}{{else}}null{{end}},
             username: {{if .queryParams.username}}{{.queryParams.username | json}}{{else}}null{{end}}
         };
+
+        // REQ: [PG-05] PWA config from server
+        window.pwaConfig = {
+            installMessage: {{if .pwaInstallMessage}}{{.pwaInstallMessage | json}}{{else}}"Installa GIAS Chat per accesso rapido."{{end}},
+            installTimeoutSecs: {{if .pwaInstallTimeout}}{{.pwaInstallTimeout}}{{else}}8{{end}}
+        };
+
+        // REQ: [PG-03] Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register(window.basePath + '/sw.js', {
+                    scope: window.basePath + '/'
+                }).then(function(reg) {
+                    console.log('SW registered, scope:', reg.scope);
+                }).catch(function(err) {
+                    console.warn('SW registration failed:', err);
+                });
+            });
+        }
 
         // Build history link with current params
         (function() {

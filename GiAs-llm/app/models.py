@@ -16,6 +16,9 @@ class UserMetadata(BaseModel):
     username: Optional[str] = None
     uoc: Optional[str] = None
     uos: Optional[str] = None
+    latitude: Optional[float] = None       # REQ: [API-10] GPS device
+    longitude: Optional[float] = None
+    gps_accuracy_m: Optional[float] = None
 
 
 class ChatMessage(BaseModel):

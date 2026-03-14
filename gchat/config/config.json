@@ -80,7 +80,9 @@
     "welcome_message": "Sono il tuo assistente per i **Controlli Ufficiali GISA** (**Anno 2025**).\n\n**Clicca su una domanda** per provarla, oppure scrivimi liberamente!\n\n💡 **Tip:** Le domande sono organizzate per tipo di flusso:\n• **Verde** = Risposta immediata\n• **Blu** = Sintesi + dettagli su richiesta\n• **Arancio** = Conversazione interattiva",
     "enable_streaming": false,
     "auto_fallback_on_error": true,
-    "show_thinking_animation": true
+    "show_thinking_animation": true,
+    "pwa_install_message": "Installa GIAS Chat sul tuo dispositivo per accedere rapidamente dall'icona sulla schermata home. L'app funziona come un sito web ma si apre a schermo intero, senza barra degli indirizzi.",
+    "pwa_install_timeout_seconds": 8
   },
   "transcription": {
     "enabled": false,

@@ -47,13 +47,16 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
   - `transcribe.go`: Trascrizione audio (speech-to-text)
   - `config_test.go`: Test configurazione
 
-- **statics/**: Asset statici (CSS, JavaScript, immagini)
+- **statics/**: Asset statici (CSS, JavaScript, immagini, PWA)
   - `css/style.css`: Stili UI con supporto tema light/dark, palette oro, responsive, stili history page
-  - `js/chat.js`: Logica chat, gestione tema, download conversazioni, retry logic
+  - `js/chat.js`: Logica chat, gestione tema, download conversazioni, retry logic, GPS, PWA install, access control
   - `js/history.js`: Logica pagina cronologia chat (caricamento conversazioni, ricerca, paginazione)
   - `js/debug_langgraph.js`: Debug panel LangGraph
   - `js/debug_langgraph_visualizer.js`: Renderer grafo LangGraph
-  - `img/`: Immagini (logo GIAS, logo Regione)
+  - `manifest.webmanifest`: PWA manifest (display standalone, icone, start_url)
+  - `sw.js`: Service Worker (cache-first statici, network-first API, fallback offline)
+  - `offline.html`: Pagina fallback offline
+  - `img/`: Immagini (logo GIAS, logo Regione, icone PWA 192/384/512)
 
 - **template/**: Template HTML con supporto Go template engine
   - `index.html`: Interfaccia chatbot principale
@@ -64,8 +67,8 @@ Programma Golang che fornisce un'interfaccia web per il chatbot GIAS (sistema in
   - `monitor.html`: Monitor qualita' conversazioni
 
 - **SDD/**: Software Design Description (requisiti EARS)
-  - `requirements/`: 13 file requisiti per componente (SR-, SM-, LP-, CU-, etc.)
-  - `traceability.md`: Matrice tracciabilita' (242 requisiti)
+  - `requirements/`: 14 file requisiti per componente (SR-, SM-, LP-, CU-, PG-, etc.)
+  - `traceability.md`: Matrice tracciabilita' (256 requisiti)
 
 - **config/**: File di configurazione
   - `config.json`: Configurazione server, LLM backend, logging, UI
@@ -111,12 +114,16 @@ Configurazione in `config/config.json`:
 #### Request a Backend (app/llm_client.go)
 ```go
 type NativeUserMetadata struct {
-    ASL           string `json:"asl,omitempty"`
-    ASLID         string `json:"asl_id,omitempty"`
-    UserID        string `json:"user_id,omitempty"`
-    CodiceFiscale string `json:"codice_fiscale,omitempty"`
-    Username      string `json:"username,omitempty"`
-    UOC           string `json:"uoc,omitempty"`
+    ASL           string  `json:"asl,omitempty"`
+    ASLID         string  `json:"asl_id,omitempty"`
+    UserID        string  `json:"user_id,omitempty"`
+    CodiceFiscale string  `json:"codice_fiscale,omitempty"`
+    Username      string  `json:"username,omitempty"`
+    UOC           string  `json:"uoc,omitempty"`
+    UOS           string  `json:"uos,omitempty"`
+    Latitude      float64 `json:"latitude,omitempty"`       // GPS device
+    Longitude     float64 `json:"longitude,omitempty"`
+    GPSAccuracyM  float64 `json:"gps_accuracy_m,omitempty"`
 }
 
 type NativeChatMessage struct {
@@ -594,6 +601,22 @@ Il metodo `formatMessage()` gestisce:
 - **Sub-fields**: parsing campi strutturati (Aggregazione, Attività, ecc.)
 - **Similarità badges**: highlight percentuali
 - **Line breaks**: conversione `\n` → `<br>` intelligente
+
+### Controllo Accesso (Access Control)
+Il chatbot richiede metadata utente obbligatori (`user_id` + `asl`/`asl_id`/`asl_name`). Senza questi:
+- **Frontend**: `hasRequiredMetadata()` controlla `window.queryParams`; se mancano, `showAccessDenied()` mostra "Accesso consentito solo da Gisa" e disabilita tutti gli input
+- **Backend**: `HandleChat()` e `HandleChatStream()` restituiscono HTTP 403 se mancano `user_id` o `asl`
+
+### PWA (Progressive Web App)
+- **Service Worker**: registrato in `index.html`, file `sw.js` con cache-first statici e network-first API
+- **Install banner**: `initPWAInstall()` intercetta `beforeinstallprompt`, mostra banner con testo da `config.json` (`ui.pwa_install_message`), auto-dismiss dopo `ui.pwa_install_timeout_seconds` secondi post-approvazione
+- **Offline**: `sw.js` serve `offline.html` quando la rete non e' disponibile
+
+### Geolocalizzazione GPS
+- **On-demand**: `acquireGPS()` chiamato ad ogni `sendToServer()`/`connectSSE()` con `enableHighAccuracy: true`, timeout 5s
+- **Indicatore**: icona GPS nell'header (verde=attivo, grigio=negato, nascosto=non supportato), gestito da `updateGPSIndicator()`
+- **Payload**: campi `latitude`, `longitude`, `gps_accuracy_m` aggiunti al body JSON se disponibili
+- **GDPR**: coordinate mai salvate in sessione, log o database
 
 ## Stili CSS Tema Light vs Dark
 

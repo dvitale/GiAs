@@ -47,8 +47,10 @@ type PredefinedQuestion struct {
 }
 
 type UIConfig struct {
-	WelcomeMessage  string `json:"welcome_message"`
-	EnableStreaming bool   `json:"enable_streaming"`
+	WelcomeMessage         string `json:"welcome_message"`
+	EnableStreaming         bool   `json:"enable_streaming"`
+	PWAInstallMessage      string `json:"pwa_install_message"`
+	PWAInstallTimeoutSecs  int    `json:"pwa_install_timeout_seconds"`
 }
 
 type TranscriptionConfig struct {
