@@ -170,7 +170,7 @@ class DataRetriever:
         return result
 
     @staticmethod
-    def search_piani_by_db(query: str, sezione: str = None) -> List[Dict[str, Any]]:
+    def search_piani_by_db(query: str, sezione: str = None, campionamento: bool = None) -> List[Dict[str, Any]]:
         """
         Cerca piani per keyword direttamente sul DataFrame piani_monitoraggio in memoria.
         Equivalente a SQL ILIKE '%query%' su colonne descrizione e descrizione-2.
@@ -178,6 +178,7 @@ class DataRetriever:
         Args:
             query: Termine di ricerca (es. "scrofe", "bovini", "latte")
             sezione: Lettera sezione opzionale (es. "A", "B") per filtrare per colonna sezione
+            campionamento: Filtro booleano opzionale per rendicontazione_per_campione (True/False)
 
         Returns:
             Lista di dict con chiavi: sezione, alias, alias_indicatore, descrizione, descrizione_2, campionamento
@@ -219,6 +220,12 @@ class DataRetriever:
 
             matched = piani_df[mask_desc | mask_desc2]
 
+        # Filtro per campionamento (colonna rendicontazione_per_campione)
+        if campionamento is not None:
+            camp_col = 'rendicontazione_per_campione' if 'rendicontazione_per_campione' in matched.columns else 'campionamento'
+            if camp_col in matched.columns:
+                matched = matched[matched[camp_col].fillna(False) == campionamento]
+
         if matched.empty:
             return []
 
@@ -233,7 +240,8 @@ class DataRetriever:
                 continue
             seen_keys.add(dedup_key)
             # Campo campionamento: True/False/None
-            camp_raw = row.get('campionamento', None)
+            # La colonna nel CSV si chiama 'rendicontazione_per_campione', fallback a 'campionamento' (PostgreSQL)
+            camp_raw = row.get('rendicontazione_per_campione', row.get('campionamento', None))
             if pd.notna(camp_raw):
                 campionamento = bool(camp_raw)
             else:
@@ -1270,7 +1278,9 @@ class BusinessLogic:
             # Colonna con trattino: accesso via dizionario
             desc2 = row.get("descrizione-2", "")
             # Campo campionamento: True = prelievo campioni, False/None = attività di controllo
-            campionamento = row.get("campionamento", None)
+            # La colonna nel CSV si chiama 'rendicontazione_per_campione', fallback a 'campionamento' (PostgreSQL)
+            camp_raw = row.get("rendicontazione_per_campione", row.get("campionamento", None))
+            campionamento = bool(camp_raw) if pd.notna(camp_raw) else None
 
             if pd.notna(desc1) and desc1 not in unique_descriptions:
                 unique_descriptions[desc1] = {

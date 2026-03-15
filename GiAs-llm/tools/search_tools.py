@@ -111,19 +111,32 @@ def _search_piani_by_sezione(query: str, sezione: str) -> Dict[str, Any]:
     invece della ricerca testuale nelle descrizioni.
     """
     try:
+        import re
+
         # Pulisci topic: rimuovi "sezione X" dal topic se presente
         clean_query = None
+        campionamento_filter = None
         if query:
-            import re
             clean_query = re.sub(r'\bsez(?:ione|\.)\s+[A-Z]\b', '', query, flags=re.IGNORECASE).strip()
+            # Rileva "campionamento" come filtro strutturale (non keyword)
+            # Pattern: "richiedono campionamento", "con campionamento", "campionamento", "senza campionamento"
+            camp_match = re.search(r'\b(senza\s+)?campion(?:amento|i)\b', clean_query, re.IGNORECASE)
+            if camp_match:
+                campionamento_filter = camp_match.group(1) is None  # True se "campionamento", False se "senza campionamento"
+                # Rimuovi il pattern campionamento dal topic per non cercare la parola nelle descrizioni
+                clean_query = re.sub(r'\b(?:che\s+richiedono|con|senza|che\s+prevedono|di)?\s*campion(?:amento|i)\b', '', clean_query, flags=re.IGNORECASE).strip()
             if not clean_query or len(clean_query) < 2:
                 clean_query = None
 
-        matches = DataRetriever.search_piani_by_db(query=clean_query, sezione=sezione)
+        matches = DataRetriever.search_piani_by_db(query=clean_query, sezione=sezione, campionamento=campionamento_filter)
 
         search_label = f"sezione {sezione.upper()}"
+        if campionamento_filter is True:
+            search_label = f"piani con campionamento nella sezione {sezione.upper()}"
+        elif campionamento_filter is False:
+            search_label = f"piani senza campionamento nella sezione {sezione.upper()}"
         if clean_query:
-            search_label = f"'{clean_query}' nella sezione {sezione.upper()}"
+            search_label = f"'{clean_query}' nella {search_label}"
 
         if not matches:
             return {
