@@ -124,7 +124,7 @@ ask_priority_establishment - chi controllare oggi/priorità generica
 ask_risk_based_priority - STABILIMENTI a rischio (score, non conformità)
 ask_top_risk_activities - classifica ATTIVITÀ più rischiose
 ask_suggest_controls - stabilimenti MAI controllati
-ask_nearby_priority(location,radius_km) - controlli VICINO a indirizzo
+ask_nearby_priority(location,radius_km) - stabilimenti MAI CONTROLLATI vicino a INDIRIZZO FISICO specifico (richiede location geocodificabile, NON per aggregazioni/conteggi)
 
 [Ritardi]
 ask_delayed_plans - LISTA piani in ritardo (plurale/generico)
@@ -178,6 +178,8 @@ REGOLE DISAMBIGUAZIONE:
 12. Filtro per MACROAREA/AGGREGAZIONE → estrai come slot per filtrare i risultati dell'intent più vicino
 13. "quanti controlli nell'ASL X" / "controlli eseguiti a BENEVENTO" → query_data (conteggio su cu_eseguiti filtrato per ASL). NON è ask_piano_statistics (che riguarda statistiche dei PIANI, non conteggi grezzi di controlli).
 14. query_data per domande su dati tabulari NON coperte dagli intent specifici. Confidence MAI > 0.80.
+15. "più controllati"/"più controlli"/"quanti controlli per stabilimento" = aggregazione dati → query_data. NON ask_priority_establishment (priorità per ritardi) né ask_nearby_priority (MAI controllati vicino a indirizzo).
+16. "nelle mie vicinanze"/"vicino a me" SENZA indirizzo fisico → se la domanda è aggregazione dati, usa query_data con filtro ASL/comune dai metadata. ask_nearby_priority richiede un indirizzo geocodificabile (es. "Via Roma 15, Napoli").
 
 ESEMPI CRITICI (coppie confuse):
 "stabilimenti a rischio" → {"reasoning":"chiede stabilimenti con alto rischio","intent":"ask_risk_based_priority","slots":{},"needs_clarification":false,"confidence":0.95}
@@ -205,6 +207,8 @@ ESEMPI CRITICI (coppie confuse):
 "quanti controlli sono stati eseguiti nell'ASL Benevento?" → {"reasoning":"conteggio controlli filtrato per ASL, non è statistiche piani","intent":"query_data","slots":{"table":"controlli","operation":"count","filters":[{"column":"descrizione_asl","op":"contains","value":"BENEVENTO"}]},"needs_clarification":false,"confidence":0.80}
 "quanti controlli ha fatto l'ASL Napoli nel 2025?" → {"reasoning":"conteggio semplice per ASL, query_data non ask_piano_statistics","intent":"query_data","slots":{"table":"controlli","operation":"count","filters":[{"column":"descrizione_asl","op":"contains","value":"NAPOLI"}]},"needs_clarification":false,"confidence":0.80}
 "distribuzione NC per anno" → {"reasoning":"aggregazione NC storiche per anno","intent":"query_data","slots":{"table":"nc_storiche","operation":"group_count","group_by":["anno"]},"needs_clarification":false,"confidence":0.75}
+"stabilimenti più controllati nelle mie vicinanze" → {"reasoning":"aggregazione: ranking stabilimenti per numero controlli, vicinanze=filtro ASL da metadata, NON ask_nearby_priority","intent":"query_data","slots":{"table":"controlli","operation":"group_count","group_by":["attivita_cu","comune"]},"needs_clarification":false,"confidence":0.75}
+"stabilimenti con più controlli nella mia zona" → {"reasoning":"classifica stabilimenti per controlli, zona=ASL utente","intent":"query_data","slots":{"table":"controlli","operation":"group_count","group_by":["attivita_cu"]},"needs_clarification":false,"confidence":0.75}
 "statistiche piani" → {"reasoning":"statistiche aggregate sui piani di controllo","intent":"ask_piano_statistics","slots":{},"needs_clarification":false,"confidence":0.90}
 "quanti indicatori ha il piano A1" → {"reasoning":"statistiche di un piano specifico","intent":"ask_piano_statistics","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.95}
 "storico IT 2287" → {"reasoning":"storico stabilimento","intent":"ask_establishment_history","slots":{"num_registrazione":"IT 2287"},"needs_clarification":false,"confidence":0.95}
@@ -1279,6 +1283,17 @@ OUTPUT:"""
             if re.search(r'\brischio\b', message, re.IGNORECASE):
                 result["intent"] = "ask_risk_based_priority"
                 intent = "ask_risk_based_priority"
+
+        # Fix 3: "più controllati" / aggregazione dati misclassificata come nearby/priority
+        # "stabilimenti più controllati" è una aggregazione (ranking per numero controlli),
+        # NON ask_nearby_priority (che cerca mai controllati vicino a indirizzo) né
+        # ask_priority_establishment (priorità per ritardi programmazione)
+        if intent in ("ask_nearby_priority", "ask_priority_establishment") and message:
+            if re.search(r'\bpi[uù]\s+controllat[ie]\b', message, re.IGNORECASE):
+                result["intent"] = "query_data"
+                intent = "query_data"
+                result["confidence"] = 0.75
+                result["needs_clarification"] = False
 
         # Correzioni semantiche (deterministiche, no LLM cost)
         # P3: Skip quando MINIMAL_HEURISTICS=True - deleghiamo all'LLM

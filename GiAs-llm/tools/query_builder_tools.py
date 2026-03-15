@@ -13,8 +13,12 @@ Sicurezza:
 - Limite righe: max 100 risultati
 """
 
+import json
 import logging
+import re
 from typing import Dict, Any, List, Optional
+
+import pandas as pd
 from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
@@ -98,6 +102,36 @@ TABLE_ALIASES = {
     "cu_diff_programmati_eseguiti": "programmazione",
 }
 
+# Mappa alias colonna → colonna reale per tabella
+COLUMN_ALIASES = {
+    "controlli": {
+        "anno": "data_inizio_controllo",
+        "year": "data_inizio_controllo",
+        "asl": "descrizione_asl",
+        "uoc": "descrizione_uoc",
+        "uos": "descrizione_uos",
+        "piano": "descrizione_piano",
+        "indicatore": "descrizione_indicatore",
+        "macroarea": "macroarea_cu",
+        "aggregazione": "aggregazione_cu",
+        "attivita": "attivita_cu",
+        "stabilimento": "approval_number",
+        "latitudine": "latitudine_stab",
+        "longitudine": "longitudine_stab",
+    },
+    "mai_controllati": {
+        "attivita": "attivita",
+    },
+    "nc_storiche": {
+        "macroarea": "macroarea_sottoposta_a_controllo",
+    },
+    "programmazione": {
+        "asl": "descrizione_asl",
+        "uoc": "descrizione_uoc",
+        "uos": "descrizione_uos",
+    },
+}
+
 
 class SafeQueryExecutor:
     """Esegue operazioni pandas su DataFrame in memoria con validazione stretta."""
@@ -111,8 +145,9 @@ class SafeQueryExecutor:
         try:
             from orchestrator.schema_catalog import get_schema_catalog
             self._pii_columns = get_schema_catalog().get_all_pii_columns()
-        except Exception:
+        except Exception as e:
             # Fallback hardcoded
+            logger.warning(f"[QueryBuilder] Impossibile caricare PII da SchemaCatalog, uso fallback: {e}")
             self._pii_columns = {
                 "controlli": ["partita_iva", "ragione_sociale", "num_registrazione",
                               "codice_fiscale", "nominativo_rappresentante"],
@@ -122,8 +157,6 @@ class SafeQueryExecutor:
 
     def execute(self, descriptor: QueryDescriptor) -> Dict[str, Any]:
         """Esegue query validata su DataFrame in memoria."""
-        import pandas as pd
-
         # 1. Risolvi table_key
         table_key = self._resolve_table_key(descriptor.table)
         if not table_key:
@@ -138,12 +171,25 @@ class SafeQueryExecutor:
         pii_cols = set(self._pii_columns.get(table_key, []))
         all_cols = set(df.columns)
 
-        # 3b. Valida colonne group_by
+        # 3b. Risolvi alias e valida colonne group_by
+        aliases = COLUMN_ALIASES.get(table_key, {})
+        resolved_group_by = []
         for col in descriptor.group_by:
-            if col not in all_cols:
-                return {"error": f"Colonna '{col}' non esiste per group_by. Colonne: {sorted(all_cols - pii_cols)[:20]}"}
-            if col in pii_cols:
-                return {"error": f"Colonna '{col}' contiene dati personali e non è usabile per group_by"}
+            resolved = aliases.get(col, col)
+            if resolved != col:
+                logger.info(f"[QueryBuilder] Alias group_by: {col} → {resolved}")
+            # Fuzzy match se ancora non trovato
+            if resolved not in all_cols:
+                matches = [c for c in all_cols if col.lower() in c.lower() or c.lower() in col.lower()]
+                if matches:
+                    resolved = matches[0]
+                    logger.info(f"[QueryBuilder] Fuzzy match group_by: {col} → {resolved}")
+                else:
+                    return {"error": f"Colonna '{col}' non esiste per group_by. Colonne: {sorted(all_cols - pii_cols)[:20]}"}
+            if resolved in pii_cols:
+                return {"error": f"Colonna '{resolved}' contiene dati personali e non è usabile per group_by"}
+            resolved_group_by.append(resolved)
+        descriptor.group_by = resolved_group_by
 
         # 4. Pre-processa filtri: traduci colonne concettuali a colonne reali
         processed_filters = self._preprocess_filters(descriptor.filters, table_key, all_cols)
@@ -220,35 +266,6 @@ class SafeQueryExecutor:
         Es: 'anno' → filtro su 'data_inizio_controllo' con range date
             'asl' → 'descrizione_asl'
         """
-        # Mappa alias colonna → colonna reale per tabella
-        COLUMN_ALIASES = {
-            "controlli": {
-                "anno": "data_inizio_controllo",
-                "year": "data_inizio_controllo",
-                "asl": "descrizione_asl",
-                "uoc": "descrizione_uoc",
-                "uos": "descrizione_uos",
-                "piano": "descrizione_piano",
-                "indicatore": "descrizione_indicatore",
-                "macroarea": "macroarea_cu",
-                "aggregazione": "aggregazione_cu",
-                "attivita": "attivita_cu",
-                "latitudine": "latitudine_stab",
-                "longitudine": "longitudine_stab",
-            },
-            "mai_controllati": {
-                "attivita": "attivita",
-            },
-            "nc_storiche": {
-                "macroarea": "macroarea_sottoposta_a_controllo",
-            },
-            "programmazione": {
-                "asl": "descrizione_asl",
-                "uoc": "descrizione_uoc",
-                "uos": "descrizione_uos",
-            },
-        }
-
         aliases = COLUMN_ALIASES.get(table_key, {})
         processed = []
 
@@ -289,7 +306,6 @@ class SafeQueryExecutor:
             # Normalizza valore ASL: "ASL BENEVENTO" / "ASL di Benevento" → "BENEVENTO"
             # I valori reali in DB sono "DIPARTIMENTO DI PREVENZIONE BENEVENTO"
             if isinstance(val, str) and col in ("descrizione_asl",):
-                import re
                 asl_match = re.match(r'^(?:ASL|Asl|asl)\s+(?:di\s+)?(.+)$', val.strip(), re.IGNORECASE)
                 if asl_match:
                     val = asl_match.group(1).strip()
@@ -320,13 +336,11 @@ class SafeQueryExecutor:
                 elif f.op == "contains":
                     result = result[result[col].fillna("").astype(str).str.upper().str.contains(str(val).upper(), na=False, regex=False)]
                 elif f.op == "gte":
-                    import pandas as pd
                     if pd.api.types.is_datetime64_any_dtype(result[col]):
                         result = result[result[col] >= pd.Timestamp(val)]
                     else:
                         result = result[result[col] >= val]
                 elif f.op == "lte":
-                    import pandas as pd
                     if pd.api.types.is_datetime64_any_dtype(result[col]):
                         result = result[result[col] <= pd.Timestamp(val)]
                     else:
@@ -347,8 +361,6 @@ class SafeQueryExecutor:
 
     def _execute_operation(self, df, descriptor: QueryDescriptor, pii_cols: set) -> Dict[str, Any]:
         """Esegue l'operazione sul DataFrame filtrato."""
-        import pandas as pd
-
         op = descriptor.operation
         limit = descriptor.limit
 
@@ -358,15 +370,16 @@ class SafeQueryExecutor:
         elif op == "distinct":
             if descriptor.group_by:
                 col = descriptor.group_by[0]
-                values = df[col].dropna().unique().tolist()[:limit]
-                return {"data": [{"column": col, "values": values, "total_distinct": len(df[col].dropna().unique())}], "total": 1}
+                unique_vals = df[col].dropna().unique()
+                values = unique_vals.tolist()[:limit]
+                return {"data": [{"column": col, "values": values, "total_distinct": len(unique_vals)}], "total": 1}
             return {"data": [{"count": len(df)}], "total": 1}
 
         elif op == "group_count":
             if not descriptor.group_by:
                 return {"error": "group_count richiede almeno un campo group_by"}
             grouped = df.groupby(descriptor.group_by).size().reset_index(name="count")
-            grouped = grouped.sort_values("count", ascending=False).head(limit)
+            grouped = grouped.nlargest(limit, "count")
             # Rimuovi colonne PII
             safe_cols = [c for c in grouped.columns if c not in pii_cols]
             records = grouped[safe_cols].to_dict(orient="records")
@@ -471,6 +484,7 @@ ALIAS COLONNE (il sistema traduce automaticamente):
 - "anno" / "year" → filtro range su data_inizio_controllo (tabella controlli)
 - "asl" → descrizione_asl
 - Per ASL usa SOLO il nome città: "BENEVENTO" (NON "ASL Benevento", NON "Dipartimento...")
+- "nelle mie vicinanze"/"vicino a me"/"nella mia zona" → usa ASL dal CONTESTO UTENTE come filtro su descrizione_asl
 
 ESEMPI:
 "quanti controlli per macroarea" → {{"table":"controlli","operation":"group_count","filters":[],"group_by":["macroarea_cu"],"limit":20}}
@@ -482,7 +496,7 @@ ESEMPI:
 Output: SOLO JSON valido, niente altro."""
 
 
-def build_query_with_llm(message: str, llm_client) -> Optional[QueryDescriptor]:
+def build_query_with_llm(message: str, llm_client, user_context: str = "") -> Optional[QueryDescriptor]:
     """Chiama LLM per generare Operation Descriptor dalla domanda utente."""
     try:
         from orchestrator.schema_catalog import get_schema_catalog
@@ -496,9 +510,10 @@ def build_query_with_llm(message: str, llm_client) -> Optional[QueryDescriptor]:
             pii_columns=pii_str or "(nessuna)"
         )
 
+        user_message = message + user_context if user_context else message
         messages = [
             {"role": "system", "content": prompt},
-            {"role": "user", "content": message}
+            {"role": "user", "content": user_message}
         ]
 
         response = llm_client.query(
@@ -510,10 +525,6 @@ def build_query_with_llm(message: str, llm_client) -> Optional[QueryDescriptor]:
 
         if not response:
             return None
-
-        # Parse JSON dalla risposta
-        import json
-        import re
 
         # Estrai JSON dalla risposta (potrebbe avere testo prima/dopo)
         json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
@@ -529,3 +540,129 @@ def build_query_with_llm(message: str, llm_client) -> Optional[QueryDescriptor]:
     except Exception as e:
         logger.warning(f"[QueryBuilder] Errore build query: {e}")
         return None
+
+
+def query_most_controlled_nearby(
+    asl: str = None,
+    device_lat: float = None,
+    device_lon: float = None,
+    radius_km: float = 10.0,
+    limit: int = 20
+) -> Dict[str, Any]:
+    """Stabilimenti con più controlli nelle vicinanze dell'utente.
+
+    Usa GPS device per filtro prossimità e calcolo distanza,
+    oppure fallback su filtro ASL.
+    """
+    import pandas as pd
+
+    try:
+        from agents.data import controlli_df
+    except ImportError:
+        return {"error": True, "formatted_response": "Dati controlli non disponibili."}
+
+    if controlli_df is None or controlli_df.empty:
+        return {"error": True, "formatted_response": "Dati controlli non disponibili."}
+
+    df = controlli_df.copy()
+
+    # Filtro ASL
+    if asl and "descrizione_asl" in df.columns:
+        mask = df["descrizione_asl"].str.contains(asl, case=False, na=False)
+        df = df[mask]
+        if df.empty:
+            return {"error": True, "formatted_response": f"Nessun controllo trovato per ASL {asl}."}
+
+    # Identifica colonna stabilimento (preferisci num_registrazione, fallback approval_number)
+    id_col = None
+    for candidate in ["num_registrazione", "approval_number"]:
+        if candidate in df.columns and df[candidate].notna().any():
+            id_col = candidate
+            break
+
+    if not id_col:
+        return {"error": True, "formatted_response": "Impossibile identificare gli stabilimenti nei dati."}
+
+    # Filtra righe con id stabilimento valido
+    df = df[df[id_col].notna() & (df[id_col] != "")]
+
+    # Calcolo distanza se GPS disponibile
+    has_gps = (
+        device_lat is not None and device_lon is not None
+        and "latitudine_stab" in df.columns and "longitudine_stab" in df.columns
+    )
+
+    if has_gps:
+        from tools.geo_utils import filter_by_proximity
+        df = filter_by_proximity(
+            df=df,
+            center_lat=device_lat,
+            center_lon=device_lon,
+            radius_km=radius_km,
+            lat_col="latitudine_stab",
+            lon_col="longitudine_stab",
+        )
+        if df.empty:
+            return {
+                "error": True,
+                "formatted_response": f"Nessuno stabilimento trovato entro {radius_km} km dalla tua posizione."
+            }
+
+    # Aggrega: conta controlli per stabilimento
+    # Per ogni stabilimento, prendi ragione_sociale e coordinate dalla prima riga
+    agg_cols = {id_col: "count"}
+    extra_cols = ["ragione_sociale", "latitudine_stab", "longitudine_stab", "descrizione_asl"]
+    first_row_cols = {c: "first" for c in extra_cols if c in df.columns}
+    if has_gps and "distanza_km" in df.columns:
+        first_row_cols["distanza_km"] = "min"
+
+    grouped = df.groupby(id_col).agg({**{id_col: "count"}, **first_row_cols})
+    grouped.columns = ["n_controlli"] + list(first_row_cols.keys())
+    grouped = grouped.reset_index()
+
+    # Ordina per numero controlli decrescente
+    grouped = grouped.sort_values("n_controlli", ascending=False).head(limit)
+
+    # Formatta risposta markdown
+    rows = []
+    for _, row in grouped.iterrows():
+        stab_id = row[id_col]
+        ragione = row.get("ragione_sociale", "N/D")
+        if pd.isna(ragione) or not ragione:
+            ragione = "N/D"
+        n_ctrl = int(row["n_controlli"])
+
+        distanza_str = ""
+        if has_gps and "distanza_km" in row.index and pd.notna(row["distanza_km"]):
+            distanza_str = f"{row['distanza_km']:.1f} km"
+        else:
+            distanza_str = "—"
+
+        rows.append({
+            "id": stab_id,
+            "ragione_sociale": ragione,
+            "n_controlli": n_ctrl,
+            "distanza": distanza_str,
+        })
+
+    # Build markdown table
+    header = "| # | Stabilimento | Ragione Sociale | Controlli | Distanza |"
+    sep = "| --- | --- | --- | ---: | ---: |"
+    lines = [header, sep]
+    for i, r in enumerate(rows, 1):
+        lines.append(f"| {i} | {r['id']} | {r['ragione_sociale']} | {r['n_controlli']} | {r['distanza']} |")
+
+    total = len(grouped)
+    asl_str = f" nell'ASL **{asl}**" if asl else ""
+    gps_str = f" entro **{radius_km} km** dalla tua posizione" if has_gps else ""
+    intro = f"**Top {total} stabilimenti più controllati**{asl_str}{gps_str}:\n\n"
+
+    formatted = intro + "\n".join(lines)
+
+    return {
+        "type": "query_data",
+        "data": {
+            "formatted_response": formatted,
+            "total_found": total,
+        }
+    }

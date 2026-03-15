@@ -251,7 +251,7 @@ GiAs-llm/
 │   ├── establishment_tools.py  # @tool for establishment history
 │   ├── search_tools.py         # @tool for hybrid semantic search
 │   ├── procedure_tools.py      # @tool RAG per procedure operative (retrieve + BM25/RRF + LLM)
-│   ├── query_builder_tools.py  # QueryDescriptor + SafeQueryExecutor per intent query_data
+│   ├── query_builder_tools.py  # QueryDescriptor + SafeQueryExecutor + query_most_controlled_nearby per intent query_data
 │   ├── rag_cache.py            # RAGCache singleton (TTL 30min, max 200 entry)
 │   ├── proximity_tools.py      # @tool per ricerca stabilimenti per prossimità
 │   ├── geo_utils.py            # Geocoding service (Nominatim + SimpleRequestsAdapter)
@@ -488,13 +488,22 @@ Il sistema rende accessibili all'LLM i metadati strutturali delle 7 tabelle appl
 
 Copre domande su dati tabulari non mappabili ai 20 intent specifici (es. "quanti controlli per ASL nel 2025?").
 
-**Flusso**:
+**Flusso generico**:
 1. Router classifica `query_data` (confidence max 0.80)
 2. `query_data_tool()` chiama LLM con schema completo → Operation Descriptor JSON
 3. `QueryDescriptor` (Pydantic) valida struttura
 4. `SafeQueryExecutor._preprocess_filters()` traduce alias colonne (anno→data_inizio_controllo, asl→descrizione_asl)
-5. Esecuzione su DataFrame in memoria (pandas, no SQL diretto)
-6. Formattazione risultato come tabella markdown
+5. `SafeQueryExecutor` risolve alias anche per `group_by` (stabilimento→approval_number, ecc.)
+6. Esecuzione su DataFrame in memoria (pandas, no SQL diretto)
+7. Formattazione risultato come tabella markdown
+
+**Percorso specializzato "piu' controllati"**: query tipo "stabilimenti piu' controllati nelle mie vicinanze" vengono intercettate da `query_data_tool()` (regex "piu' controllati") e delegate a `query_most_controlled_nearby()`:
+1. Filtra `cu_eseguiti` per ASL utente (da metadata)
+2. Se GPS disponibile (metadata `latitude`/`longitude`): calcola distanza haversine via `filter_by_proximity()`, filtra per raggio
+3. Raggruppa per `num_registrazione`, include `ragione_sociale` e distanza
+4. Restituisce tabella markdown con stabilimento, ragione sociale, n. controlli, distanza
+
+**Post-validation Fix 3** (`router.py`): se l'LLM classifica "piu' controllati" come `ask_nearby_priority` o `ask_priority_establishment`, la `_post_validate` corregge deterministicamente a `query_data`.
 
 **Sicurezza**: whitelist tabelle (7), whitelist operazioni (7), whitelist operatori filtro (7), blacklist PII, limite 100 righe.
 
@@ -698,19 +707,66 @@ When writing prompts or responses, use correct Italian veterinary terms:
 
 **Last Updated**: March 2026 (Schema-Aware LLM, intent query_data, admin schema metadata, fallback ATT indicatori)
 
+## Comandi
+
+```bash
+# Gestione server
+scripts/server.sh start|stop|restart|status|logs|test
+GIAS_LLM_MODEL=velvet scripts/server.sh start   # modello locale custom
+
+# Provider LLM esterno (richiede gdpr.allow_external_llm=true in config.json)
+GIAS_LLM_BACKEND=openai_compat MISTRAL_API_KEY=sk-xxx scripts/server.sh start
+
+# Test (usa pytest.ini in tests/ - esegue e2e + integration + unit)
+scripts/server.sh test
+python -m pytest tests/unit/ -v              # Solo unit
+python -m pytest tests/e2e/ -v              # Solo e2e (richiede server)
+python -m pytest tests/integration/ -v      # Solo integration
+python -m pytest tests/legacy/ -v           # Solo legacy (esclusi per default)
+python -m pytest tests/e2e/test_intents.py::TestIntents::test_help -v  # Singolo test
+
+# Test API manuale
+curl -X POST http://localhost:5005/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"sender":"test","message":"piani in ritardo","metadata":{"asl":"AVELLINO"}}'
+```
+
+## Endpoint API (:5005)
+
+| Endpoint | Metodo | Descrizione |
+|----------|--------|-------------|
+| `/` | GET | Health check |
+| `/status` | GET | Stato + dati caricati + rag_cache stats |
+| `/api/v1/chat` | POST | Chat principale |
+| `/api/v1/chat/stream` | POST | Chat streaming (SSE) |
+| `/api/v1/chat/feedback` | POST | Feedback utente (rating 1-5 + testo) |
+| `/api/v1/parse` | POST | Parsing NLU |
+| `/api/chat-log/user-conversations` | GET | Lista conversazioni utente (per codice_fiscale) |
+| `/api/chat-log/conversation/{sid}` | GET | Messaggi di una conversazione |
+| `/api/admin/documents/reindex` | POST | Re-indicizzazione RAG in background |
+| `/api/admin/documents/reindex/status` | GET | Stato re-indicizzazione |
+| `/api/admin/schema-metadata` | GET | Lista tabelle schema metadata |
+| `/api/admin/schema-metadata/{key}` | GET/PUT | Dettaglio/aggiornamento schema tabella |
+| `/api/admin/schema-metadata/reload` | POST | Ricarica catalogo schema in memoria |
+
+## Sincronizzazione tabella intents nel database
+
+**REGOLA OBBLIGATORIA**: Ogni modifica a `VALID_INTENTS` in `orchestrator/router.py` deve essere seguita dall'aggiornamento della tabella `intents` nel database PostgreSQL (`gias_db`).
+
+La tabella `intents` contiene: `intent`, `section_number`, `title`, `example_question`, `tool`, `graph_node`, `data_retriever`, `business_logic`, `two_phase_threshold`, `required_slots`, `query_equivalent`, `notes`.
+
+**Procedura**: dopo INSERT/UPDATE, verificare `SELECT COUNT(*) FROM intents;` == `len(VALID_INTENTS)`.
+
 ## Regole di manutenzione
 
-Questo file e' la **fonte di verita' unica** per i dettagli architetturali del backend. Vedere le regole complete in `../../CLAUDE.md` (sezione "Regole di manutenzione documentazione").
+Questo file e' la **fonte di verita' unica** per i dettagli architetturali del backend. Vedere le regole complete in `../CLAUDE.md` (sezione "Manutenzione documentazione").
 
 Quando modifichi il backend, aggiorna questo file se tocchi:
-- `VALID_INTENTS` o `REQUIRED_SLOTS` → aggiornare sezione "Intent Classification"
-- `TOOL_REGISTRY` o `INTENT_TO_TOOL` → aggiornare sezione "Common Patterns" e file tree
-- File in `orchestrator/` → aggiornare file tree
-- Nuovo intent → aggiungere mapping suggerimenti in `followup_suggestions.py` + ricostruire indice few-shot
-- Flusso del grafo (`_build_graph`) → aggiornare sezione "Orchestration Flow"
-- `ConversationState` → aggiornare sezione "State"
-- Configurazione risk predictor → aggiornare sezione "Risk Predictor Configuration"
-- `CLASSIFICATION_SYSTEM_PROMPT` o heuristics essenziali → aggiornare sezione "Intent Classification"
-- `MINIMAL_HEURISTICS` flag → aggiornare sezione "Intent Classification"
-- Nuovo requisito implementato → aggiornare `SDD/traceability.md` e status in `SDD/requirements/`
-- Nuova funzione con `# REQ:` tag → verificare corrispondenza in traceability
+- `VALID_INTENTS` o `REQUIRED_SLOTS` → sezione "Intent Classification" + sync DB intents
+- `TOOL_REGISTRY` o `INTENT_TO_TOOL` → sezione "Common Patterns" e file tree
+- File in `orchestrator/` → file tree
+- Nuovo intent → mapping in `followup_suggestions.py` + ricostruire indice few-shot
+- Flusso del grafo (`_build_graph`) → sezione "Orchestration Flow"
+- `ConversationState` → sezione "State"
+- Nuovo endpoint API → tabella "Endpoint API"
+- Nuovo requisito implementato → `SDD/traceability.md` e status in `SDD/requirements/`

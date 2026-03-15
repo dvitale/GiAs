@@ -500,14 +500,18 @@ class ChatBot {
         for (const line of lines) {
             const blockType = this.identifyLineType(line);
 
-            if (blockType === 'list-item' && currentBlock?.type === 'list') {
+            if (blockType === 'table-row' && currentBlock?.type === 'table') {
+                currentBlock.content.push(line);
+            } else if (blockType === 'list-item' && currentBlock?.type === 'list') {
                 currentBlock.content.push(line);
             } else if (blockType === 'field' && currentBlock?.type === 'field-group') {
                 currentBlock.content.push(line);
             } else {
                 if (currentBlock) blocks.push(currentBlock);
 
-                if (blockType === 'list-item') {
+                if (blockType === 'table-row') {
+                    currentBlock = { type: 'table', content: [line] };
+                } else if (blockType === 'list-item') {
                     currentBlock = { type: 'list', content: [line] };
                 } else if (blockType === 'field') {
                     currentBlock = { type: 'field-group', content: [line] };
@@ -522,6 +526,7 @@ class ChatBot {
     }
 
     identifyLineType(line) {
+        if (/^\|.+\|$/.test(line)) return 'table-row';
         if (/^\d+\.\s+/.test(line)) return 'list-item';
         if (/^[•-]\s+/.test(line)) return 'bullet-item';
         if (/^###\s+/.test(line)) return 'markdown-header';
@@ -534,6 +539,9 @@ class ChatBot {
 
     convertBlockToHTML(block) {
         switch (block.type) {
+            case 'table':
+                return this.renderMarkdownTable(block.content);
+
             case 'markdown-header':
                 const markdownHeaderText = block.content.replace(/^###\s+/, '');
                 return `<div class="section-header"><strong>${markdownHeaderText}</strong></div>`;
@@ -582,6 +590,50 @@ class ChatBot {
             .replace(/\*([^*]+)\*/g, '<em>$1</em>')
             .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="doc-download-link" target="_blank" rel="noopener">$1</a>')
             .replace(/\[\[([^\]]+)\]\]/g, '<a href="#" class="question-link" data-question="$1">$1</a>');
+    }
+
+    renderMarkdownTable(rows) {
+        if (!rows || rows.length < 2) return '';
+
+        const parseRow = (row) =>
+            row.split('|').slice(1, -1).map(cell => cell.trim());
+
+        const headerCells = parseRow(rows[0]);
+
+        // Detect alignment from separator row (row[1]: | --- | ---: | :---: |)
+        const isSeparator = (row) => /^\|[\s:_-]+(\|[\s:_-]+)+\|$/.test(row);
+        let startIdx = 1;
+        const alignments = [];
+        if (rows.length > 1 && isSeparator(rows[1])) {
+            startIdx = 2;
+            const sepCells = parseRow(rows[1]);
+            for (const cell of sepCells) {
+                if (/^-+:$/.test(cell.replace(/\s/g, ''))) alignments.push('right');
+                else if (/^:-+:$/.test(cell.replace(/\s/g, ''))) alignments.push('center');
+                else alignments.push('left');
+            }
+        }
+
+        const align = (i) => alignments[i] ? ` style="text-align:${alignments[i]}"` : '';
+
+        let html = '<div class="table-wrapper"><table class="md-table">';
+        html += '<thead><tr>';
+        headerCells.forEach((cell, i) => {
+            html += `<th${align(i)}>${this.convertMarkdown(cell)}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        for (let i = startIdx; i < rows.length; i++) {
+            const cells = parseRow(rows[i]);
+            html += '<tr>';
+            cells.forEach((cell, j) => {
+                html += `<td${align(j)}>${this.convertMarkdown(cell)}</td>`;
+            });
+            html += '</tr>';
+        }
+
+        html += '</tbody></table></div>';
+        return html;
     }
 
     processListItemContent(content) {

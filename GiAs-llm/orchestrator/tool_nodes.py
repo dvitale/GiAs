@@ -630,14 +630,37 @@ def query_data_tool(state: Dict[str, Any], event_callback=None, **_) -> Dict[str
         })
 
     message = state.get("message", "")
+    metadata = state.get("metadata", {})
+
+    # Percorso specializzato: "stabilimenti più controllati nelle vicinanze"
+    import re as _re
+    if _re.search(r'\bpi[uù]\s+controllat[ie]\b', message, _re.IGNORECASE):
+        try:
+            from tools.query_builder_tools import query_most_controlled_nearby
+            result = query_most_controlled_nearby(
+                asl=metadata.get("asl"),
+                device_lat=metadata.get("latitude"),
+                device_lon=metadata.get("longitude"),
+                radius_km=float(state.get("slots", {}).get("radius_km", 10)),
+            )
+            if not result.get("error"):
+                state["tool_output"] = result
+                return state
+            # Se la funzione specializzata fallisce, prosegui col flusso generico
+        except Exception as e:
+            logger.warning(f"[QueryData] Nearby most-controlled fallback: {e}")
 
     try:
         from tools.query_builder_tools import build_query_with_llm, SafeQueryExecutor
         from llm.client import LLMClient
 
-        # 1. LLM genera Operation Descriptor
+        # 1. LLM genera Operation Descriptor (con contesto utente per filtri impliciti)
         llm_client = LLMClient()
-        descriptor = build_query_with_llm(message, llm_client)
+        user_context = ""
+        asl = state.get("metadata", {}).get("asl")
+        if asl:
+            user_context = f"\nCONTESTO UTENTE: ASL={asl}"
+        descriptor = build_query_with_llm(message, llm_client, user_context=user_context)
         if descriptor:
             logger.info(f"[QueryData] Descriptor LLM: table={descriptor.table}, op={descriptor.operation}, "
                         f"filters={[f'{f.column} {f.op} {f.value}' for f in descriptor.filters]}, "
