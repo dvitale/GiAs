@@ -73,11 +73,13 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
                 from agents.data import controlli_df
             controlli_df_copy = controlli_df.copy()
 
-            # Usa descrizione_indicatore con matching esatto o sottopiani (A1, A1_A, ma non A10)
+            # Usa alias_indicatore con matching esatto o sottopiani (A1, A1_A, ma non A10)
             piano_upper = str(piano_code).upper()
-            pattern = rf'^{re.escape(piano_upper)}(?:[_ ]|$)'
+            if piano_upper.startswith("ATT "):
+                piano_upper = piano_upper[4:]
+            pattern = rf'^(ATT\s+)?{re.escape(piano_upper)}(?:[_ ]|$)'
             attivita_piano = controlli_df_copy[
-                controlli_df_copy['descrizione_indicatore'].str.upper().str.match(pattern, na=False)
+                controlli_df_copy['alias_indicatore'].str.upper().str.match(pattern, na=False)
             ][['macroarea_cu', 'aggregazione_cu', 'attivita_cu']].drop_duplicates()
 
             if attivita_piano.empty:

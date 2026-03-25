@@ -1898,6 +1898,23 @@ async def admin_reindex_status():
 # ── Schema Metadata Admin ────────────────────────────────────────────
 
 
+def _schema_row_to_dict(r) -> dict:
+    """Converte riga schema_metadata in dict (singola fonte di verità)."""
+    return {
+        "table_key": r[0],
+        "table_name": r[1],
+        "df_variable": r[2],
+        "description_it": r[3],
+        "columns": r[4],
+        "relationships": r[5],
+        "valid_values": r[6],
+        "pii_columns": list(r[7]) if r[7] else [],
+        "row_count_approx": r[8],
+        "is_active": r[9],
+        "updated_at": r[10].isoformat() if r[10] else None,
+    }
+
+
 @app.get("/api/admin/schema-metadata")
 async def admin_list_schema_metadata():
     """Lista tutte le tabelle schema_metadata attive."""
@@ -1919,22 +1936,7 @@ async def admin_list_schema_metadata():
 
             return {
                 "total": len(rows),
-                "records": [
-                    {
-                        "table_key": r[0],
-                        "table_name": r[1],
-                        "df_variable": r[2],
-                        "description_it": r[3],
-                        "columns": r[4],
-                        "relationships": r[5],
-                        "valid_values": r[6],
-                        "pii_columns": list(r[7]) if r[7] else [],
-                        "row_count_approx": r[8],
-                        "is_active": r[9],
-                        "updated_at": r[10].isoformat() if r[10] else None,
-                    }
-                    for r in rows
-                ]
+                "records": [_schema_row_to_dict(r) for r in rows]
             }
     except Exception as e:
         logger.error(f"[AdminSchema] Error listing schema: {e}")
@@ -1963,19 +1965,7 @@ async def admin_get_schema_metadata(table_key: str):
             if not row:
                 raise HTTPException(status_code=404, detail=f"Tabella '{table_key}' non trovata")
 
-            return {
-                "table_key": row[0],
-                "table_name": row[1],
-                "df_variable": row[2],
-                "description_it": row[3],
-                "columns": row[4],
-                "relationships": row[5],
-                "valid_values": row[6],
-                "pii_columns": list(row[7]) if row[7] else [],
-                "row_count_approx": row[8],
-                "is_active": row[9],
-                "updated_at": row[10].isoformat() if row[10] else None,
-            }
+            return _schema_row_to_dict(row)
     except HTTPException:
         raise
     except Exception as e:
@@ -1991,17 +1981,9 @@ async def admin_update_schema_metadata(table_key: str, payload: dict):
         raise HTTPException(status_code=503, detail="Database non disponibile")
 
     from sqlalchemy import text
-    import json as json_mod
 
     try:
         with engine.connect() as conn:
-            # Verifica che la tabella esista
-            exists = conn.execute(text(
-                "SELECT 1 FROM schema_metadata WHERE table_key = :key"
-            ), {"key": table_key}).fetchone()
-            if not exists:
-                raise HTTPException(status_code=404, detail=f"Tabella '{table_key}' non trovata")
-
             # Aggiorna solo i campi forniti nel payload
             update_fields = []
             params = {"key": table_key}
@@ -2021,7 +2003,7 @@ async def admin_update_schema_metadata(table_key: str, payload: dict):
                     value = payload[field]
                     if field in ("columns", "relationships", "valid_values"):
                         # JSONB: converti a stringa JSON
-                        params[field] = json_mod.dumps(value)
+                        params[field] = json_module.dumps(value)
                         update_fields.append(f"{col} = :{field}::jsonb")
                     elif field == "pii_columns":
                         params[field] = value if isinstance(value, list) else []
@@ -2035,8 +2017,11 @@ async def admin_update_schema_metadata(table_key: str, payload: dict):
 
             update_fields.append("updated_at = NOW()")
             sql = f"UPDATE schema_metadata SET {', '.join(update_fields)} WHERE table_key = :key"
-            conn.execute(text(sql), params)
+            result = conn.execute(text(sql), params)
             conn.commit()
+
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail=f"Tabella '{table_key}' non trovata")
 
             logger.info(f"[AdminSchema] Schema '{table_key}' aggiornato: {list(payload.keys())}")
             return {"status": "ok", "table_key": table_key}
@@ -2069,6 +2054,57 @@ async def admin_reload_schema_catalog():
         }
     except Exception as e:
         logger.error(f"[AdminSchema] Error reloading: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/personale/{user_id}")
+async def get_personale(user_id: str):
+    """Ritorna i dati del personale per un dato user_id."""
+    try:
+        from agents.data import personale_df
+        import pandas as pd
+
+        if personale_df.empty:
+            raise HTTPException(status_code=404, detail="Dati personale non disponibili")
+
+        user_id_str = str(user_id).replace('.0', '')
+        user_row = personale_df[
+            personale_df['user_id'].astype(str).str.replace('.0', '', regex=False) == user_id_str
+        ]
+
+        if user_row.empty:
+            raise HTTPException(status_code=404, detail=f"Utente {user_id} non trovato")
+
+        row = user_row.iloc[0]
+
+        def safe_str(val):
+            if pd.isna(val) or str(val).strip().upper() == 'NULL':
+                return ""
+            return str(val).strip()
+
+        asl = safe_str(row.get('asl', ''))
+        descrizione_uoc = safe_str(row.get('descrizione_uoc', ''))
+        descrizione_uos = safe_str(row.get('descrizione_uos', ''))
+        descrizione_asl = safe_str(row.get('descrizione_asl', ''))
+
+        # Ricostruisci campo descrizione (gerarchia con "->") per compatibilita' frontend
+        desc_parts = [p for p in [descrizione_asl, descrizione_uoc, descrizione_uos] if p]
+        descrizione = "->".join(desc_parts)
+
+        return {
+            "asl": asl,
+            "descrizione_area_struttura_complessa": descrizione_uoc,
+            "descrizione": descrizione,
+            "namefirst": safe_str(row.get('namefirst', '')),
+            "namelast": safe_str(row.get('namelast', '')),
+            "codice_fiscale": safe_str(row.get('codice_fiscale', '')),
+            "user_id": int(float(user_id_str)) if user_id_str.isdigit() else user_id_str,
+            "uos": descrizione_uos,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Personale] Errore lookup user_id={user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

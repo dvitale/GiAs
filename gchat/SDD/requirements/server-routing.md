@@ -10,38 +10,10 @@
 - **Pattern EARS**: Il sistema DEVE registrare tutte le route sotto il base path `/gias/webchat` per compatibilita' con il reverse proxy.
 - **Status**: IMPLEMENTATO
 
-### SR-02 Pagina Principale GET
-- **Pattern EARS**: QUANDO un utente accede via GET a `/gias/webchat/`, il sistema DEVE renderizzare il template `index.html` con i dati utente, messaggio di benvenuto, basePath e queryParams.
+### SR-02 Route pagine HTML con template data injection
+- **Pattern EARS**: Il sistema DEVE servire le seguenti pagine con i rispettivi dati iniettati nel template: (1) GET/POST `/gias/webchat/` renderizza `index.html` con dati utente, messaggio di benvenuto, basePath e queryParams, (2) GET `/gias/webchat/debug` renderizza `debug.html` con dati utente, basePath, queryParams, llmModel e framework, (3) GET `/gias/webchat/debug/langgraph` renderizza `debug_langgraph.html` con gli stessi dati del debug, (4) GET `/gias/webchat/analytics` renderizza `analytics.html` con dati utente, basePath, backendUrl e queryParams, (5) GET `/gias/webchat/monitor` renderizza `monitor.html` con dati utente, basePath, backendUrl e queryParams, (6) GET `/gias/webchat/history` renderizza `history.html` con dati utente, basePath, backendUrl e queryParams, (7) GET `/gias/webchat/admin/rag` renderizza `admin_rag.html` con title e basePath senza autenticazione.
 - **Status**: IMPLEMENTATO
-
-### SR-03 Pagina Principale POST
-- **Pattern EARS**: QUANDO un utente invia una richiesta POST a `/gias/webchat/`, il sistema DEVE renderizzare il template `index.html` con i parametri estratti dal body JSON o form (oltre a query string e sessione).
-- **Status**: IMPLEMENTATO
-
-### SR-04 Pagina Debug
-- **Pattern EARS**: QUANDO un utente accede via GET a `/gias/webchat/debug`, il sistema DEVE renderizzare il template `debug.html` con dati utente, basePath, queryParams, llmModel e framework ottenuti dal backend.
-- **Status**: IMPLEMENTATO
-
-### SR-05 Pagina LangGraph Debugger
-- **Pattern EARS**: QUANDO un utente accede via GET a `/gias/webchat/debug/langgraph`, il sistema DEVE renderizzare il template `debug_langgraph.html` con dati utente, basePath, queryParams, llmModel e framework.
-- **Status**: IMPLEMENTATO
-
-### SR-06 Pagina Analytics
-- **Pattern EARS**: QUANDO un utente accede via GET a `/gias/webchat/analytics`, il sistema DEVE renderizzare il template `analytics.html` con dati utente, basePath, backendUrl e queryParams.
-- **Status**: IMPLEMENTATO
-
-### SR-07 Pagina Monitor
-- **Pattern EARS**: QUANDO un utente accede via GET a `/gias/webchat/monitor`, il sistema DEVE renderizzare il template `monitor.html` con dati utente, basePath, backendUrl e queryParams.
-- **Status**: IMPLEMENTATO
-
-### SR-08 Pagina History
-- **Pattern EARS**: QUANDO un utente accede via GET a `/gias/webchat/history`, il sistema DEVE renderizzare il template `history.html` con dati utente, basePath, backendUrl e queryParams.
-- **Status**: IMPLEMENTATO
-
-### SR-09 Pagina Admin RAG
-- **Pattern EARS**: QUANDO un utente accede via GET a `/gias/webchat/admin/rag`, il sistema DEVE renderizzare il template `admin_rag.html` con title e basePath, senza richiedere autenticazione.
-- **Status**: IMPLEMENTATO
-- **Note**: Nessun caricamento dati utente per la pagina admin.
+- **Accorpa**: SR-02, SR-03, SR-04, SR-05, SR-06, SR-07, SR-08, SR-09
 
 ### SR-10 Servizio File Statici
 - **Pattern EARS**: Il sistema DEVE servire i file statici dalla directory `./statics` sotto il path `/gias/webchat/static`.
@@ -55,37 +27,20 @@
 - **Pattern EARS**: Il sistema DEVE caricare tutti i template HTML dalla directory `template/*` tramite `LoadHTMLGlob`.
 - **Status**: IMPLEMENTATO
 
-### SR-13 loadUserData da CSV
-- **Pattern EARS**: QUANDO il parametro `user_id` e' presente, il sistema DEVE caricare i dati utente dal CSV tramite `GetPersonaleByUserID` e restituire un oggetto con user_id, namefirst (uppercase), namelast (uppercase), descrizione, asl, codice_fiscale e hierarchy.
+### SR-13 Gestione dati utente e hierarchy HTML
+- **Pattern EARS**: QUANDO il parametro `user_id` e' presente, il sistema DEVE caricare i dati utente dal CSV tramite `GetPersonaleByUserID` e restituire un oggetto con user_id, namefirst (uppercase), namelast (uppercase), descrizione, asl, codice_fiscale e hierarchy. QUANDO il parametro `asl_name` dalla query string e' non vuoto, DEVE utilizzarlo al posto del valore ASL dal CSV. QUANDO il campo `Descrizione` contiene segmenti separati da `->`, DEVE generare una struttura HTML gerarchica `<li>...<ul><li>...</li></ul></li>` con escape HTML per prevenire injection.
 - **Status**: IMPLEMENTATO
+- **Accorpa**: SR-13, SR-14, SR-15
 
-### SR-14 Priorita' asl_name su CSV
-- **Pattern EARS**: QUANDO il parametro `asl_name` dalla query string e' non vuoto, il sistema DEVE utilizzarlo al posto del valore ASL proveniente dal CSV.
+### SR-16 Anno dinamico dal backend
+- **Pattern EARS**: QUANDO si renderizza la pagina principale, il sistema DEVE ottenere l'anno corrente dal backend provando prima l'endpoint `/config` e poi `/status` come fallback, con timeout di 5 secondi. SE l'anno non puo' essere ottenuto, DEVE utilizzare il messaggio di welcome di default senza sostituzione. QUANDO l'anno e' ottenuto con successo, DEVE sostituire i placeholder `Anno 2025`, `Anno di riferimento: 2025` e `Priorita' 2025:` con l'anno corrente nel messaggio di benvenuto.
 - **Status**: IMPLEMENTATO
+- **Accorpa**: SR-16, SR-17, SR-18
 
-### SR-15 buildHierarchyHTML con HTML Escape
-- **Pattern EARS**: QUANDO il campo `Descrizione` contiene segmenti separati da `->`, il sistema DEVE generare una struttura HTML gerarchica `<li>...<ul><li>...</li></ul></li>` con escape HTML di ogni segmento per prevenire injection.
+### SR-19 Query params estrazione e propagazione
+- **Pattern EARS**: Il sistema DEVE estrarre i parametri `user_id`, `asl_id`, `asl_name`, `codice_fiscale` e `username` dalla query string della richiesta HTTP e passarli a tutti i template delle 7 pagine per permettere la propagazione dei parametri tra le pagine.
 - **Status**: IMPLEMENTATO
-
-### SR-16 Anno Dinamico dal Backend
-- **Pattern EARS**: QUANDO si renderizza la pagina principale, il sistema DEVE ottenere l'anno corrente dal backend provando prima l'endpoint `/config` e poi `/status` come fallback, con timeout di 5 secondi.
-- **Status**: IMPLEMENTATO
-
-### SR-17 Fallback Anno Dinamico
-- **Pattern EARS**: SE l'anno non puo' essere ottenuto dal backend, il sistema DEVE utilizzare il messaggio di welcome di default senza sostituzione dell'anno.
-- **Status**: IMPLEMENTATO
-
-### SR-18 Sostituzione Anno nel Welcome Message
-- **Pattern EARS**: QUANDO l'anno e' ottenuto con successo, il sistema DEVE sostituire i placeholder `Anno 2025`, `Anno di riferimento: 2025` e `Priorita' 2025:` con l'anno corrente nel messaggio di benvenuto.
-- **Status**: IMPLEMENTATO
-
-### SR-19 parseQueryParams
-- **Pattern EARS**: Il sistema DEVE estrarre i parametri `user_id`, `asl_id`, `asl_name`, `codice_fiscale` e `username` dalla query string della richiesta HTTP.
-- **Status**: IMPLEMENTATO
-
-### SR-20 Propagazione queryParams ai Template
-- **Pattern EARS**: Il sistema DEVE passare i queryParams (asl_id, asl_name, user_id, codice_fiscale, username) a tutti i template delle 7 pagine per permettere la propagazione dei parametri tra le pagine.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: SR-19, SR-20
 
 ### SR-21 Porta Server Configurabile
 - **Pattern EARS**: Il sistema DEVE leggere la porta dal config.json e utilizzarla per l'avvio del server Gin, con fallback al valore `8080` se non configurata.

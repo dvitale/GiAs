@@ -14,28 +14,18 @@
 - **Pattern EARS**: Il sistema DEVE utilizzare un adapter requests custom (SimpleRequestsAdapter) che ignora ssl_context personalizzato, poiche' Nominatim tramite Varnish CDN effettua TLS fingerprinting e rifiuta connessioni con ssl_context custom (errore HTTP 509).
 - **Status**: IMPLEMENTATO
 
-### GP-03 Strategia city-first per capoluoghi
-- **Pattern EARS**: QUANDO l'indirizzo contiene un capoluogo di provincia campano (Napoli, Salerno, Caserta, Avellino, Benevento con coordinate hardcoded), il sistema DEVE prima geocodificare il comune, poi cercare l'indirizzo specifico con viewbox centrato sul comune (raggio ~5km), verificando che il risultato sia entro MAX_DISTANCE_FROM_CENTER_KM (6.0 km).
+### GP-03 Strategia city-first con fallback centro citta'
+- **Pattern EARS**: QUANDO l'indirizzo contiene un capoluogo di provincia campano (Napoli, Salerno, Caserta, Avellino, Benevento con coordinate hardcoded), il sistema DEVE prima geocodificare il comune, poi cercare l'indirizzo specifico con viewbox centrato (raggio ~5km), verificando che il risultato sia entro MAX_DISTANCE_FROM_CENTER_KM (6.0 km). QUANDO l'indirizzo contiene una virgola (formato "Via X, Comune Y"), il sistema DEVE estrarre il comune dall'ultimo segmento, geocodificarlo in Campania, e cercare la via con viewbox centrato, con pulizia preposizioni spurie. SE l'indirizzo specifico non viene trovato o il risultato e' troppo lontano (> 6 km), il sistema DEVE utilizzare le coordinate del centro citta' come riferimento con warning.
 - **Status**: IMPLEMENTATO
+- **Accorpa**: GP-03, GP-04, GP-05
 
-### GP-04 Strategia city-first per comuni generici
-- **Pattern EARS**: QUANDO l'indirizzo contiene una virgola (formato "Via X, Comune Y"), il sistema DEVE estrarre il comune candidato dall'ultimo segmento, geocodificarlo in Campania, e cercare la via con viewbox centrato, con pulizia di preposizioni spurie ("in via" -> "via").
+### GP-06 Cache LRU e rate limiting Nominatim
+- **Pattern EARS**: Il sistema DEVE mantenere una cache LRU con maxsize=500 entries per le geocodifiche (decoratore @lru_cache). Il sistema DEVE limitare le chiamate a Nominatim a massimo 1 richiesta al secondo (min_delay_seconds=1.0) tramite RateLimiter di geopy, con max_retries=2 e error_wait_seconds=5.0, come richiesto dai ToS di Nominatim.
 - **Status**: IMPLEMENTATO
-
-### GP-05 Fallback centro citta'
-- **Pattern EARS**: SE l'indirizzo specifico non viene trovato nel comune o il risultato e' troppo lontano (> 6 km dal centro), il sistema DEVE utilizzare le coordinate del centro citta' come riferimento, aggiungendo un warning nell'indirizzo risolto.
-- **Status**: IMPLEMENTATO
-
-### GP-06 Cache LRU geocodifica
-- **Pattern EARS**: Il sistema DEVE mantenere una cache LRU con maxsize=500 entries per le geocodifiche (decoratore @lru_cache su geocode_with_address), evitando chiamate ripetute al servizio esterno.
-- **Status**: IMPLEMENTATO
-
-### GP-07 Rate limiter Nominatim
-- **Pattern EARS**: Il sistema DEVE limitare le chiamate a Nominatim a massimo 1 richiesta al secondo (min_delay_seconds=1.0) tramite RateLimiter di geopy, con max_retries=2 e error_wait_seconds=5.0, come richiesto dai ToS di Nominatim.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: GP-06, GP-07
 
 ### GP-08 Validazione territorio ASL
-- **Pattern EARS**: QUANDO l'utente ha un'ASL assegnata, il sistema DEVE verificare che l'indirizzo cercato sia nel territorio di competenza dell'ASL, utilizzando un mapping ASL -> province (7 ASL campane: NAPOLI 1 CENTRO, NAPOLI 2 NORD, NAPOLI 3 SUD, SALERNO, CASERTA, AVELLINO, BENEVENTO). SE l'indirizzo e' fuori territorio, il sistema DEVE restituire un errore "location_outside_asl" con suggerimenti.
+- **Pattern EARS**: QUANDO l'utente ha un'ASL assegnata, il sistema DEVE verificare che l'indirizzo cercato sia nel territorio di competenza dell'ASL, utilizzando un mapping ASL -> province (7 ASL campane). SE l'indirizzo e' fuori territorio, il sistema DEVE restituire un errore "location_outside_asl" con suggerimenti.
 - **Status**: IMPLEMENTATO
 
 ### GP-09 Coordinate da database
@@ -55,32 +45,19 @@
 - **Status**: IMPLEMENTATO
 - **Note**: Il clamping 1-50 km non e' implementato esplicitamente nel codice letto; il raggio e' usato direttamente.
 
+### GP-13 GPS device integration (coordinate dirette, skip geocoding)
+- **Pattern EARS**: QUANDO i metadata contengono `latitude`/`longitude` E l'intent e' `ask_nearby_priority`, il tool `nearby_priority` DEVE usare le coordinate GPS del device direttamente, SENZA invocare il GeocodingService. Lo slot `location` DEVE essere comunque estratto dal messaggio per display, ma la ricerca di prossimita' DEVE usare le coordinate GPS. SE le coordinate GPS sono fuori dal territorio della Campania (lat 39.9-41.5, lon 13.7-15.8), il sistema DEVE ignorare le coordinate e richiedere una localizzazione testuale.
+- **Status**: IMPLEMENTATO
+- **Accorpa**: GP-13, GP-14, GP-15
+
 ## Requisiti Non Funzionali
 
-### GP-NF01 Singleton GeocodingService
-- **Pattern EARS**: Il sistema DEVE mantenere un'istanza singleton di GeocodingService tramite pattern __new__ per riusare la stessa istanza e connessione in tutta l'applicazione.
+### GP-NF01 Singleton e gestione eccezioni custom
+- **Pattern EARS**: Il sistema DEVE mantenere un'istanza singleton di GeocodingService tramite pattern __new__. Il sistema DEVE definire eccezioni custom gerarchiche (GeocodingError base, AddressNotFoundError, GeocodingTimeoutError) e fornire un metodo geocode_safe() che ritorna None invece di propagare eccezioni.
 - **Status**: IMPLEMENTATO
+- **Accorpa**: GP-NF01, GP-NF02
 
-### GP-NF02 Gestione eccezioni geocodifica
-- **Pattern EARS**: Il sistema DEVE definire eccezioni custom gerarchiche (GeocodingError base, AddressNotFoundError, GeocodingTimeoutError) e fornire un metodo geocode_safe() che ritorna None invece di propagare eccezioni.
+### GP-NF03 Fallback haversine e pulizia warning
+- **Pattern EARS**: SE geopy non e' disponibile, il sistema DEVE calcolare le distanze con la formula haversine approssimativa (R=6371 km). QUANDO l'indirizzo risolto contiene un warning interno ("CENTRO CITTA'"), il sistema DEVE pulire il testo prima di mostrarlo all'utente, estraendo indirizzo e comune dal warning.
 - **Status**: IMPLEMENTATO
-
-### GP-NF03 Fallback haversine senza geopy
-- **Pattern EARS**: SE geopy non e' disponibile, il sistema DEVE calcolare le distanze con la formula haversine approssimativa (R=6371 km).
-- **Status**: IMPLEMENTATO
-
-### GP-NF04 Pulizia warning nell'output
-- **Pattern EARS**: QUANDO l'indirizzo risolto contiene un warning interno ("CENTRO CITTA'"), il sistema DEVE pulire il testo prima di mostrarlo all'utente nel formatter, estraendo indirizzo e comune dal warning.
-- **Status**: IMPLEMENTATO
-
-### GP-13 GPS device diretto per proximity
-- **Pattern EARS**: QUANDO i metadata contengono `latitude`/`longitude` E l'intent e' `ask_nearby_priority`, ALLORA il tool `nearby_priority` DEVE usare le coordinate GPS del device direttamente, SENZA invocare il GeocodingService per geocodificare una stringa testuale.
-- **Status**: IMPLEMENTATO
-
-### GP-14 Slot location preservato con GPS
-- **Pattern EARS**: SE le coordinate GPS del device sono disponibili nei metadata, ALLORA lo slot `location` DEVE essere comunque estratto dal messaggio per display, ma la ricerca di prossimita' DEVE usare le coordinate GPS.
-- **Status**: IMPLEMENTATO
-
-### GP-15 Validazione bounding box Campania
-- **Pattern EARS**: SE le coordinate GPS del device sono fuori dal territorio della Campania (lat 39.9-41.5, lon 13.7-15.8), ALLORA il sistema DEVE ignorare le coordinate e richiedere una localizzazione testuale.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: GP-NF03, GP-NF04

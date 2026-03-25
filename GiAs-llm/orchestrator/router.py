@@ -155,7 +155,7 @@ DATI DISPONIBILI:
   Filtri: sezione(SEZIONE A,SEZIONE B,SEZIONE C), alias(A1,A22,B2), alias_indicatore, campionamento
   Valori: sezione: SEZIONE A=Sicurezza Alimentare, SEZIONE B=Sanità Animale, SEZIONE C=Igiene Allevamenti, SEZIONE D=Alimentazione Animale, SEZIONE E=Farmacosorveglianza, SEZIONE F=Benessere Animale, SEZIONE G=Sottoprodotti
 - masterlist ~105,000 righe: Tassonomia attività (norma, macroarea, aggregazione, linea_di_attivita)
-- cu_eseguiti ~3,200,000 righe: Controlli eseguiti 2025 (ASL, UOC, piano, macroarea, comune, NC)
+- cu_eseguiti_x ~3,200,000 righe: Controlli eseguiti 2025 (ASL, UOC, piano, macroarea, comune, NC, alias_piano_attivita, alias_indicatore)
 - osa_mai_controllati ~643,000 righe: Stabilimenti mai controllati (ASL, comune, macroarea)
 - ocse_isp_semp: NC storiche 2016-2025 (macroarea, anno, nc_gravi, nc_non_gravi)
 - cu_diff_programmati_eseguiti: Programmati vs eseguiti per indicatore, ASL, UOC
@@ -176,7 +176,7 @@ REGOLE DISAMBIGUAZIONE:
 10. Se la domanda potrebbe corrispondere a 2+ intent con confidence simile, restituisci il migliore come intent principale e gli altri in "alternatives". NON indovinare: è meglio chiedere all'utente che classificare male.
 11. "piani della sezione X" con X in (A-G) → search_piani_by_topic con slot sezione=X
 12. Filtro per MACROAREA/AGGREGAZIONE → estrai come slot per filtrare i risultati dell'intent più vicino
-13. "quanti controlli nell'ASL X" / "controlli eseguiti a BENEVENTO" → query_data (conteggio su cu_eseguiti filtrato per ASL). NON è ask_piano_statistics (che riguarda statistiche dei PIANI, non conteggi grezzi di controlli).
+13. "quanti controlli nell'ASL X" / "controlli eseguiti a BENEVENTO" → query_data (conteggio su cu_eseguiti_x filtrato per ASL). NON è ask_piano_statistics (che riguarda statistiche dei PIANI, non conteggi grezzi di controlli).
 14. query_data per domande su dati tabulari NON coperte dagli intent specifici. Confidence MAI > 0.80.
 15. "più controllati"/"più controlli"/"quanti controlli per stabilimento" = aggregazione dati → query_data. NON ask_priority_establishment (priorità per ritardi) né ask_nearby_priority (MAI controllati vicino a indirizzo).
 16. "nelle mie vicinanze"/"vicino a me" SENZA indirizzo fisico → se la domanda è aggregazione dati, usa query_data con filtro ASL/comune dai metadata. ask_nearby_priority richiede un indirizzo geocodificabile (es. "Via Roma 15, Napoli").
@@ -897,6 +897,12 @@ OUTPUT:"""
                     # Merge pre-parsed slots (LLM ha priorità se fornisce valori)
                     llm_slots = result.get("slots", {})
                     merged_slots = {**extracted_slots, **llm_slots}
+                    # Preserva prefisso ATT da _extract_slots: se il pre-parsing ha
+                    # rilevato "attività X" e impostato piano_code="ATT X", il valore
+                    # dell'LLM (senza ATT) non deve sovrascriverlo
+                    pre_piano = extracted_slots.get("piano_code", "")
+                    if isinstance(pre_piano, str) and pre_piano.startswith("ATT "):
+                        merged_slots["piano_code"] = pre_piano
                     result["slots"] = self._normalize_slots(merged_slots)
 
                     # Post-validation con correzione semantica
@@ -975,10 +981,17 @@ OUTPUT:"""
         """
         slots = {}
 
-        # Piano code
-        piano_match = self.RE_PIANO_CODE.search(message)
-        if piano_match:
-            slots["piano_code"] = piano_match.group(1).upper()
+        # Attività code: "attività B5" o "attività B5_A" → piano_code con prefisso ATT
+        attivita_match = re.search(
+            r'\battivit[aà]\s+([A-Z]{1,2}[0-9]{1,3}(?:_[A-Z0-9]+)?)\b', message, re.IGNORECASE
+        )
+        if attivita_match:
+            slots["piano_code"] = f"ATT {attivita_match.group(1).upper()}"
+        else:
+            # Piano code
+            piano_match = self.RE_PIANO_CODE.search(message)
+            if piano_match:
+                slots["piano_code"] = piano_match.group(1).upper()
 
         # ASL
         asl_match = self.RE_ASL.search(message)

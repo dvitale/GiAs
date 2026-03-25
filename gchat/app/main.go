@@ -86,6 +86,7 @@ func parseQueryParams(c *gin.Context) (userIDStr, aslID, aslName, codiceFiscale,
 
 func main() {
 	config := LoadConfig()
+	SetBackendURL(config.LLMServer.URL)
 
 	r := gin.Default()
 

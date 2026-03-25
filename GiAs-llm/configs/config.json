@@ -103,7 +103,7 @@
       "tables": {
         "piani": "piani_monitoraggio",
         "attivita": "masterlist",
-        "controlli": "cu_eseguiti",
+        "controlli": "cu_eseguiti_x",
         "osa_mai_controllati": "osa_mai_controllati",
         "ocse": "ocse_isp_semp",
         "diff_prog_eseg": "cu_diff_programmati_eseguiti",

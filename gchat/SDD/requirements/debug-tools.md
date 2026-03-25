@@ -10,37 +10,20 @@
 - **Pattern EARS**: QUANDO l'utente invia un messaggio nella pagina debug, il sistema DEVE inviare la richiesta a POST `/debug/chat` che esegue sia Parse NLU (`/api/v1/parse`) sia Chat (`/api/v1/chat`) e restituisce i risultati combinati.
 - **Status**: IMPLEMENTATO
 
-### DT-02 Pannello Intent Classification
-- **Pattern EARS**: QUANDO una risposta debug arriva, il sistema DEVE mostrare nel pannello Intent: il nome dell'intent, una descrizione user-friendly, una barra di confidence percentuale e l'etichetta "(LLM Router)".
+### DT-02 Pannelli debug (intent, entities, agents, state)
+- **Pattern EARS**: QUANDO una risposta debug arriva, il sistema DEVE mostrare: (1) nel pannello Intent il nome dell'intent, una descrizione user-friendly, una barra di confidence percentuale e l'etichetta "(LLM Router)", (2) nel pannello Entities le coppie nome-valore estratte, (3) nel pannello Agents gli agent eseguiti con badge colorati per categoria, (4) nel pannello Conversation State i metadata (asl, asl_id, user_id, codice_fiscale, username con source "context") e gli slot estratti (piano_code, topic, etc. con source "extracted").
 - **Status**: IMPLEMENTATO
+- **Accorpa**: DT-02, DT-03, DT-04, DT-05
 
-### DT-03 Pannello Entities Estratte
-- **Pattern EARS**: QUANDO una risposta debug contiene entities, il sistema DEVE elencarle come coppie nome-valore nel pannello Entities.
+### DT-06 Mappings intent/tool-agent
+- **Pattern EARS**: Il sistema DEVE mappare 19 intent a descrizioni italiane user-friendly (greet, goodbye, ask_help, ask_piano_stabilimenti, etc.) e mappare 19 tool backend a informazioni agent con categorie colorate: piano (#3b82f6), search (#10b981), priority (#f59e0b), risk (#ef4444), nc (#8b5cf6), history (#06b6d4), procedure (#14b8a6), proximity (#f97316), conversation (#6b7280).
 - **Status**: IMPLEMENTATO
+- **Accorpa**: DT-06, DT-07
 
-### DT-04 Pannello Agents Eseguiti
-- **Pattern EARS**: QUANDO una risposta debug arriva, il sistema DEVE mostrare gli agent eseguiti nel pannello Agents con badge colorati per categoria.
+### DT-08 Execution path con priorita'
+- **Pattern EARS**: QUANDO si determinano gli agent eseguiti, il sistema DEVE usare in ordine di priorita': (1) `execution_path` dalla risposta, (2) `executed_actions` dal tracker, (3) mappatura intent->tool come fallback. SE il backend non fornisce un execution_path, il sistema Go DEVE generare un path simulato basato sull'intent tramite `determineExecutionPath` con nodi base [input, classify, dialogue_manager] + tool specifico + response_generator.
 - **Status**: IMPLEMENTATO
-
-### DT-05 Pannello Conversation State
-- **Pattern EARS**: QUANDO una risposta debug arriva, il sistema DEVE mostrare i metadata (asl, asl_id, user_id, codice_fiscale, username con source "context") e gli slot estratti (piano_code, topic, etc. con source "extracted") nel pannello State.
-- **Status**: IMPLEMENTATO
-
-### DT-06 19 Intent Descriptions
-- **Pattern EARS**: Il sistema DEVE mappare 19 intent a descrizioni italiane user-friendly: greet->Saluto, goodbye->Congedo, ask_help->Richiesta aiuto, ask_piano_stabilimenti, ask_piano_description, ask_piano_statistics, search_piani_by_topic, ask_priority_establishment, ask_risk_based_priority, ask_suggest_controls, ask_nearby_priority, ask_delayed_plans, check_if_plan_delayed, ask_establishment_history, ask_top_risk_activities, analyze_nc_by_category, info_procedure, confirm_show_details, decline_show_details, fallback.
-- **Status**: IMPLEMENTATO
-
-### DT-07 19 Tool-Agent Mappings con Categorie Colorate
-- **Pattern EARS**: Il sistema DEVE mappare 19 tool backend a informazioni agent con categorie colorate: piano (#3b82f6), search (#10b981), priority (#f59e0b), risk (#ef4444), nc (#8b5cf6), history (#06b6d4), procedure (#14b8a6), proximity (#f97316), conversation (#6b7280).
-- **Status**: IMPLEMENTATO
-
-### DT-08 Execution Path Priorita'
-- **Pattern EARS**: QUANDO si determinano gli agent eseguiti, il sistema DEVE usare in ordine di priorita': (1) `execution_path` dalla risposta, (2) `executed_actions` dal tracker, (3) mappatura intent->tool come fallback.
-- **Status**: IMPLEMENTATO
-
-### DT-09 Simulated Path Fallback
-- **Pattern EARS**: SE il backend non fornisce un execution_path, il sistema Go DEVE generare un path simulato basato sull'intent tramite `determineExecutionPath` con nodi base [input, classify, dialogue_manager] + tool specifico + response_generator.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: DT-08, DT-09
 
 ### DT-10 Responsive Grid Debug
 - **Pattern EARS**: MENTRE lo schermo e' piu' largo di 1200px, il sistema DEVE mostrare il layout debug in 2 colonne (chat area + debug panel 400px). Sotto 1200px, DEVE passare a layout a singola colonna.
@@ -58,17 +41,10 @@
 - **Pattern EARS**: QUANDO si invia un messaggio nella pagina debug, il sistema DEVE applicare un timeout di 75 secondi tramite AbortController.
 - **Status**: IMPLEMENTATO
 
-### DT-14 LangGraph SVG Visualizer
-- **Pattern EARS**: La pagina debug_langgraph DEVE includere un visualizzatore SVG inline del workflow LangGraph con nodi interattivi.
+### DT-14 LangGraph SVG visualizer con tab e history
+- **Pattern EARS**: La pagina debug_langgraph DEVE includere un visualizzatore SVG inline del workflow LangGraph con nodi interattivi, un sistema a tab con almeno visualizzazione esecuzione, dettagli nodi e metriche, e mantenere uno storico delle query inviate durante la sessione.
 - **Status**: IMPLEMENTATO
-
-### DT-15 Tab System LangGraph
-- **Pattern EARS**: La pagina debug_langgraph DEVE mostrare un sistema a tab con almeno: visualizzazione esecuzione, dettagli nodi e metriche.
-- **Status**: IMPLEMENTATO
-
-### DT-16 Query History LangGraph
-- **Pattern EARS**: La pagina debug_langgraph DEVE mantenere uno storico delle query inviate durante la sessione.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: DT-14, DT-15, DT-16
 
 ### DT-17 Sender ID Debug
 - **Pattern EARS**: Il sistema DEVE generare un sender ID stabile per la sessione debug nel formato `debug_user_` + timestamp per supportare two-phase e memoria conversazionale.

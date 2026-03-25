@@ -15,7 +15,7 @@ echo "Preparazione aggiornamento verso il server remoto:"
 echo "  Remote Host: $REMOTE_HOST (User: $REMOTE_USER)"
 echo "  Da:          $LOCAL_PATH"
 echo "  A:           $REMOTE_PATH"
-echo "  Include:     *.go *.html *.js *.css *.sh *.png *.jp* *.json"
+echo "  Include:     *.go *.html *.js *.css *.sh *.png *.jp* *.json (no *.md)"
 echo "--------------------------------------------------"
 echo
 
@@ -39,6 +39,7 @@ RSYNC_BASE='rsync -avzu --delete \
     --include="*.png" \
     --include="*.jp*" \
     --include="*.json" \
+    --exclude="*" \
     "$LOCAL_PATH" \
     "$REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH"'
 RSYNC_DRY="$RSYNC_BASE -n --itemize-changes --out-format='__RSYNC__%i %n'"

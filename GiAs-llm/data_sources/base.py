@@ -3,8 +3,57 @@ Abstract base class for data sources.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict
+from typing import Dict, List
 import pandas as pd
+
+
+# Whitelist colonne per i 3 dataset piu' grandi.
+# Le colonne non elencate vengono scartate al load time per ridurre memoria.
+# Impatto stimato: ~11.5M celle eliminate (~34 colonne inutilizzate).
+# Per riaggiungere una colonna, basta inserirla nella lista — nessun dato
+# viene cancellato dalla sorgente (CSV/DB).
+KEEP_COLUMNS: Dict[str, List[str]] = {
+    "controlli": [
+        "id_controllo", "data_inizio_controllo", "macroarea_cu",
+        "aggregazione_cu", "attivita_cu", "descrizione_indicatore",
+        "descrizione_piano", "descrizione_asl", "descrizione_uoc",
+        "descrizione_uos", "sezione", "num_riconoscimento", "norma",
+        "alias_piano_attivita", "alias_indicatore",
+        "latitudine_stab", "longitudine_stab",
+        # PII — mantenute per blacklist check
+        "num_registrazione", "ragione_sociale", "partita_iva",
+        "codice_fiscale", "nominativo_rappresentante",
+    ],
+    "osa_mai_controllati": [
+        "asl", "macroarea", "aggregazione", "attivita", "comune",
+        "indirizzo", "latitudine_stab", "longitudine_stab",
+        "num_riconoscimento", "provincia_stab",
+        # PII — mantenute per blacklist check
+        "partita_iva", "codice_fiscale", "codice_fiscale_rappresentante",
+        "nominativo_rappresentante",
+    ],
+    "ocse": [
+        "id_controllo_ufficiale", "macroarea_sottoposta_a_controllo",
+        "aggregazione_sottoposta_a_controllo",
+        "linea_attivita_sottoposta_a_controllo",
+        "anno_controllo", "asl", "numero_nc_gravi", "numero_nc_non_gravi",
+        "tipo_non_conformita", "oggetto_non_conformita",
+        "numero_registrazione", "numero_riconoscimento", "norma",
+        "comune", "tipo_controllo",
+    ],
+}
+
+
+def _apply_column_filter(key: str, df: pd.DataFrame) -> pd.DataFrame:
+    """Filtra colonne inutilizzate in base alla whitelist KEEP_COLUMNS."""
+    if key not in KEEP_COLUMNS or df.empty:
+        return df
+    keep = [c for c in KEEP_COLUMNS[key] if c in df.columns]
+    dropped = len(df.columns) - len(keep)
+    if dropped > 0:
+        print(f"[DataSource] {key}: scartate {dropped} colonne inutilizzate "
+              f"({len(df.columns)} -> {len(keep)})")
+    return df[keep]
 
 
 class DataSource(ABC):
@@ -48,16 +97,21 @@ class DataSource(ABC):
     def load_all(self) -> Dict[str, pd.DataFrame]:
         """
         Load all datasets.
+        Applica whitelist colonne ai dataset grandi (controlli, osa, ocse).
 
         Returns:
             Dictionary with all dataframes
         """
-        return {
+        datasets = {
             "piani": self.load_piani(),
             "attivita": self.load_attivita(),
             "controlli": self.load_controlli(),
             "osa_mai_controllati": self.load_osa_mai_controllati(),
             "ocse": self.load_ocse(),
             "diff_prog_eseg": self.load_diff_prog_eseg(),
-            "personale": self.load_personale()
+            "personale": self.load_personale(),
         }
+        # Filtra colonne inutilizzate per i dataset configurati
+        for key in list(datasets.keys()):
+            datasets[key] = _apply_column_filter(key, datasets[key])
+        return datasets

@@ -5,6 +5,7 @@ Recupera chunk rilevanti dalla collection Qdrant 'procedure_documents'
 e genera una risposta sintetizzata tramite LLM (Ollama).
 """
 
+import json
 from typing import Dict, Any, List, Tuple
 import re
 
@@ -167,7 +168,6 @@ def _expand_query(query: str, conversation_context: str = "") -> List[str]:
             'Genera 2 riformulazioni con sinonimi e termini alternativi.\n'
             'Rispondi SOLO con JSON: {"variants": ["variante1", "variante2"]}'
         )
-        import json
         response = llm.query(prompt=prompt, temperature=0.3, max_tokens=150,
                            json_mode=True, timeout=5)
         parsed = json.loads(response)

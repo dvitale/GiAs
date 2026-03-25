@@ -6,16 +6,13 @@
 
 ## Requisiti Funzionali
 
-### DL-01 Factory pattern con singleton
-- **Pattern EARS**: Il sistema DEVE fornire un factory method `get_data_source()` che crea l'istanza appropriata (CSV o PostgreSQL) basandosi sulla configurazione in config.json e la mantiene come singleton globale. Tutte le chiamate successive DEVONO restituire la stessa istanza.
+### DL-01 Factory pattern singleton con connection pooling
+- **Pattern EARS**: Il sistema DEVE fornire un factory method `get_data_source()` che crea l'istanza appropriata (CSV o PostgreSQL) basandosi sulla configurazione e la mantiene come singleton globale. QUANDO il tipo e' "postgresql" E postgresql.enabled e' true, il sistema DEVE creare un PostgreSQLDataSource; in tutti gli altri casi, un CSVDataSource. QUANDO viene creato il PostgreSQLDataSource, il sistema DEVE inizializzare un engine SQLAlchemy con QueuePool (pool_size=5, max_overflow=10, pool_pre_ping=True, pool_recycle=3600s) come class-level singleton.
 - **Status**: IMPLEMENTATO
+- **Accorpa**: DL-01, DL-03
 
 ### DL-02 Intercambiabilita' CSV/PostgreSQL
 - **Pattern EARS**: Il sistema DEVE supportare due data source intercambiabili (CSVDataSource e PostgreSQLDataSource) che implementano la stessa interfaccia base DataSource con metodi load_piani, load_attivita, load_controlli, load_osa_mai_controllati, load_ocse, load_diff_prog_eseg, load_personale.
-- **Status**: IMPLEMENTATO
-
-### DL-03 Selezione data source da configurazione
-- **Pattern EARS**: QUANDO il tipo configurato in config.json e' "postgresql" E postgresql.enabled e' true, il sistema DEVE creare un PostgreSQLDataSource. In tutti gli altri casi, il sistema DEVE creare un CSVDataSource.
 - **Status**: IMPLEMENTATO
 
 ### DL-04 Connection pooling SQLAlchemy
@@ -26,13 +23,10 @@
 - **Pattern EARS**: Il sistema DEVE mantenere una cache DataFrame a livello di classe (_dataframe_cache) condivisa tra tutte le istanze PostgreSQLDataSource, restituendo copie dei DataFrame cached per prevenire modifiche accidentali.
 - **Status**: IMPLEMENTATO
 
-### DL-06 Deduplicazione piani PostgreSQL
-- **Pattern EARS**: QUANDO i piani vengono caricati da PostgreSQL, il sistema DEVE deduplicare le righe basandosi su (sezione, alias, alias_indicatore) mantenendo la prima occorrenza, poiche' PostgreSQL contiene duplicati (5x per record).
+### DL-06 Deduplicazione piani e attivita' PostgreSQL
+- **Pattern EARS**: QUANDO i piani vengono caricati da PostgreSQL, il sistema DEVE deduplicare le righe basandosi su (sezione, alias, alias_indicatore) mantenendo la prima occorrenza. QUANDO le attivita' vengono caricate, il sistema DEVE deduplicare basandosi su tutte le colonne eccetto 'id'.
 - **Status**: IMPLEMENTATO
-
-### DL-07 Deduplicazione attivita' PostgreSQL
-- **Pattern EARS**: QUANDO le attivita' vengono caricate da PostgreSQL, il sistema DEVE deduplicare le righe basandosi su tutte le colonne eccetto 'id', poiche' PostgreSQL contiene duplicati (4x per record).
-- **Status**: IMPLEMENTATO
+- **Accorpa**: DL-06, DL-07
 
 ### DL-08 Filtro personale per anno corrente
 - **Pattern EARS**: QUANDO i dati personale vengono caricati (sia CSV che PostgreSQL), il sistema DEVE filtrare per anno == current_year (da config) e deduplicare per user_id mantenendo la prima occorrenza.
@@ -58,16 +52,13 @@
 - **Pattern EARS**: QUANDO get_piano_by_id non trova match esatto per alias o alias_indicatore e il codice non inizia con "ATT ", il sistema DEVE tentare un secondo match con prefisso "ATT {codice}" su alias_indicatore, poiche' gli indicatori hanno formato "ATT AO5_A".
 - **Status**: IMPLEMENTATO
 
+### DL-14 get_piano_by_id - distinzione piano/attivita' con prefix match
+- **Pattern EARS**: QUANDO get_piano_by_id non trova match esatto per alias, alias_indicatore o prefisso "ATT {codice}", il sistema DEVE tentare un prefix match con pattern "^ATT {codice}(?:[_ ]|$)" su alias_indicatore, per catturare attivita' con suffissi (es. "B5" → "ATT B5_A", "ATT B5_B"). QUANDO il codice inizia con "ATT " (es. "ATT B5" da slot "attivita' B5"), il sistema DEVE usare direttamente il prefisso fornito. QUANDO get_controlli_by_piano riceve un codice con prefisso "ATT ", il sistema DEVE strippare il prefisso prima di cercare in descrizione_indicatore.
+- **Status**: IMPLEMENTATO
+
 ## Requisiti Non Funzionali
 
-### DL-NF01 CSV low_memory
-- **Pattern EARS**: Il sistema DEVE caricare i file CSV con parametro low_memory=False per evitare errori di tipo misto su colonne con dati eterogenei.
+### DL-NF01 Cache DataFrame, precaricamento e pesi NC
+- **Pattern EARS**: Il sistema DEVE caricare i file CSV con parametro low_memory=False per evitare errori di tipo misto. SE un file CSV non viene trovato o una query PostgreSQL fallisce, il sistema DEVE restituire un DataFrame vuoto e loggare l'errore senza propagare l'eccezione. Il sistema DEVE fornire metodi clear_cache() e clear_data_source_cache() per invalidare la cache e dispose dell'engine SQLAlchemy.
 - **Status**: IMPLEMENTATO
-
-### DL-NF02 Gestione errori graceful
-- **Pattern EARS**: SE un file CSV non viene trovato o una query PostgreSQL fallisce, il sistema DEVE restituire un DataFrame vuoto e loggare l'errore, senza propagare l'eccezione.
-- **Status**: IMPLEMENTATO
-
-### DL-NF03 Cleanup cache
-- **Pattern EARS**: Il sistema DEVE fornire metodi clear_cache() e clear_data_source_cache() per invalidare la cache (per testing/reload), incluso dispose dell'engine SQLAlchemy.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: DL-NF01, DL-NF02, DL-NF03

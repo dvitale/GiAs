@@ -6,13 +6,10 @@
 
 ## Requisiti Funzionali
 
-### RA-01 Predittore ML XGBoost V4
-- **Pattern EARS**: DOVE il predittore ML e' configurato (type="ml"), il sistema DEVE caricare il modello XGBoost V4 dal file `production_assets/risk_model_v4.json` e utilizzarlo per predire la probabilita' di non conformita' (NC) per stabilimenti mai controllati, con 6 feature: macroarea_norm, aggregazione_norm, years_never_controlled, asl, linea_attivita, norma.
+### RA-01 Predittore ML XGBoost con soglia decisionale
+- **Pattern EARS**: DOVE il predittore ML e' configurato (type="ml"), il sistema DEVE caricare il modello XGBoost V4 dal file `production_assets/risk_model_v4.json` e utilizzarlo per predire la probabilita' di NC per stabilimenti mai controllati, con 6 feature: macroarea_norm, aggregazione_norm, years_never_controlled, asl, linea_attivita, norma. Il sistema DEVE utilizzare una soglia decisionale di 0.40 per classificare: ALTO (score > 0.70), MEDIO (score > 0.40), BASSO (score <= 0.40).
 - **Status**: IMPLEMENTATO
-
-### RA-02 Soglia decisionale
-- **Pattern EARS**: Il sistema DEVE utilizzare una soglia decisionale di 0.40 (configurabile via config) per classificare gli stabilimenti: ALTO (score > 0.70), MEDIO (score > 0.40), BASSO (score <= 0.40).
-- **Status**: IMPLEMENTATO
+- **Accorpa**: RA-01, RA-02
 
 ### RA-03 Predittore statistico rule-based
 - **Pattern EARS**: DOVE il predittore statistico e' configurato (type="statistical"), il sistema DEVE calcolare il punteggio di rischio con la formula Risk Score = P(NC) x Impatto x 100, dove P(NC) = NC totali / controlli e Impatto = NC gravi / controlli, aggregando i dati a livello regionale per linea di attivita'.
@@ -22,13 +19,10 @@
 - **Pattern EARS**: Il sistema DEVE determinare il tipo di predittore con priorita': variabile ambiente GIAS_RISK_PREDICTOR > campo risk_predictor.type in config.json > default "ml".
 - **Status**: IMPLEMENTATO
 
-### RA-05 Auto-degradazione senza XGBoost
-- **Pattern EARS**: SE la libreria XGBoost non e' installata O il file modello non viene trovato, il sistema DEVE degradare automaticamente al predittore rule-based (fallback), loggando un warning.
+### RA-05 Auto-degradazione e fallback predittore
+- **Pattern EARS**: SE la libreria XGBoost non e' installata O il file modello non viene trovato, il sistema DEVE degradare automaticamente al predittore rule-based con warning. SE la predizione ML fallisce con un'eccezione, il sistema DEVE eseguire automaticamente la logica rule-based come fallback con model_version="rule-based-fallback".
 - **Status**: IMPLEMENTATO
-
-### RA-06 Fallback su errore predizione
-- **Pattern EARS**: SE la predizione ML fallisce con un'eccezione, il sistema DEVE eseguire automaticamente la logica rule-based come fallback e restituire risultati con model_version="rule-based-fallback".
-- **Status**: IMPLEMENTATO
+- **Accorpa**: RA-05, RA-06
 
 ### RA-07 Taxonomy map con fallback hardcoded
 - **Pattern EARS**: Il sistema DEVE caricare i mapping tassonomici da `mappings/taxonomy_map.json` per normalizzare macroarea, aggregazione, ASL e norma. SE il file non esiste o contiene errori, il sistema DEVE utilizzare mapping hardcoded legacy.

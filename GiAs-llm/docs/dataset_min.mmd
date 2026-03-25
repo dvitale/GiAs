@@ -1,0 +1,103 @@
+erDiagram
+    masterlist {
+        string norma
+        string macroarea
+        string aggregazione
+        string linea_di_attivita
+        int registrati
+        int riconosciuti
+    }
+    piani_monitoraggio {
+        string sezione PK
+        string alias
+        string alias_indicatore
+        string descrizione
+        string descrizione_2
+        boolean campionamento
+        boolean is_attivita
+    }
+    personale {
+        string user_id PK
+        string descrizione_asl
+        string descrizione_uoc
+        string descrizione_uos
+        string codice_fiscale
+        int anno
+        string namefirst
+        string namelast
+    }
+    cu_eseguiti_x {
+        string id_controllo PK
+        date data_inizio_controllo
+        string tecnica_controllo
+        string alias_piano_attivita FK
+        string descrizione_piano
+        string alias_indicatore FK
+        string descrizione_indicatore
+        string macroarea_cu FK
+        string aggregazione_cu FK
+        string attivita_cu FK
+        string sezione
+        string descrizione_asl FK
+        string descrizione_uoc FK
+        string num_registrazione
+        string norma
+        string num_riconoscimento
+        float latitudine_stab
+        float longitudine_stab
+        string ragione_sociale
+        string partita_iva
+    }
+    osa_mai_controllati {
+        string partita_iva PK
+        string asl
+        string macroarea FK
+        string aggregazione FK
+        string attivita FK
+        string comune
+        string indirizzo
+        float latitudine_stab
+        float longitudine_stab
+        string num_riconoscimento
+        string n_reg
+        string provincia_stab
+        string codice_fiscale_rappresentante
+        string nominativo_rappresentante
+        date data_inizio_attivita
+    }
+    ocse_isp_semp {
+        string id_controllo_ufficiale PK
+        string macroarea_sottoposta FK
+        string aggregazione_sottoposta FK
+        string linea_attivita_sottoposta FK
+        int anno_controllo
+        string asl
+        int numero_nc_gravi
+        int numero_nc_non_gravi
+        string tipo_non_conformita
+        string oggetto_non_conformita
+        string numero_registrazione
+        string numero_riconoscimento
+        string norma
+        string comune
+        string tipo_controllo
+        date data_inizio_attivita
+    }
+    cu_diff_programmati_eseguiti {
+        string indicatore FK
+        int anno
+        string descrizione_asl FK
+        string descrizione_uoc FK
+        string descrizione_uos
+        int programmati
+        int eseguiti
+    }
+
+    masterlist ||--o{ cu_eseguiti_x : "macroarea, aggregazione, attivita"
+    masterlist ||--o{ osa_mai_controllati : "macroarea, aggregazione, attivita"
+    masterlist ||--o{ ocse_isp_semp : "macroarea, aggregazione, linea_attivita"
+    piani_monitoraggio ||--o{ cu_eseguiti_x : "alias_indicatore"
+    piani_monitoraggio ||--o{ cu_diff_programmati_eseguiti : "alias_indicatore = indicatore"
+    cu_eseguiti_x ||--o{ ocse_isp_semp : "id_controllo = id_controllo_ufficiale"
+    personale ||--o{ cu_eseguiti_x : "descrizione_asl, descrizione_uoc"
+    personale ||--o{ cu_diff_programmati_eseguiti : "descrizione_asl, descrizione_uoc"

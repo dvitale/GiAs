@@ -35,7 +35,6 @@ RSYNC_BASE='rsync -avzu --delete -e ssh \
     --include="*.json" \
     --include="*.pdf" \
     --exclude="*" \
-    --exclude="__*"\
     "$LOCAL_PATH" \
     "$REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH"'
 RSYNC_DRY="$RSYNC_BASE -n --itemize-changes --out-format='__RSYNC__%i %n'"

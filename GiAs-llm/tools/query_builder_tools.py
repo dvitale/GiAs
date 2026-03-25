@@ -91,15 +91,17 @@ TABLE_KEY_TO_DF = {
     "mai_controllati": "osa_mai_controllati_df",
     "nc_storiche": "ocse_df",
     "programmazione": "diff_prog_eseg_df",
+    "personale": "personale_df",
 }
 
 # Alias comuni che l'LLM potrebbe usare
 TABLE_ALIASES = {
     "piani_monitoraggio": "piani",
-    "cu_eseguiti": "controlli",
+    "cu_eseguiti_x": "controlli",
     "osa_mai_controllati": "mai_controllati",
     "ocse_isp_semp": "nc_storiche",
     "cu_diff_programmati_eseguiti": "programmazione",
+    "personale": "personale",
 }
 
 # Mappa alias colonna → colonna reale per tabella
@@ -115,20 +117,39 @@ COLUMN_ALIASES = {
         "macroarea": "macroarea_cu",
         "aggregazione": "aggregazione_cu",
         "attivita": "attivita_cu",
-        "stabilimento": "approval_number",
+        "stabilimento": "num_riconoscimento",
         "latitudine": "latitudine_stab",
         "longitudine": "longitudine_stab",
     },
+    "masterlist": {
+        "norma": "NORMA",
+        "macroarea": "MACROAREA",
+        "aggregazione": "AGGREGAZIONE",
+        "linea_di_attivita": "LINEA DI ATTIVITA",
+        "linea_attivita": "LINEA DI ATTIVITA",
+        "attivita": "LINEA DI ATTIVITA",
+    },
     "mai_controllati": {
         "attivita": "attivita",
+        "latitudine": "latitudine_stab",
+        "longitudine": "longitudine_stab",
     },
     "nc_storiche": {
         "macroarea": "macroarea_sottoposta_a_controllo",
+        "aggregazione": "aggregazione_sottoposta_a_controllo",
+        "linea_attivita": "linea_attivita_sottoposta_a_controllo",
+        "attivita": "linea_attivita_sottoposta_a_controllo",
+        "anno": "anno_controllo",
+        "year": "anno_controllo",
     },
     "programmazione": {
         "asl": "descrizione_asl",
         "uoc": "descrizione_uoc",
         "uos": "descrizione_uos",
+    },
+    "personale": {
+        "asl": "asl",
+        "uoc": "descrizione_area_struttura_complessa",
     },
 }
 
@@ -151,7 +172,9 @@ class SafeQueryExecutor:
             self._pii_columns = {
                 "controlli": ["partita_iva", "ragione_sociale", "num_registrazione",
                               "codice_fiscale", "nominativo_rappresentante"],
-                "mai_controllati": ["partita_iva", "ragione_sociale", "num_riconoscimento"],
+                "mai_controllati": ["partita_iva", "codice_fiscale",
+                                    "codice_fiscale_rappresentante", "nominativo_rappresentante",
+                                    "num_riconoscimento"],
                 "personale": ["codice_fiscale", "namefirst", "namelast"],
             }
 
@@ -240,7 +263,8 @@ class SafeQueryExecutor:
             # Import diretto (funziona nel contesto del server dove agents.data è già caricato)
             from agents.data import (
                 piani_df, attivita_df, controlli_df,
-                osa_mai_controllati_df, ocse_df, diff_prog_eseg_df
+                osa_mai_controllati_df, ocse_df, diff_prog_eseg_df,
+                personale_df
             )
             df_map = {
                 "piani": piani_df,
@@ -249,6 +273,7 @@ class SafeQueryExecutor:
                 "mai_controllati": osa_mai_controllati_df,
                 "nc_storiche": ocse_df,
                 "programmazione": diff_prog_eseg_df,
+                "personale": personale_df,
             }
             df = df_map.get(table_key)
             if df is not None:
@@ -291,7 +316,7 @@ class SafeQueryExecutor:
                     logger.warning(f"[QueryBuilder] Colonna '{f.column}' non trovata, skip filtro")
                     continue
 
-            # Gestione speciale: filtro anno su colonna datetime
+            # Gestione speciale: filtro anno su colonna datetime (solo per controlli)
             if col == "data_inizio_controllo" and f.column in ("anno", "year"):
                 try:
                     year = int(val)
@@ -300,6 +325,14 @@ class SafeQueryExecutor:
                     processed.append(FilterDescriptor(column=col, op="lte", value=f"{year}-12-31"))
                     logger.info(f"[QueryBuilder] Filtro anno {year} → range date {year}-01-01 / {year}-12-31")
                     continue
+                except (ValueError, TypeError):
+                    pass
+
+            # Gestione speciale: filtro anno su colonne intere (nc_storiche, programmazione)
+            if col in ("anno_controllo", "anno") and f.column in ("anno", "year"):
+                try:
+                    val = int(val)
+                    op = "eq"
                 except (ValueError, TypeError):
                     pass
 
@@ -481,17 +514,21 @@ REGOLE:
 - Preferisci aggregazioni (group_count, sum) a filter su tabelle grandi (>100K righe)
 
 ALIAS COLONNE (il sistema traduce automaticamente):
-- "anno" / "year" → filtro range su data_inizio_controllo (tabella controlli)
-- "asl" → descrizione_asl
+- "anno" / "year" → filtro range su data_inizio_controllo (tabella controlli), oppure anno_controllo (tabella nc_storiche), oppure anno (tabella programmazione)
+- "asl" → descrizione_asl (controlli, programmazione), asl (mai_controllati, nc_storiche)
 - Per ASL usa SOLO il nome città: "BENEVENTO" (NON "ASL Benevento", NON "Dipartimento...")
+- "macroarea" → macroarea_cu (controlli), MACROAREA (masterlist), macroarea_sottoposta_a_controllo (nc_storiche)
+- "aggregazione" → aggregazione_cu (controlli), AGGREGAZIONE (masterlist), aggregazione_sottoposta_a_controllo (nc_storiche)
 - "nelle mie vicinanze"/"vicino a me"/"nella mia zona" → usa ASL dal CONTESTO UTENTE come filtro su descrizione_asl
+- Tabella masterlist: le colonne sono MAIUSCOLE (NORMA, MACROAREA, AGGREGAZIONE, LINEA DI ATTIVITA)
 
 ESEMPI:
 "quanti controlli per macroarea" → {{"table":"controlli","operation":"group_count","filters":[],"group_by":["macroarea_cu"],"limit":20}}
-"distribuzione NC per anno" → {{"table":"nc_storiche","operation":"group_count","filters":[],"group_by":["anno"],"order_by":{{"column":"anno","direction":"asc"}},"limit":20}}
+"distribuzione NC per anno" → {{"table":"nc_storiche","operation":"group_count","filters":[],"group_by":["anno_controllo"],"order_by":{{"column":"anno_controllo","direction":"asc"}},"limit":20}}
 "controlli a Napoli nel 2025" → {{"table":"controlli","operation":"count","filters":[{{"column":"descrizione_asl","op":"contains","value":"NAPOLI"}},{{"column":"anno","op":"eq","value":"2025"}}],"limit":1}}
 "quanti controlli ASL Benevento 2025" → {{"table":"controlli","operation":"count","filters":[{{"column":"descrizione_asl","op":"contains","value":"BENEVENTO"}},{{"column":"anno","op":"eq","value":"2025"}}],"limit":1}}
 "top 10 macroaree con più NC gravi" → {{"table":"nc_storiche","operation":"top_n","filters":[],"group_by":["macroarea_sottoposta_a_controllo"],"order_by":{{"column":"numero_nc_gravi","direction":"desc"}},"limit":10}}
+"quanti utenti per ASL" → {{"table":"personale","operation":"group_count","filters":[],"group_by":["asl"],"limit":20}}
 
 Output: SOLO JSON valido, niente altro."""
 
@@ -573,9 +610,9 @@ def query_most_controlled_nearby(
         if df.empty:
             return {"error": True, "formatted_response": f"Nessun controllo trovato per ASL {asl}."}
 
-    # Identifica colonna stabilimento (preferisci num_registrazione, fallback approval_number)
+    # Identifica colonna stabilimento (preferisci num_registrazione, fallback num_riconoscimento)
     id_col = None
-    for candidate in ["num_registrazione", "approval_number"]:
+    for candidate in ["num_registrazione", "num_riconoscimento"]:
         if candidate in df.columns and df[candidate].notna().any():
             id_col = candidate
             break

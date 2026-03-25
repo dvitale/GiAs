@@ -1,10 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Overview
 
-GISA-AI e' un assistente virtuale per i servizi veterinari delle ASL della Regione Campania. Risponde a domande su piani di monitoraggio, stabilimenti, controlli ufficiali, priorita' di ispezione e analisi del rischio, interrogando il database GIAS (Gestione Integrata Attivita' Sanitarie).
+GISA-AI e' un assistente virtuale per gli utenfi GISA della Regione Campania. Risponde a domande su piani di monitoraggio, stabilimenti, controlli ufficiali, priorita' di ispezione e analisi del rischio, interrogando il suo database contenente estrazioni dati di GISA.
 
 ## Architettura
 
@@ -17,283 +15,43 @@ Browser --> gchat (Go, :8080) --> GiAs-llm (Python, :5005) --> LLM Provider
                                                             OpenAI-compat (Mistral, Groq)
 ```
 
-### Backend - GiAs-llm/
-- **Framework**: FastAPI + Uvicorn
-- **Orchestrazione**: LangGraph (workflow ad agenti)
-- **LLM**: Ollama (local, default llama3.2) | llama.cpp | OpenAI | Anthropic | OpenAI-compat (Mistral, Groq)
-- **ML**: PyTorch, XGBoost (modello rischio v4)
-- **Embeddings**: sentence-transformers
-- **Database**: PostgreSQL (psycopg2), Qdrant (ricerca semantica)
-- **Data processing**: Pandas, NumPy
-- **Dettagli**: vedere `GiAs-llm/docs/CLAUDE.md`
+- **Backend** (`GiAs-llm/`): FastAPI + LangGraph + multi-model LLM. Dettagli in `GiAs-llm/CLAUDE.md`
+- **Frontend** (`gchat/`): Go/Gin + HTML/CSS/JS vanilla. Dettagli in `gchat/CLAUDE.md`
+- **Database**: PostgreSQL (gias_db) + Qdrant (vector search locale)
 
-### Frontend - gchat/
-- **Server**: Go 1.21+ con Gin framework
-- **UI**: HTML/CSS/JS vanilla (tema light/dark, responsive)
-- **Sessioni**: Cookie-based (gin-contrib/sessions), TTL 5 min, priorita' POST > Query > Session
-- **Comunicazione**: POST JSON verso backend (protocollo V1 nativo); proxy CORS per API chat-log
-- **Dettagli**: vedere `gchat/CLAUDE.md`
-
-### Database
-- **PostgreSQL** (host: GIAS, db: gias_db) - tabelle: piani_monitoraggio, masterlist, cu_eseguiti, osa_mai_controllati, ocse_isp_semp, personale, chat_log, intents
-- **Qdrant** - storage vettoriale locale per ricerca semantica (singleton condiviso tra DataRetriever e FewShotRetriever)
-
-## Comandi
-
-### Avvio completo
+## Quick Start
 
 ```bash
-# 1. Backend (richiede Ollama attivo su :11434)
-cd GiAs-llm && scripts/server.sh start
-
-# 2. Frontend
-cd gchat && ./all.sh    # compila Go + riavvia server
+cd GiAs-llm && scripts/server.sh start   
+cd gchat && ./all.sh                      # Frontend (compila Go + riavvia)
 ```
-
-### Gestione backend (GiAs-llm)
-
-```bash
-scripts/server.sh start|stop|restart|status|logs|test
-GIAS_LLM_MODEL=velvet scripts/server.sh start   # modello locale custom
-
-# Provider LLM esterno (richiede gdpr.allow_external_llm=true in config.json)
-GIAS_LLM_BACKEND=openai_compat MISTRAL_API_KEY=sk-xxx scripts/server.sh start
-```
-
-### Gestione frontend (gchat)
-
-```bash
-./all.sh        # build + stop + run (COMANDO PRINCIPALE)
-./build.sh      # solo compilazione
-./run.sh        # solo avvio (nohup)
-./stop.sh       # stop
-./status.sh     # health check
-```
-
-### Test
-
-```bash
-# Test backend (usa pytest.ini in tests/ - esegue e2e + integration + unit)
-cd GiAs-llm && scripts/server.sh test
-
-# Test per categoria
-cd GiAs-llm && python -m pytest tests/unit/ -v
-cd GiAs-llm && python -m pytest tests/e2e/ -v
-cd GiAs-llm && python -m pytest tests/integration/ -v
-
-# Test legacy (esclusi da pytest.ini per default)
-cd GiAs-llm && python -m pytest tests/legacy/ -v
-
-# Singolo test
-cd GiAs-llm && python -m pytest tests/e2e/test_intents.py -v
-cd GiAs-llm && python -m pytest tests/e2e/test_intents.py::TestIntents::test_help -v
-
-# Test API manuale
-curl -X POST http://localhost:5005/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"sender":"test","message":"piani in ritardo","metadata":{"asl":"AVELLINO"}}'
-```
-
-### Endpoint principali
-
-| Endpoint | Metodo | Descrizione |
-|----------|--------|-------------|
-| `localhost:5005/` | GET | Health check backend |
-| `localhost:5005/api/v1/chat` | POST | Chat principale |
-| `localhost:5005/api/v1/chat/stream` | POST | Chat streaming (SSE) |
-| `localhost:5005/api/v1/chat/feedback` | POST | Feedback utente (rating 1-5 + testo) |
-| `localhost:5005/status` | GET | Stato + dati caricati + rag_cache stats |
-| `localhost:5005/api/v1/parse` | POST | Parsing NLU |
-| `localhost:5005/api/chat-log/user-conversations` | GET | Lista conversazioni utente (per codice_fiscale) |
-| `localhost:5005/api/chat-log/conversation/{sid}` | GET | Messaggi di una conversazione |
-| `localhost:8080/gias/webchat/` | GET | UI chat |
-| `localhost:8080/gias/webchat/chat` | POST | Invio messaggio |
-| `localhost:8080/gias/webchat/chat/stream` | POST | Invio messaggio streaming (SSE) |
-| `localhost:8080/gias/webchat/history` | GET | Pagina cronologia chat |
-| `localhost:8080/gias/webchat/api/chat-log/*` | GET | Proxy API chat-log (evita CORS) |
-| `localhost:8080/gias/webchat/debug` | GET | Debug mode (intent/entity/slot) |
-| `localhost:8080/gias/webchat/debug/langgraph` | GET | LangGraph workflow visualizer |
-| `localhost:8080/gias/webchat/analytics` | GET | Dashboard analytics chat |
-| `localhost:8080/gias/webchat/monitor` | GET | Monitor qualita' conversazioni |
-| `localhost:5005/api/admin/documents/reindex` | POST | Lancia re-indicizzazione RAG in background |
-| `localhost:5005/api/admin/documents/reindex/status` | GET | Stato re-indicizzazione |
-| `localhost:5005/api/admin/schema-metadata` | GET | Lista tabelle schema metadata |
-| `localhost:5005/api/admin/schema-metadata/{key}` | GET/PUT | Dettaglio/aggiornamento schema tabella |
-| `localhost:5005/api/admin/schema-metadata/reload` | POST | Ricarica catalogo schema in memoria |
-| `localhost:8080/gias/webchat/admin/schema` | GET | Pagina admin gestione schema metadata |
-| `localhost:8080/gias/webchat/manifest.webmanifest` | GET | PWA manifest |
-| `localhost:8080/gias/webchat/sw.js` | GET | Service Worker PWA |
-| `localhost:8080/gias/webchat/offline.html` | GET | Pagina fallback offline PWA |
 
 ## Convenzioni codice
 
 - **Lingua**: codice in inglese, commenti/log/UI in italiano
 - **Logging**: prefissi strutturati (CHAT_, LLM_, USER_, INDEX_, CHATLOG_PROXY_, HISTORY_, ANALYTICS_, MONITOR_)
-- **Pattern backend**: Factory (data sources), Singleton (graph + dati globali + Qdrant + embedding), lazy loading
-- **Sessioni frontend**: cookie-based (gin-contrib/sessions), TTL 5 min, merge POST > Query > Session
-- **Sessioni backend**: TTL 5 minuti, gestite da SessionManager (app/session_manager.py)
 - **Config**: JSON in `configs/config.json` (backend) e `config/config.json` (frontend)
 - **Base path**: `/gias/webchat` per reverse proxy
 - **Script shell**: non modificare gli .sh esistenti nella root di gchat
 - **Regola test**: se un test fallisce per bug backend, correggere il backend, mai il test
-- **Help domande**: le domande suggerite in `help_tool()` devono mappare a intent reali in `VALID_INTENTS`. Mai suggerire domande a cui il sistema non sa rispondere.
-
-## Note per sviluppo
-
-- **`./all.sh`** e' il comando per compilare e riavviare gchat. Usare sempre questo.
-- **LLM obbligatorio**: con Ollama locale (default), richiede Ollama su localhost:11434. Con provider esterni, richiede API key via env var e `gdpr.allow_external_llm=true`.
-- **Dati precaricati**: al primo avvio il backend carica tutti i dati da PostgreSQL/CSV in memoria. Il primo request puo' essere lento.
-- **API V1 nativa**: gli endpoint usano un contratto tipizzato Pydantic (`ChatMessage` → `ChatResponse` con `ChatResult`). Il vecchio protocollo Rasa e' stato rimosso.
-- **Metadata utente**: passati via query string URL -> session cookie -> template JS -> POST body -> backend state. Il campo `asl` (nome) ha priorita' su `asl_id`. Il campo `uoc` viene recuperato automaticamente da personale.csv.
-- **CORS proxy**: le API chat-log (`/api/chat-log/*`) sono proxate dal server Go per evitare errori CORS cross-origin dal browser.
-- **Config duplicata**: backend e frontend hanno ciascuno il proprio `config.json` con impostazioni indipendenti.
-- **LLM provider esterni**: il backend supporta provider LLM esterni (OpenAI, Anthropic, Mistral via openai_compat) oltre ai locali (Ollama, llama.cpp). Configurazione in `config.json` sezione `llm_backend.type`. API key solo via env var. GDPR gate (`gdpr.allow_external_llm`) blocca provider esterni per default.
-- **Timeout chain**: JS (75s) > Go (60s) > Backend streaming (120s). Il client deve avere timeout maggiore del server.
-- **Health check**: il frontend verifica la disponibilita' del backend prima di ogni richiesta chat.
-- **Refactoring docs**: il piano di refactoring completo (architettura, migrazione, rollback) e' in `GiAs-llm/docs/refactoring-dialogue-manager.md`.
+- **Help domande**: le domande suggerite in `help_tool()` devono mappare a intent reali in `VALID_INTENTS`
 
 ## Metodologia SDD (Software Design Description)
 
-Il progetto adotta una metodologia di sviluppo requirement-driven basata su SDD con requisiti in notazione EARS.
+Il progetto adotta una metodologia  SDD con requisiti in notazione EARS.
 
-### Flusso di lavoro
-
-```
-Committente (Word/email)
-       ↓   /req <descrizione richiesta>
-Claude estrae + formalizza in EARS
-       ↓
-Revisione e approvazione in SDD/requirements/
-       ↓   /implement <ID requisiti>
-Claude implementa con tag # REQ: [ID]
-       ↓
-Claude aggiorna traceability.md
-```
-
-### Comandi
+**Flusso**: `/req <descrizione>` → revisione → `/implement <ID>` → tag `# REQ: [ID]` nel codice → aggiorna `SDD/traceability.md`
 
 | Comando | Scopo |
 |---------|-------|
-| `/req <descrizione>` | Analizza richiesta, propone requisiti EARS, mostra impact analysis. **Non modifica file** — attende approvazione |
-| `/implement <ID-001, ID-002>` | Implementa requisiti specificati, aggiunge `# REQ: [ID]` nel codice, aggiorna status e traceability |
+| `/req <descrizione>` | Analizza richiesta, propone requisiti EARS. **Non modifica file** — attende approvazione |
+| `/implement <ID-001, ID-002>` | Implementa requisiti, aggiunge `# REQ: [ID]`, aggiorna status e traceability |
 
-### Struttura SDD
+Ogni componente ha `SDD/requirements/` (file EARS) e `SDD/traceability.md`. ID progressivi per componente (LG-, IC-, TE-, API-, SR-, CU-, etc.). Status: DA IMPLEMENTARE → IMPLEMENTATO. Requisiti rimossi: marcare come RIMOSSO (non cancellare).
 
-Ogni componente ha la propria directory SDD:
+## Manutenzione documentazione
 
-```
-GiAs-llm/SDD/
-├── requirements/          # 19 file requisiti EARS (backend)
-│   ├── langgraph-pipeline.md
-│   ├── intent-classification.md
-│   ├── tool-execution.md
-│   ├── api-endpoints.md
-│   └── ...
-└── traceability.md        # Matrice tracciabilita' (387 requisiti)
-
-gchat/SDD/
-├── requirements/          # 13 file requisiti EARS (frontend)
-│   ├── server-routing.md
-│   ├── chat-ui.md
-│   ├── llm-proxy.md
-│   └── ...
-└── traceability.md        # Matrice tracciabilita' (242 requisiti)
-```
-
-### Convenzioni SDD
-
-- **Notazione EARS**: ogni requisito usa pattern WHEN/IF/WHILE/WHERE/ubiquitous
-- **ID progressivi**: prefisso per componente (LG-, IC-, TE-, API-, SR-, CU-, etc.)
-- **Tag nel codice**: `# REQ: [ID]` sulla prima riga delle funzioni che implementano un requisito
-- **Status**: DA IMPLEMENTARE → IMPLEMENTATO (aggiornato in requirements/ dopo implementazione)
-- **Assunti**: marcati con `[ASSUNTO - DA CONFERMARE]` quando la specifica e' ambigua
-- **Tracciabilita'**: ogni riga mappa ID → file sorgente → funzione/classe → status
-
-### Regole di manutenzione SDD
-
-| Modifica al codice | Azione SDD |
-|---------------------|------------|
-| Nuova funzionalita' richiesta | `/req` → approvazione → `/implement` |
-| Nuovo requisito approvato | Aggiungere in `SDD/requirements/` con ID progressivo |
-| Requisito implementato | Aggiornare status + `SDD/traceability.md` |
-| Refactoring che sposta codice | Aggiornare file/funzione in `traceability.md` |
-| Requisito rimosso | Marcare come RIMOSSO (non cancellare) |
-
-## Mappa documentazione CLAUDE.md
-
-Ogni componente ha il proprio CLAUDE.md con i dettagli specifici. Questo file (root) contiene solo le informazioni trasversali e operative. **Non duplicare qui contenuti dei sotto-documenti.**
-
-| File | Perimetro | Contenuti principali |
-|------|-----------|----------------------|
-| `CLAUDE.md` (questo file) | Progetto intero | Overview, comandi, convenzioni, note operative |
-| `GiAs-llm/docs/CLAUDE.md` | Backend Python | Architettura 3-layer, LangGraph, intent, tool, hybrid search, risk predictor, file tree |
-| `gchat/CLAUDE.md` | Frontend Go | Struttura Go/Gin, comunicazione con backend, UI/UX, debug API, timeout |
-
-## Regole di manutenzione documentazione
-
-Per evitare disallineamenti tra i CLAUDE.md, seguire queste regole:
-
-### Principio di singola fonte di verita'
-
-Ogni informazione deve essere documentata in UN SOLO file CLAUDE.md:
-- **Dettagli architetturali backend** (intent, tool, flusso grafo, ConversationState) → solo in `GiAs-llm/docs/CLAUDE.md`
-- **Dettagli frontend** (strutture Go, JS, CSS, debug curl) → solo in `gchat/CLAUDE.md`
-- **Informazioni trasversali** (comandi avvio, endpoint, convenzioni, config paths) → solo in questo file root
-
-### Quando aggiornare
-
-Aggiornare il CLAUDE.md pertinente CONTESTUALMENTE alla modifica del codice:
-
-| Modifica al codice | CLAUDE.md da aggiornare |
-|---------------------|-------------------------|
-| Nuovo intent in `VALID_INTENTS` | `GiAs-llm/docs/CLAUDE.md` (lista intent + count) |
-| Nuovo tool in `TOOL_REGISTRY` | `GiAs-llm/docs/CLAUDE.md` (file tree + common patterns) |
-| Nuovo file in `orchestrator/` | `GiAs-llm/docs/CLAUDE.md` (file tree) |
-| Modifica struttura gchat | `gchat/CLAUDE.md` |
-| Nuovo endpoint API | Root `CLAUDE.md` (tabella endpoint) |
-| Nuova convenzione di progetto | Root `CLAUDE.md` (sezione convenzioni) |
-| Modifica comandi avvio/test | Root `CLAUDE.md` (sezione comandi) |
-| Nuovo requisito implementato | `SDD/traceability.md` del componente + status in `SDD/requirements/` |
-
-### Sincronizzazione tabella intents nel database
-
-**REGOLA OBBLIGATORIA**: Ogni modifica agli intent (`VALID_INTENTS` in `orchestrator/router.py`) deve essere seguita dall'aggiornamento della tabella `intents` nel database PostgreSQL (`gias_db`).
-
-La tabella `intents` e' la fonte di verita' per la documentazione strutturata degli intent e contiene:
-- `intent`: nome intent (deve corrispondere a `VALID_INTENTS`)
-- `section_number`: numero sezione per ordinamento
-- `title`: titolo descrittivo in italiano
-- `example_question`: domanda di esempio
-- `tool`: tool o funzione invocata
-- `graph_node`: nodo del grafo LangGraph
-- `data_retriever`: metodo DataRetriever usato
-- `business_logic`: metodo BusinessLogic usato
-- `two_phase_threshold`: soglia per risposta two-phase (o null)
-- `required_slots`: slot richiesti (JSON array)
-- `query_equivalent`: query SQL equivalente
-- `notes`: note aggiuntive
-
-**Procedura di sincronizzazione**:
-1. Dopo aver aggiunto/modificato un intent in `VALID_INTENTS`
-2. Eseguire INSERT/UPDATE sulla tabella `intents` con tutti i campi rilevanti
-3. Verificare che il conteggio intent nel DB corrisponda a `len(VALID_INTENTS)`
-
-**Comando di verifica**:
-```sql
-SELECT COUNT(*) FROM intents;  -- Deve essere uguale a len(VALID_INTENTS)
-```
-
-### Checklist per aggiornamento
-
-Prima di considerare completata una modifica che tocca architettura, intent, tool o struttura file:
-
-1. Verificare che il CLAUDE.md pertinente rifletta la modifica
-2. Verificare che NON si stia duplicando l'informazione in un altro CLAUDE.md
-3. Se si aggiunge un intent: aggiornare `VALID_INTENTS` count, lista intent, `REQUIRED_SLOTS` se applicabile
-4. Se si aggiunge un file: aggiornare il file tree nel CLAUDE.md del componente
-
-### Cosa NON fare
-
-- **Non duplicare** la lista intent, il flusso del grafo o il ConversationState nel root CLAUDE.md
-- **Non creare** nuovi CLAUDE.md per sotto-componenti (mantenere la struttura a 3 file)
-- **Non documentare** dettagli implementativi effimeri (numeri di riga, conteggi record) che cambiano frequentemente
+- **3 file CLAUDE.md**: root (questo), `GiAs-llm/CLAUDE.md` (backend), `gchat/CLAUDE.md` (frontend). Non crearne altri.
+- **Singola fonte di verita'**: ogni info in UN solo file. Dettagli backend → `GiAs-llm/CLAUDE.md`. Dettagli frontend → `gchat/CLAUDE.md`. Info trasversali → qui.
+- **Aggiornare contestualmente** al codice: nuovo intent → backend CLAUDE.md. Nuovo endpoint → CLAUDE.md del componente. Nuova convenzione → root.
+- **Non duplicare** la lista intent, il flusso del grafo, il ConversationState, gli endpoint, o dettagli implementativi tra i file.

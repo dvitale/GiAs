@@ -40,6 +40,7 @@ RSYNC_BASE='rsync -avzu  \
     --include="*.jp*" \
     --include="*.json" \
     --include="*.md" \
+    --exclude="*" \
     "$REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH" "$LOCAL_PATH"'
 RSYNC_DRY="$RSYNC_BASE -n --itemize-changes --out-format='__RSYNC__%i %n'"
 RSYNC_RUN="$RSYNC_BASE"

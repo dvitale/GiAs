@@ -14,17 +14,10 @@
 - **Pattern EARS**: Il sistema DEVE configurare il MaxAge del cookie di sessione a 300 secondi (5 minuti), allineato al TTL del backend Python.
 - **Status**: IMPLEMENTATO
 
-### SM-03 Cookie Path
-- **Pattern EARS**: Il sistema DEVE configurare il path del cookie di sessione a `/gias/webchat`.
+### SM-03 Configurazione sicura cookie
+- **Pattern EARS**: Il sistema DEVE configurare il cookie di sessione con path `/gias/webchat`, flag `HttpOnly=true` per prevenire l'accesso da JavaScript, e `SameSite=Lax`.
 - **Status**: IMPLEMENTATO
-
-### SM-04 Cookie HttpOnly
-- **Pattern EARS**: Il sistema DEVE configurare il cookie di sessione con flag `HttpOnly=true` per prevenire l'accesso da JavaScript.
-- **Status**: IMPLEMENTATO
-
-### SM-05 Cookie SameSite Lax
-- **Pattern EARS**: Il sistema DEVE configurare il cookie di sessione con `SameSite=Lax`.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: SM-03, SM-04, SM-05
 
 ### SM-06 Cookie Secure
 - **Pattern EARS**: Il sistema DEVE configurare il cookie di sessione con `Secure=true` in produzione per trasmissione solo su HTTPS.
@@ -44,21 +37,10 @@
 - **Pattern EARS**: QUANDO si salvano i parametri utente in sessione, il sistema DEVE salvare solo i parametri con valore non vuoto, aggiornando il timestamp.
 - **Status**: IMPLEMENTATO
 
-### SM-10 MergeSessionParams Priorita'
-- **Pattern EARS**: QUANDO si uniscono i parametri utente, il sistema DEVE applicare la priorita': POST JSON/Form > Query String > Sessione Cookie.
+### SM-10 MergeSessionParams con priorita' e parsing
+- **Pattern EARS**: QUANDO si uniscono i parametri utente, il sistema DEVE applicare la priorita': POST JSON/Form > Query String > Sessione Cookie. QUANDO il Content-Type e' `application/json`, DEVE parsare i parametri user_id, asl_id, asl_name e codice_fiscale dal body JSON. QUANDO il Content-Type non e' JSON in una richiesta POST, DEVE leggere i parametri dai dati form, ignorando il campo `username` dal form.
 - **Status**: IMPLEMENTATO
-
-### SM-11 MergeSessionParams POST JSON
-- **Pattern EARS**: QUANDO il Content-Type e' `application/json`, il sistema DEVE parsare i parametri user_id, asl_id, asl_name e codice_fiscale dal body JSON.
-- **Status**: IMPLEMENTATO
-
-### SM-12 MergeSessionParams POST Form
-- **Pattern EARS**: QUANDO il Content-Type non e' JSON in una richiesta POST, il sistema DEVE leggere i parametri user_id, asl_id, asl_name e codice_fiscale dai dati form.
-- **Status**: IMPLEMENTATO
-
-### SM-13 Username Ignorato da POST Form
-- **Pattern EARS**: QUANDO si parsano parametri da POST form, il sistema DEVE ignorare il campo `username` (non leggerlo dal form).
-- **Status**: IMPLEMENTATO
+- **Accorpa**: SM-10, SM-11, SM-12, SM-13
 
 ### SM-14 Double-Write Pattern
 - **Pattern EARS**: QUANDO MergeSessionParams completa il merge, il sistema DEVE salvare automaticamente i parametri aggiornati nella sessione tramite SaveUserSession (pattern double-write: lettura + scrittura ad ogni richiesta).

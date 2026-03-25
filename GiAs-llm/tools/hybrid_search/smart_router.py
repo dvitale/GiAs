@@ -4,6 +4,8 @@ Smart Router for Hybrid Search
 Intelligently selects the optimal search strategy based on query analysis.
 """
 
+import json
+import os
 from enum import Enum
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
@@ -183,7 +185,6 @@ class SmartRouter:
         if self._cpu_mode is not None:
             return self._cpu_mode
         try:
-            import json, os
             config_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                 "configs", "config.json"

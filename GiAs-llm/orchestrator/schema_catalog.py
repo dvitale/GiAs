@@ -94,6 +94,7 @@ class SchemaCatalog:
                     return None
 
                 lines = []
+                rel_lines = []
                 for row in rows:
                     table_key = row[0]
                     table_name = row[1]
@@ -124,7 +125,6 @@ class SchemaCatalog:
                         if not col.get("filterable", False):
                             continue
                         samples = col.get("sample_values", [])
-                        desc = col.get("description_it", "")
                         if samples:
                             col_parts.append(f"{name}({','.join(str(s) for s in samples[:3])})")
                         else:
@@ -145,13 +145,8 @@ class SchemaCatalog:
 
                     lines.append(line)
 
-                # Sezione relazioni
-                rel_lines = []
-                for row in rows:
-                    table_key = row[0]
-                    table_name = row[1]
-                    relationships = row[5] or []
-                    for rel in relationships:
+                    # Relazioni (stesso loop, evita seconda iterazione)
+                    for rel in relationships_json:
                         target = rel.get("target_table", "")
                         desc = rel.get("description", "")
                         if target and desc:
@@ -173,15 +168,15 @@ class SchemaCatalog:
         """Fallback hardcoded se DB non disponibile."""
         return (
             "- piani_monitoraggio ~730 righe: Piani di controllo veterinario per sezione PRISCAV\n"
-            "  Filtri: sezione(SEZIONE A,SEZIONE B,SEZIONE C), alias(A1,A22,B2), alias_indicatore, campionamento\n"
+            "  Filtri: sezione(SEZIONE A,SEZIONE B,SEZIONE C), alias(A1,A22,B2), alias_indicatore, anno, tipo_attivita\n"
             "  Valori: sezione: SEZIONE A=Sicurezza Alimentare, SEZIONE B=Sanità Animale, SEZIONE C=Igiene Allevamenti, "
             "SEZIONE D=Alimentazione Animale, SEZIONE E=Farmacosorveglianza, SEZIONE F=Benessere Animale, SEZIONE G=Sottoprodotti\n"
-            "- masterlist ~105,000 righe: Tassonomia attività (norma, macroarea, aggregazione, linea_di_attivita)\n"
-            "- cu_eseguiti ~3,200,000 righe: Controlli eseguiti 2025 (ASL, UOC, piano, macroarea, comune, NC)\n"
-            "- osa_mai_controllati ~643,000 righe: Stabilimenti mai controllati (ASL, comune, macroarea)\n"
-            "- ocse_isp_semp: NC storiche 2016-2025 (macroarea, anno, nc_gravi, nc_non_gravi)\n"
-            "- cu_diff_programmati_eseguiti: Programmati vs eseguiti per indicatore, ASL, UOC\n"
-            "- personale ~100,000 righe: Struttura organizzativa (user_id, ASL, UOC)"
+            "- masterlist ~105,000 righe: Tassonomia attività (NORMA, MACROAREA, AGGREGAZIONE, LINEA DI ATTIVITA)\n"
+            "- cu_eseguiti_x ~3,200,000 righe: Controlli eseguiti 2025 (descrizione_asl, descrizione_uoc, descrizione_piano, macroarea_cu, sezione, data_inizio_controllo, num_riconoscimento, alias_piano_attivita, alias_indicatore)\n"
+            "- osa_mai_controllati ~643,000 righe: Stabilimenti mai controllati (asl, comune, macroarea, aggregazione, attivita)\n"
+            "- ocse_isp_semp: NC storiche 2016-2025 (macroarea_sottoposta_a_controllo, aggregazione_sottoposta_a_controllo, anno_controllo, asl, comune)\n"
+            "- cu_diff_programmati_eseguiti: Programmati vs eseguiti per indicatore, descrizione_asl, descrizione_uoc, anno\n"
+            "- personale ~100,000 righe: Struttura organizzativa (user_id, asl, descrizione_area_struttura_complessa)"
         )
 
     def reload(self):

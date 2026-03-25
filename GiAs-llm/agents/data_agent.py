@@ -1,3 +1,4 @@
+# pyright: reportReturnType=false, reportAssignmentType=false, reportArgumentType=false, reportAttributeAccessIssue=false, reportGeneralTypeIssues=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportCallIssue=false
 """
 Data/Reasoning Agent - Layer 2
 
@@ -84,11 +85,20 @@ class DataRetriever:
             (piani_df["alias_indicatore"].str.upper() == pid)
         ]
 
-        # Fallback: alias_indicatore ha prefisso "ATT " (es. "ATT AO5_A")
+        # Fallback 1: alias_indicatore ha prefisso "ATT " (es. "ATT AO5_A")
         # Se l'utente cerca "AO5_A", prova con prefisso
         if piano_rows.empty and not pid.startswith("ATT "):
             piano_rows = piani_df[
                 piani_df["alias_indicatore"].str.upper() == f"ATT {pid}"
+            ]
+
+        # Fallback 2: prefix match su alias_indicatore (es. "ATT B5" → "ATT B5_A", "ATT B5_B")
+        # Gestisce: "attività B5" (piano_code="ATT B5") e codici senza suffisso
+        if piano_rows.empty:
+            prefix = pid if pid.startswith("ATT ") else f"ATT {pid}"
+            pattern = rf'^{re.escape(prefix)}(?:[_ ]|$)'
+            piano_rows = piani_df[
+                piani_df["alias_indicatore"].str.upper().str.match(pattern, na=False)
             ]
 
         return piano_rows if not piano_rows.empty else None
@@ -104,11 +114,14 @@ class DataRetriever:
         if controlli_df.empty or not piano_id:
             return None
 
-        # Usa descrizione_indicatore con matching esatto o sottopiani (A1, A1_A, ma non A10)
+        # Usa alias_indicatore con matching esatto o sottopiani (A1, A1_A, ma non A10)
         piano_upper = piano_id.upper()
-        pattern = rf'^{re.escape(piano_upper)}(?:[_ ]|$)'
+        # Strip prefisso ATT per matching flessibile
+        if piano_upper.startswith("ATT "):
+            piano_upper = piano_upper[4:]
+        pattern = rf'^(ATT\s+)?{re.escape(piano_upper)}(?:[_ ]|$)'
         piano_filtrato = controlli_df[
-            controlli_df['descrizione_indicatore'].str.upper().str.match(pattern, na=False)
+            controlli_df['alias_indicatore'].str.upper().str.match(pattern, na=False)
         ]
 
         return piano_filtrato if not piano_filtrato.empty else None
@@ -590,19 +603,19 @@ class DataRetriever:
         if not controlli_df.empty:
             filters_controlli = []
 
-            # approval_number (numero riconoscimento) - normalizzato, prefix match
-            if numero_riconoscimento and 'approval_number' in controlli_df.columns:
+            # num_riconoscimento (numero riconoscimento) - normalizzato, prefix match
+            if numero_riconoscimento and 'num_riconoscimento' in controlli_df.columns:
                 num_norm = numero_riconoscimento.upper().replace(" ", "")
                 filters_controlli.append(
-                    controlli_df['approval_number'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
+                    controlli_df['num_riconoscimento'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
                 )
 
-            # num_registrazione - normalizzato (cerca in num_registrazione E approval_number con contains)
+            # num_registrazione - normalizzato (cerca in num_registrazione E num_riconoscimento con contains)
             if numero_registrazione:
                 num_norm = numero_registrazione.upper().replace(" ", "")
                 reg_filter = controlli_df['num_registrazione'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
-                if 'approval_number' in controlli_df.columns:
-                    appr_filter = controlli_df['approval_number'].fillna('').str.upper().str.replace(" ", "", regex=False).str.contains(num_norm, na=False, regex=False)
+                if 'num_riconoscimento' in controlli_df.columns:
+                    appr_filter = controlli_df['num_riconoscimento'].fillna('').str.upper().str.replace(" ", "", regex=False).str.contains(num_norm, na=False, regex=False)
                     reg_filter = reg_filter | appr_filter
                 filters_controlli.append(reg_filter)
 
@@ -691,7 +704,7 @@ class DataRetriever:
                 result["establishment_info"] = {
                     "ragione_sociale": first_row.get('ragione_sociale', 'N.D.'),
                     "num_registrazione": first_row.get('num_registrazione', 'N.D.'),
-                    "approval_number": first_row.get('approval_number', 'N.D.'),
+                    "num_riconoscimento": first_row.get('num_riconoscimento', 'N.D.'),
                     "partita_iva": first_row.get('partita_iva', 'N.D.'),
                     "asl": first_row.get('descrizione_asl', 'N.D.'),
                     "source": "controlli_df"
@@ -1242,11 +1255,15 @@ class BusinessLogic:
             return pd.DataFrame()
 
         piano_attivita = controlli_df.groupby(
-            ['descrizione_piano', 'attivita_cu']
+            ['alias_piano_attivita', 'attivita_cu']
         ).size().reset_index(name='count')
 
+        piano_upper = piano_id.upper()
+        if piano_upper.startswith("ATT "):
+            piano_upper = piano_upper[4:]
+        pattern = rf'^(ATT\s+)?{re.escape(piano_upper)}(?:[_ ]|$)'
         related = piano_attivita[
-            piano_attivita['descrizione_piano'].str.contains(piano_id, case=False, na=False)
+            piano_attivita['alias_piano_attivita'].str.upper().str.match(pattern, na=False)
         ]
 
         return related.sort_values('count', ascending=False)
@@ -1759,14 +1776,15 @@ class RiskAnalyzer:
 
         # Optimize: Pre-compute piano-attività correlations once
         piano_attivita_corr = controlli_df.groupby(
-            ['descrizione_piano', 'attivita_cu']
+            ['alias_piano_attivita', 'attivita_cu']
         ).size().reset_index(name='count')
 
-        # Normalize keys for better joins
+        # Normalize keys for better joins (strip ATT prefix)
         piano_attivita_corr['piano_norm'] = (
-            piano_attivita_corr['descrizione_piano']
-            .str.extract(r'([A-Z]+\d+)', expand=False)
+            piano_attivita_corr['alias_piano_attivita']
             .str.upper()
+            .str.replace(r'^ATT\s+', '', regex=True)
+            .str.extract(r'([A-Z]+\d+)', expand=False)
         )
         osa_df_norm = osa_df.copy()
         osa_df_norm['attivita_norm'] = osa_df_norm['attivita'].str.upper().str.strip()

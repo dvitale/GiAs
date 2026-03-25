@@ -11,21 +11,10 @@
 - **Status**: IMPLEMENTATO
 - **Note**: Attualmente disabilitato nella configurazione di default (`enabled: false`).
 
-### ST-02 Whisper Endpoint
-- **Pattern EARS**: QUANDO l'audio viene inviato per la trascrizione, il sistema DEVE chiamare l'endpoint Whisper configurato nella variabile d'ambiente `WHISPER_URL`, con fallback a `http://localhost:8090/inference`.
+### ST-02 Comunicazione Whisper (endpoint, timeout, lingua, cleanup)
+- **Pattern EARS**: QUANDO l'audio viene inviato per la trascrizione, il sistema DEVE chiamare l'endpoint Whisper configurato nella variabile d'ambiente `WHISPER_URL`, con fallback a `http://localhost:8090/inference`, applicando un timeout di 20 secondi. SE il parametro lingua non e' specificato, DEVE usare `"it"` come default. Il sistema DEVE salvare il file audio come temporaneo con pattern `whisper-*.webm` e rimuoverlo dopo l'elaborazione tramite `defer os.Remove`.
 - **Status**: IMPLEMENTATO
-
-### ST-03 Timeout 20s
-- **Pattern EARS**: Il sistema DEVE applicare un timeout di 20 secondi alla chiamata verso il server Whisper.
-- **Status**: IMPLEMENTATO
-
-### ST-04 Lingua Default Italiano
-- **Pattern EARS**: SE il parametro lingua non e' specificato nella richiesta, il sistema DEVE usare `"it"` come lingua di default.
-- **Status**: IMPLEMENTATO
-
-### ST-05 File Temporaneo WebM Cleanup
-- **Pattern EARS**: QUANDO il sistema riceve un file audio, DEVE salvarlo come file temporaneo con pattern `whisper-*.webm` e rimuoverlo dopo l'elaborazione tramite `defer os.Remove`.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: ST-02, ST-03, ST-04, ST-05
 
 ### ST-06 Profiling Logging
 - **Pattern EARS**: Il sistema DEVE loggare le metriche di performance per ogni fase: ricezione file (PROFILE_HANDLER_RECEIVE), salvataggio (PROFILE_HANDLER_FILE_SAVE), chiamata Whisper (PROFILE_HANDLER_WHISPER_CALL), totale (PROFILE_HANDLER_TOTAL), in millisecondi.
@@ -41,10 +30,7 @@
 
 ## Requisiti Non Funzionali
 
-### ST-NF01 Multipart Form Upload
-- **Pattern EARS**: Il sistema DEVE inviare il file audio come multipart form data con campo `file` e il parametro lingua come campo `language`.
+### ST-NF01 Profiling e diagnostica trascrizione
+- **Pattern EARS**: Il sistema DEVE inviare il file audio come multipart form data con campo `file` e il parametro lingua come campo `language`. DEVE eseguire il trim degli spazi dal testo trascritto prima di restituirlo.
 - **Status**: IMPLEMENTATO
-
-### ST-NF02 Risposta Trimmed
-- **Pattern EARS**: Il sistema DEVE eseguire il trim degli spazi dal testo trascritto prima di restituirlo.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: ST-NF01, ST-NF02

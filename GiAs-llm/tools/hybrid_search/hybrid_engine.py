@@ -4,6 +4,8 @@ Hybrid Search Engine
 Main orchestrator that combines vector search + LLM reranking with intelligent routing.
 """
 
+import json
+import re
 from typing import Dict, Any, List, Optional
 import time
 from dataclasses import dataclass
@@ -363,9 +365,6 @@ Massimo 10 piani più rilevanti."""
         """Parse LLM search response into standardized format"""
 
         try:
-            import json
-            import re
-
             # Extract JSON from response
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if not json_match:

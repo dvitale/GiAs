@@ -6,33 +6,20 @@
 
 ## Requisiti Funzionali
 
-### TS-01 Due Temi Light e Dark
-- **Pattern EARS**: Il sistema DEVE supportare due temi: light (default, palette warm/beige con accent `#d4a574`) e dark (palette `#1a1a1a` con accent viola `#8b5cf6`), attivato dalla classe CSS `dark-theme` su body.
+### TS-01 Sistema temi light/dark con CSS variables
+- **Pattern EARS**: Il sistema DEVE supportare due temi: light (default, palette warm/beige con accent `#d4a574`) e dark (palette `#1a1a1a` con accent viola `#8b5cf6`), attivato dalla classe CSS `dark-theme` su body. QUANDO il tema cambia, DEVE sovrascrivere le variabili CSS root (--bg-primary, --bg-secondary, --text-primary, --accent-color, --shadow-*, etc.) tramite il selettore `body.dark-theme`.
 - **Status**: IMPLEMENTATO
+- **Accorpa**: TS-01, TS-02
 
-### TS-02 CSS Variables Toggle
-- **Pattern EARS**: QUANDO il tema cambia, il sistema DEVE sovrascrivere le variabili CSS root (--bg-primary, --bg-secondary, --text-primary, --accent-color, --shadow-*, etc.) tramite il selettore `body.dark-theme`.
+### TS-03 Persistenza e ripristino tema da localStorage
+- **Pattern EARS**: QUANDO l'utente cambia tema, il sistema DEVE salvare la preferenza in localStorage con chiave `theme` e valore `dark` o `light`. QUANDO la pagina si carica, DEVE leggere la preferenza e, se il valore e' `dark`, aggiungere la classe `dark-theme` al body.
 - **Status**: IMPLEMENTATO
+- **Accorpa**: TS-03, TS-04
 
-### TS-03 LocalStorage Persistenza
-- **Pattern EARS**: QUANDO l'utente cambia tema, il sistema DEVE salvare la preferenza in localStorage con chiave `theme` e valore `dark` o `light`.
+### TS-05 Transizioni, icona toggle e header gradients
+- **Pattern EARS**: Il sistema DEVE applicare transizioni di 0.3s ease su background-color, border-color e color per un cambio tema fluido. QUANDO il tema e' light, DEVE mostrare l'icona sole (sun-icon); quando dark, l'icona luna (moon-icon). QUANDO il tema e' light, l'header DEVE avere gradiente `#c49464 -> #a07850`; quando dark, gradiente `#1e1e1e -> #2d2d2d`.
 - **Status**: IMPLEMENTATO
-
-### TS-04 Ripristino Tema al Caricamento
-- **Pattern EARS**: QUANDO la pagina si carica, il sistema DEVE leggere la preferenza da localStorage e, se il valore e' `dark`, aggiungere la classe `dark-theme` al body.
-- **Status**: IMPLEMENTATO
-
-### TS-05 Transizioni 0.3s
-- **Pattern EARS**: Il sistema DEVE applicare transizioni di 0.3s ease su background-color, border-color e color per un cambio tema fluido.
-- **Status**: IMPLEMENTATO
-
-### TS-06 Icona Sole/Luna
-- **Pattern EARS**: QUANDO il tema e' light, il sistema DEVE mostrare l'icona sole (sun-icon). QUANDO il tema e' dark, DEVE mostrare l'icona luna (moon-icon), alternando la visibilita' con `display: block/none`.
-- **Status**: IMPLEMENTATO
-
-### TS-07 Header Gradients
-- **Pattern EARS**: QUANDO il tema e' light, l'header DEVE avere gradiente `#c49464 -> #a07850`. QUANDO il tema e' dark, l'header DEVE avere gradiente `#1e1e1e -> #2d2d2d`.
-- **Status**: IMPLEMENTATO
+- **Accorpa**: TS-05, TS-06, TS-07
 
 ### TS-08 Tema Consistente tra Pagine
 - **Pattern EARS**: Il sistema DEVE inizializzare il tema da localStorage su tutte le pagine (index, history, debug, debug_langgraph) per mantenere la preferenza utente.

@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportGeneralTypeIssues=false, reportAttributeAccessIssue=false, reportOperatorIssue=false
 """
 Response/Generation Agent - Layer 3
 
@@ -69,7 +70,11 @@ class ResponseFormatter:
         - campionamento: True = prelievo campioni, False = attività di controllo
         - sezione: sezione del piano (importante per classificazione)
         """
-        response = f"**📋 Descrizione Piano {piano_id.upper()}**\n\n"
+        # Se piano_id ha prefisso ATT, è una query attività (non piano)
+        is_attivita_query = piano_id.upper().startswith("ATT ")
+        display_id = piano_id.upper().replace("ATT ", "") if is_attivita_query else piano_id.upper()
+        entity_label = "Attività" if is_attivita_query else "Piano"
+        response = f"**📋 Descrizione {entity_label} {display_id}**\n\n"
 
         for desc_main, info in unique_descriptions.items():
             sezione = info.get('sezione', '')
@@ -86,8 +91,12 @@ class ResponseFormatter:
 
             # Indicatori (terzo livello) - carica prima per determinare etichetta piano
             sottopiani = info.get('sottopiani') or info.get('descrizione-2', [])
-            piano_label = ResponseFormatter._label_for_piano(sottopiani)
-            response += f"**{piano_label}:** {alias}\n"
+            if is_attivita_query:
+                response += f"**Attività:** {display_id}\n"
+                response += f"**Piano di riferimento:** {alias}\n"
+            else:
+                piano_label = ResponseFormatter._label_for_piano(sottopiani)
+                response += f"**{piano_label}:** {alias}\n"
 
             # Tipo attività (campionamento)
             if campionamento is True:

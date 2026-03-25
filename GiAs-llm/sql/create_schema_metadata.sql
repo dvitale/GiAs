@@ -28,8 +28,8 @@ INSERT INTO schema_metadata VALUES (
     {"name":"alias","type":"varchar","description_it":"Codice piano (A1, B2, C3, D1)","filterable":true,"sample_values":["A1","A22","B2","C3"]},
     {"name":"alias_indicatore","type":"varchar","description_it":"Codice indicatore specifico del piano","filterable":true,"sample_values":["A1_A","A22_B","B2_A"]},
     {"name":"descrizione","type":"text","description_it":"Descrizione del piano di controllo","filterable":false},
-    {"name":"descrizione-2","type":"text","description_it":"Descrizione estesa del piano","filterable":false},
-    {"name":"campionamento","type":"boolean","description_it":"Se il piano prevede campionamento","filterable":true}
+    {"name":"anno","type":"integer","description_it":"Anno del piano","filterable":true},
+    {"name":"tipo_attivita","type":"varchar","description_it":"Tipo di attivita (PROGRAMMATA, EXTRA, etc.)","filterable":true}
   ]'::jsonb,
   '[{"target_table":"cu_eseguiti","source_col":"alias","target_col":"descrizione_indicatore","description":"Prefisso piano nei controlli eseguiti"}]'::jsonb,
   '{"sezione":["SEZIONE A=Sicurezza Alimentare","SEZIONE B=Sanità Animale","SEZIONE C=Igiene Allevamenti","SEZIONE D=Alimentazione Animale","SEZIONE E=Farmacosorveglianza","SEZIONE F=Benessere Animale","SEZIONE G=Sottoprodotti"]}'::jsonb,
@@ -50,11 +50,12 @@ INSERT INTO schema_metadata VALUES (
   'masterlist', 'masterlist', 'attivita_df',
   'Tassonomia completa delle attività soggette a controllo veterinario. Ogni stabilimento è classificato per norma, macroarea, aggregazione e linea di attività.',
   '[
-    {"name":"norma","type":"varchar","description_it":"Normativa di riferimento (Reg. CE 852, 853, etc.)","filterable":true},
-    {"name":"macroarea","type":"varchar","description_it":"Macroarea di attività (es. Produzione alimenti, Allevamenti)","filterable":true},
-    {"name":"aggregazione","type":"varchar","description_it":"Aggregazione di attività (sottocategoria della macroarea)","filterable":true},
-    {"name":"linea_di_attivita","type":"varchar","description_it":"Linea di attività specifica","filterable":true},
-    {"name":"tipo_controllo","type":"varchar","description_it":"Tipo di controllo previsto","filterable":true}
+    {"name":"NORMA","type":"varchar","description_it":"Normativa di riferimento (Reg. CE 852, 853, etc.)","filterable":true},
+    {"name":"MACROAREA","type":"varchar","description_it":"Macroarea di attività (es. Produzione alimenti, Allevamenti)","filterable":true},
+    {"name":"AGGREGAZIONE","type":"varchar","description_it":"Aggregazione di attività (sottocategoria della macroarea)","filterable":true},
+    {"name":"LINEA DI ATTIVITA","type":"varchar","description_it":"Linea di attività specifica","filterable":true},
+    {"name":"registrati","type":"integer","description_it":"Numero stabilimenti registrati","filterable":false},
+    {"name":"riconosciuti","type":"integer","description_it":"Numero stabilimenti riconosciuti","filterable":false}
   ]'::jsonb,
   '[]'::jsonb,
   '{}'::jsonb,
@@ -66,29 +67,31 @@ INSERT INTO schema_metadata VALUES (
   pii_columns = EXCLUDED.pii_columns, row_count_approx = EXCLUDED.row_count_approx,
   updated_at = NOW();
 
--- 3. cu_eseguiti (~3.2M righe)
+-- 3. cu_eseguiti_x (~3.2M righe)
 INSERT INTO schema_metadata VALUES (
-  'controlli', 'cu_eseguiti', 'controlli_df',
-  'Controlli ufficiali eseguiti nel 2025. Contiene dettagli su ASL, UOC, piano, macroarea, stabilimento, non conformità e coordinate.',
+  'controlli', 'cu_eseguiti_x', 'controlli_df',
+  'Controlli ufficiali eseguiti nel 2025. Contiene dettagli su ASL, UOC, piano, macroarea, stabilimento, non conformità e coordinate. Alias piano/indicatore estratti in colonne dedicate.',
   '[
     {"name":"descrizione_asl","type":"varchar","description_it":"Nome ASL (es. NAPOLI 1 CENTRO, BENEVENTO)","filterable":true},
     {"name":"descrizione_uoc","type":"varchar","description_it":"Unità Operativa Complessa","filterable":true},
-    {"name":"descrizione_piano","type":"varchar","description_it":"Descrizione del piano di controllo","filterable":true},
-    {"name":"descrizione_indicatore","type":"varchar","description_it":"Codice indicatore piano","filterable":true},
+    {"name":"alias_piano_attivita","type":"varchar","description_it":"Sigla piano (es. A11, B2, C44)","filterable":true},
+    {"name":"descrizione_piano","type":"varchar","description_it":"Descrizione del piano di controllo (senza sigla)","filterable":true},
+    {"name":"alias_indicatore","type":"varchar","description_it":"Sigla indicatore (es. A11_A, ATT AO5_A)","filterable":true},
+    {"name":"descrizione_indicatore","type":"varchar","description_it":"Descrizione indicatore piano (senza sigla)","filterable":true},
     {"name":"macroarea_cu","type":"varchar","description_it":"Macroarea del controllo","filterable":true},
     {"name":"aggregazione_cu","type":"varchar","description_it":"Aggregazione del controllo","filterable":true},
     {"name":"attivita_cu","type":"varchar","description_it":"Linea di attività controllata","filterable":true},
-    {"name":"comune","type":"varchar","description_it":"Comune dello stabilimento","filterable":true},
+    {"name":"sezione","type":"varchar","description_it":"Sezione PRISCAV del controllo","filterable":true},
     {"name":"data_inizio_controllo","type":"date","description_it":"Data inizio controllo","filterable":true},
-    {"name":"nc_rilevate","type":"integer","description_it":"Numero non conformità rilevate","filterable":true},
-    {"name":"num_registrazione","type":"varchar","description_it":"Numero registrazione stabilimento (IT...)","filterable":true},
+    {"name":"num_riconoscimento","type":"varchar","description_it":"Numero riconoscimento stabilimento","filterable":true},
+    {"name":"num_registrazione","type":"varchar","description_it":"Numero registrazione stabilimento (IT...)","filterable":false},
     {"name":"ragione_sociale","type":"varchar","description_it":"Ragione sociale dello stabilimento","filterable":false},
     {"name":"partita_iva","type":"varchar","description_it":"Partita IVA stabilimento","filterable":false},
-    {"name":"latitudine","type":"float","description_it":"Coordinata latitudine","filterable":false},
-    {"name":"longitudine","type":"float","description_it":"Coordinata longitudine","filterable":false}
+    {"name":"latitudine_stab","type":"float","description_it":"Coordinata latitudine stabilimento","filterable":false},
+    {"name":"longitudine_stab","type":"float","description_it":"Coordinata longitudine stabilimento","filterable":false}
   ]'::jsonb,
   '[
-    {"target_table":"piani_monitoraggio","source_col":"descrizione_indicatore","target_col":"alias_indicatore","description":"Piano monitoraggio di riferimento"},
+    {"target_table":"piani_monitoraggio","source_col":"alias_indicatore","target_col":"alias_indicatore","description":"Piano monitoraggio di riferimento"},
     {"target_table":"masterlist","source_col":"macroarea_cu","target_col":"macroarea","description":"Classificazione attività"}
   ]'::jsonb,
   '{}'::jsonb,
@@ -113,12 +116,13 @@ INSERT INTO schema_metadata VALUES (
     {"name":"aggregazione","type":"varchar","description_it":"Aggregazione di attività","filterable":true},
     {"name":"attivita","type":"varchar","description_it":"Linea di attività","filterable":true},
     {"name":"num_riconoscimento","type":"varchar","description_it":"Numero riconoscimento stabilimento","filterable":true},
-    {"name":"latitudine","type":"float","description_it":"Coordinata latitudine","filterable":false},
-    {"name":"longitudine","type":"float","description_it":"Coordinata longitudine","filterable":false}
+    {"name":"provincia_stab","type":"varchar","description_it":"Provincia stabilimento","filterable":true},
+    {"name":"latitudine_stab","type":"float","description_it":"Coordinata latitudine stabilimento","filterable":false},
+    {"name":"longitudine_stab","type":"float","description_it":"Coordinata longitudine stabilimento","filterable":false}
   ]'::jsonb,
   '[{"target_table":"masterlist","source_col":"macroarea","target_col":"macroarea","description":"Classificazione attività"}]'::jsonb,
   '{}'::jsonb,
-  '{"partita_iva","ragione_sociale","num_riconoscimento"}',
+  '{"partita_iva","codice_fiscale","codice_fiscale_rappresentante","nominativo_rappresentante","num_riconoscimento"}',
   643000, TRUE, NOW()
 ) ON CONFLICT (table_key) DO UPDATE SET
   table_name = EXCLUDED.table_name, df_variable = EXCLUDED.df_variable,
@@ -133,11 +137,14 @@ INSERT INTO schema_metadata VALUES (
   'Non conformità storiche aggregate per macroarea e anno (2016-2025). Base per calcolo risk score.',
   '[
     {"name":"macroarea_sottoposta_a_controllo","type":"varchar","description_it":"Macroarea sottoposta a controllo","filterable":true},
-    {"name":"aggregazione","type":"varchar","description_it":"Aggregazione di attività","filterable":true},
-    {"name":"anno","type":"integer","description_it":"Anno di riferimento (2016-2025)","filterable":true,"sample_values":["2020","2021","2022","2023","2024","2025"]},
+    {"name":"aggregazione_sottoposta_a_controllo","type":"varchar","description_it":"Aggregazione di attività sottoposta a controllo","filterable":true},
+    {"name":"linea_attivita_sottoposta_a_controllo","type":"varchar","description_it":"Linea attività sottoposta a controllo","filterable":true},
+    {"name":"anno_controllo","type":"integer","description_it":"Anno di riferimento (2016-2025)","filterable":true,"sample_values":["2020","2021","2022","2023","2024","2025"]},
+    {"name":"asl","type":"varchar","description_it":"Nome ASL","filterable":true},
+    {"name":"comune","type":"varchar","description_it":"Comune dello stabilimento","filterable":true},
+    {"name":"tipo_controllo","type":"varchar","description_it":"Tipo di controllo eseguito","filterable":true},
     {"name":"numero_nc_gravi","type":"integer","description_it":"Numero NC gravi","filterable":false},
-    {"name":"numero_nc_non_gravi","type":"integer","description_it":"Numero NC non gravi","filterable":false},
-    {"name":"totale_controlli","type":"integer","description_it":"Totale controlli eseguiti","filterable":false}
+    {"name":"numero_nc_non_gravi","type":"integer","description_it":"Numero NC non gravi","filterable":false}
   ]'::jsonb,
   '[{"target_table":"masterlist","source_col":"macroarea_sottoposta_a_controllo","target_col":"macroarea","description":"Classificazione attività"}]'::jsonb,
   '{}'::jsonb,
@@ -159,7 +166,8 @@ INSERT INTO schema_metadata VALUES (
     {"name":"descrizione_uos","type":"varchar","description_it":"Unità Operativa Semplice","filterable":true},
     {"name":"indicatore","type":"varchar","description_it":"Codice indicatore piano (es. A1_A)","filterable":true},
     {"name":"programmati","type":"integer","description_it":"Numero controlli programmati","filterable":false},
-    {"name":"eseguiti","type":"integer","description_it":"Numero controlli eseguiti","filterable":false}
+    {"name":"eseguiti","type":"integer","description_it":"Numero controlli eseguiti","filterable":false},
+    {"name":"anno","type":"integer","description_it":"Anno di riferimento","filterable":true}
   ]'::jsonb,
   '[{"target_table":"piani_monitoraggio","source_col":"indicatore","target_col":"alias_indicatore","description":"Piano monitoraggio di riferimento"}]'::jsonb,
   '{}'::jsonb,
