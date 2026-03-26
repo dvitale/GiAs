@@ -33,18 +33,28 @@ User Message → [1] classify (Router) → [2] dialogue_manager (rule-based)
 
 **Topic change**: se `_session_last_intent != intent`, resetta `DialogueState`. Slot carry-forward solo se stesso intent.
 
+### Intent Registry (DB-driven)
+
+**Singola fonte di verita'**: la tabella `intents` in PostgreSQL contiene tutti i metadati di ogni intent. L'`IntentMetadataService` (singleton, DB-first con fallback Python) li espone all'orchestratore.
+
+**Metadati gestiti dal DB** (non piu' costanti Python sparse):
+
+| Metadato | Colonna DB | Consumatore |
+|----------|-----------|-------------|
+| Lista intent validi | `intent` (PK) | Router.VALID_INTENTS |
+| Slot obbligatori | `required_slots` (jsonb) | Router.REQUIRED_SLOTS, DialogueManager |
+| Mapping intent→tool | `graph_node` | INTENT_TO_TOOL (tool_nodes.py) |
+| Soglie two-phase | `two_phase_threshold` | TWO_PHASE_THRESHOLDS (two_phase.py) |
+| Intent self-sufficient | `self_sufficient` (bool) | SELF_SUFFICIENT_INTENTS (dialogue_manager.py) |
+| Risposta diretta | `is_direct_response` (bool) | DIRECT_RESPONSE_INTENTS (response_node.py) |
+| Escluso da follow-up | `followup_excluded` (bool) | EXCLUDED_INTENTS (followup_suggestions.py) |
+| Keywords/categoria | `keywords`, `category`, `emoji` | Fallback classifier, help, prompt |
+
+Ogni modulo Python mantiene un fallback hardcoded per il boot senza DB, ma al primo utilizzo carica i valori dal servizio.
+
 ### Intent Classification
 
 **Router** (`orchestrator/router.py`): LLM-first a 6 layer (gibberish detection → pending slot fill → heuristics → cache → LLM con few-shot dinamico → fallback locale). Metodo `classify()` orchestra i layer, con logica estratta in `_fill_pending_slots()`, `_llm_classify()`, `_build_session_context()`. Output JSON: `{reasoning, intent, slots, needs_clarification, confidence}`.
-
-**Valid Intents** (20): `greet`, `goodbye`, `ask_help`, `ask_piano_description`, `ask_piano_stabilimenti`, `ask_piano_statistics`, `search_piani_by_topic`, `ask_priority_establishment`, `ask_risk_based_priority`, `ask_suggest_controls`, `ask_delayed_plans`, `check_if_plan_delayed`, `ask_establishment_history`, `ask_top_risk_activities`, `info_procedure`, `query_data`, `ask_nearby_priority`, `confirm_show_details`, `decline_show_details`, `fallback`
-
-**Required Slots**:
-- `ask_piano_description`, `ask_piano_stabilimenti`, `check_if_plan_delayed`: `[piano_code]`
-- `search_piani_by_topic`: `[topic]`
-- `ask_establishment_history`: almeno uno tra `[num_registrazione, partita_iva, ragione_sociale]`
-- `ask_nearby_priority`: `[location]` (obbligatorio), `[radius_km]` (opzionale, default 5)
-- `query_data`: nessun slot obbligatorio
 
 ### Response Generation
 
@@ -78,8 +88,10 @@ agents/          # DataRetriever, ResponseFormatter, qdrant/embedding singletons
 app/             # FastAPI: api.py, session_manager.py, models.py
 orchestrator/    # graph.py, router.py, dialogue_manager.py, tool_nodes.py,
                  # response_node.py, two_phase.py, followup_suggestions.py,
-                 # intent_metadata.py, schema_catalog.py, fallback_recovery.py,
-                 # workflow_strategies.py, few_shot_retriever.py, intent_cache.py,
+                 # intent_metadata_service.py (broker DB-first, singola fonte di verita'),
+                 # intent_metadata.py (fallback Python), schema_catalog.py,
+                 # fallback_recovery.py, workflow_strategies.py,
+                 # few_shot_retriever.py, intent_cache.py,
                  # constants.py (SLOT_PROMPTS condivisi)
 tools/           # piano_, priority_, risk_, search_, establishment_, procedure_,
                  # query_builder_, proximity_tools.py, geo_utils.py, rag_cache.py
@@ -99,21 +111,28 @@ tests/           # pytest.ini in tests/. Dir: unit/, integration/, e2e/, legacy/
 1. Funzione in `tools/*.py` con `@tool("name")`, parametri espliciti
 2. Chiama `DataRetriever`/`BusinessLogic`/`RiskAnalyzer`, usa `ResponseFormatter`
 3. Return serializable dict con `formatted_response` key
-4. Registra in `tool_nodes.py` (`TOOL_REGISTRY` + `INTENT_TO_TOOL`)
+4. Registra in `tool_nodes.py` (`TOOL_REGISTRY`)
 5. Aggiungi tool node e conditional edge in `graph.py`
 
 ### Adding a New Intent
 
-1. `VALID_INTENTS` in `router.py` + `INTENT_REGISTRY` in `intent_metadata.py`
-2. Tool in `tools/` → registra in `tool_nodes.py`
-3. Se slot richiesti → `REQUIRED_SLOTS` in `router.py` + `SLOT_PROMPTS` in `orchestrator/constants.py`
-4. Domande esempio in `help_tool()` (`tool_nodes.py`)
-5. Se risposta diretta → `DIRECT_RESPONSE_INTENTS` in `response_node.py`
-6. Follow-up in `followup_suggestions.py`
-7. Esempi nel prompt V2 (`CLASSIFICATION_SYSTEM_PROMPT`) e/o `build_intent_examples_index.py`
-8. Pattern fallback in `llm/fallback_classifier.py` (per funzionamento senza LLM)
-9. Rebuild indice: `python tools/indexing/build_intent_examples_index.py`
-10. **Sync DB**: aggiornare tabella `intents` in PostgreSQL
+La tabella `intents` in PostgreSQL e' la **singola fonte di verita'**. La procedura si riduce a 4 step obbligatori + 2 opzionali:
+
+**Step obbligatori:**
+
+1. **DB**: `INSERT INTO intents (...)` con tutti i metadati (vedi guida sotto)
+2. **Tool**: funzione tool in `tools/*.py` → wrapper in `tool_nodes.py` → `TOOL_REGISTRY`
+3. **Esempi**: `INSERT INTO intent_examples (...)` per classificazione few-shot
+4. **Fallback**: pattern in `llm/fallback_classifier.py` (funzionamento senza LLM)
+
+**Step opzionali (se applicabili):**
+
+5. Se slot richiesti → `SLOT_PROMPTS` in `orchestrator/constants.py`
+6. Follow-up contestuali → factory in `followup_suggestions.py`
+
+**Non piu' necessario** toccare: `router.py` (VALID_INTENTS/REQUIRED_SLOTS), `dialogue_manager.py` (SELF_SUFFICIENT_INTENTS), `response_node.py` (DIRECT_RESPONSE_INTENTS), `two_phase.py` (TWO_PHASE_THRESHOLDS), `intent_metadata.py` (INTENT_REGISTRY). Tutti leggono dal DB via `IntentMetadataService`.
+
+Rebuild indice dopo aggiunta esempi: `python tools/indexing/build_intent_examples_index.py`
 
 ### Working with Data
 
@@ -180,20 +199,181 @@ curl -X POST http://localhost:5005/api/v1/chat \
 | `/api/admin/schema-metadata/{key}` | GET/PUT |
 | `/api/admin/schema-metadata/reload` | POST |
 
-## Sincronizzazione tabella intents nel database
+## Intent Registry: tabella `intents`
 
-**REGOLA OBBLIGATORIA**: Ogni modifica a `VALID_INTENTS` in `router.py` → aggiornare tabella `intents` in PostgreSQL. Verificare: `SELECT COUNT(*) FROM intents;` == `len(VALID_INTENTS)`.
+La tabella `intents` e' la **singola fonte di verita'** per i metadati degli intent. L'`IntentMetadataService` (`orchestrator/intent_metadata_service.py`) la carica come singleton DB-first e la espone a tutti i consumatori.
+
+**Colonne principali**:
+
+| Colonna | Tipo | Descrizione |
+|---------|------|-------------|
+| `intent` | varchar PK | Identificativo intent |
+| `title` | varchar | Nome user-friendly |
+| `category` | varchar | Categoria (Piano di Controllo, Priorita' e Rischio, ...) |
+| `emoji` | varchar | Emoji per UI |
+| `graph_node` | varchar | Nome funzione in tool_nodes.py (es. `delayed_plans_tool`) |
+| `required_slots` | jsonb | Slot obbligatori (es. `["piano_code"]`) |
+| `two_phase_threshold` | int | Soglia per risposta two-phase (null = disabilitato) |
+| `self_sufficient` | bool | Non richiede slot per esecuzione |
+| `is_direct_response` | bool | Risposta diretta senza passaggio LLM |
+| `followup_excluded` | bool | Escluso dai suggerimenti follow-up |
+| `keywords` | text[] | Keyword per fallback classifier |
+| `section_number` | int | Ordine nel catalogo |
+
+**INSERT template** per nuovo intent:
+
+```sql
+INSERT INTO intents (
+    intent, section_number, title, category, emoji,
+    graph_node, required_slots, two_phase_threshold,
+    self_sufficient, is_direct_response, followup_excluded,
+    keywords, context_keywords, negative_keywords
+) VALUES (
+    'nuovo_intent', 21, 'Titolo Intent', 'Categoria', '📋',
+    'nuovo_intent_tool', '["slot1"]', 3,
+    false, false, false,
+    ARRAY['keyword1', 'keyword2'], ARRAY['ctx1'], ARRAY['neg1']
+);
+```
+
+**Verifica**: `SELECT COUNT(*) FROM intents;` deve corrispondere al numero di intent attesi.
+
+## Guida: aggiungere un nuovo intent
+
+Esempio pratico: aggiunta di un ipotetico intent `ask_plan_coverage` (copertura territoriale di un piano).
+
+### Step 1 — Registra nel DB
+
+```sql
+INSERT INTO intents (
+    intent, section_number, title, category, emoji,
+    graph_node, required_slots, two_phase_threshold,
+    self_sufficient, is_direct_response, followup_excluded,
+    keywords, context_keywords, negative_keywords
+) VALUES (
+    'ask_plan_coverage',
+    21,                              -- progressivo (SELECT MAX(section_number)+1 FROM intents)
+    'Copertura Territoriale Piano',
+    'Piano di Controllo',
+    '🗺️',
+    'plan_coverage_tool',            -- nome della funzione wrapper in tool_nodes.py
+    '["piano_code"]',                -- slot obbligatori (jsonb). [] se nessuno
+    5,                               -- soglia two-phase (null = disabilitato)
+    false,                           -- self_sufficient: true se non richiede slot
+    false,                           -- is_direct_response: true se skip LLM (es. greet)
+    false,                           -- followup_excluded: true per intent triviali
+    ARRAY['copertura', 'territorio', 'comuni', 'zone'],
+    ARRAY['piano', 'dove'],
+    ARRAY['statistiche', 'rischio']
+);
+
+-- Esempi per classificazione few-shot
+INSERT INTO intent_examples (intent, text, example_type, display_order) VALUES
+    ('ask_plan_coverage', 'In quali comuni si applica il piano A1?', 'few_shot', 1),
+    ('ask_plan_coverage', 'Copertura territoriale del piano B2', 'few_shot', 2),
+    ('ask_plan_coverage', 'Dove si applica il piano A1?', 'help', 1);
+```
+
+### Step 2 — Scrivi il tool
+
+**`tools/coverage_tools.py`** (logica di dominio):
+
+```python
+from agents.data_agent import DataRetriever
+from agents.response_agent import ResponseFormatter
+
+def get_plan_coverage(piano_code: str, asl: str = None) -> dict:
+    controlli = DataRetriever.get_controlli_by_piano(piano_code)
+    if controlli is None or controlli.empty:
+        return {"formatted_response": f"Nessun dato trovato per il piano {piano_code}."}
+    # ... logica di aggregazione per comune/zona ...
+    return {"coverage": [...], "formatted_response": "..."}
+```
+
+**`orchestrator/tool_nodes.py`** (wrapper + registrazione):
+
+```python
+# Import
+from tools.coverage_tools import get_plan_coverage
+
+# Wrapper
+def plan_coverage_tool(state, **_):
+    piano_code = state["slots"].get("piano_code")
+    asl = state["metadata"].get("asl")
+    result = get_plan_coverage(piano_code=piano_code, asl=asl)
+    # Two-phase (opzionale)
+    if result.get("total_comuni", 0) > TWO_PHASE_THRESHOLDS.get("ask_plan_coverage", 5):
+        result = apply_two_phase_check(state, "ask_plan_coverage", result, ...)
+    state["tool_output"] = {"type": "plan_coverage", "data": result}
+    return state
+
+# Aggiungere a TOOL_REGISTRY:
+TOOL_REGISTRY["plan_coverage_tool"] = plan_coverage_tool
+```
+
+### Step 3 — Fallback classifier
+
+**`llm/fallback_classifier.py`** — aggiungere pattern per funzionamento senza LLM:
+
+```python
+# Nel dizionario _PATTERNS
+"ask_plan_coverage": ["copertura", "territorio", "quali comuni", "zone del piano"],
+```
+
+### Step 4 (opzionale) — Slot prompt
+
+Se l'intent ha slot obbligatori, aggiungere in **`orchestrator/constants.py`**:
+
+```python
+SLOT_PROMPTS["piano_code"] = "Quale piano? (es. A1, B2, C3)"  # gia' presente
+```
+
+### Step 5 (opzionale) — Follow-up contestuali
+
+**`orchestrator/followup_suggestions.py`** — aggiungere factory:
+
+```python
+def _suggest_plan_coverage(intent, slots, data):
+    piano = slots.get("piano_code", "")
+    return [{"text": f"Statistiche piano {piano}", "query": f"statistiche piano {piano}"}]
+```
+
+### Step 6 — Rebuild e verifica
+
+```bash
+# Rebuild indice few-shot
+python tools/indexing/build_intent_examples_index.py
+
+# Verifica
+python -m pytest tests/unit/ -v
+
+# Test manuale
+curl -X POST http://localhost:5005/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"sender":"test","message":"copertura territoriale piano A1","metadata":{"asl":"NAPOLI"}}'
+```
+
+### Checklist riassuntiva
+
+- [ ] `INSERT INTO intents` con tutti i campi
+- [ ] `INSERT INTO intent_examples` (almeno 2-3 few_shot + 1 help)
+- [ ] Funzione tool in `tools/*.py`
+- [ ] Wrapper + `TOOL_REGISTRY` in `tool_nodes.py`
+- [ ] Pattern in `llm/fallback_classifier.py`
+- [ ] (se slot) `SLOT_PROMPTS` in `orchestrator/constants.py`
+- [ ] (se follow-up) Factory in `followup_suggestions.py`
+- [ ] Rebuild indice: `python tools/indexing/build_intent_examples_index.py`
+- [ ] Test: `python -m pytest tests/unit/ -v`
 
 ## Regole di manutenzione
 
 Questo file e' la **fonte di verita' unica** per i dettagli architetturali del backend. Regole complete in `../CLAUDE.md`.
 
 Aggiorna questo file quando tocchi:
-- `VALID_INTENTS` o `REQUIRED_SLOTS` → sezione Intent Classification + sync DB
 - `SLOT_PROMPTS` → `orchestrator/constants.py` (fonte unica, importato da graph.py e dialogue_manager.py)
-- `TOOL_REGISTRY` o `INTENT_TO_TOOL` → sezione Common Patterns
+- `TOOL_REGISTRY` → sezione Common Patterns
 - Flusso del grafo (`_build_graph`) → sezione Orchestration Flow
 - `ConversationState` → sezione State
 - Nuovo endpoint API → tabella Endpoint API
-- Nuovo intent → followup_suggestions + rebuild indice few-shot + `llm/fallback_classifier.py`
+- Nuovo intent → `INSERT INTO intents` + tool + esempi + fallback classifier
 - Nuovo requisito → `SDD/traceability.md` e `SDD/requirements/`

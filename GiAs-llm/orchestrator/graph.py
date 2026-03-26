@@ -19,7 +19,7 @@ import logging
 try:
     from .router import Router
     from llm.client import LLMClient
-    from .tool_nodes import TOOL_REGISTRY, INTENT_TO_TOOL
+    from .tool_nodes import TOOL_REGISTRY, get_intent_to_tool_map
     from .response_node import response_generator_node
     from .two_phase import TWO_PHASE_THRESHOLDS, TWO_PHASE_SUFFIX, apply_two_phase_check
     from .dialogue_state import (
@@ -34,7 +34,7 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from orchestrator.router import Router
     from llm.client import LLMClient
-    from orchestrator.tool_nodes import TOOL_REGISTRY, INTENT_TO_TOOL
+    from orchestrator.tool_nodes import TOOL_REGISTRY, get_intent_to_tool_map
     from orchestrator.response_node import response_generator_node
     from orchestrator.two_phase import TWO_PHASE_THRESHOLDS, TWO_PHASE_SUFFIX, apply_two_phase_check
     from orchestrator.dialogue_state import (

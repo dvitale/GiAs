@@ -597,20 +597,28 @@ class ResponseFormatter:
         top_delayed: pd.DataFrame,
         worst_plan_details: Optional[pd.DataFrame] = None,
         worst_plan_id: Optional[str] = None,
-        uos_name: Optional[str] = None
+        uos_name: Optional[str] = None,
+        tipo: Optional[str] = None
     ) -> tuple:
         """
-        Formatta analisi piani in ritardo.
+        Formatta analisi piani/attività in ritardo.
 
         Returns:
             Tuple (main_response, detail_response)
         """
-        response = f"**Analisi Piani in Ritardo**\n"
+        # Titolo dinamico in base al tipo richiesto
+        if tipo == "attivita":
+            title_label = "Attività"
+        elif tipo == "tutti":
+            title_label = "Piani e Attività"
+        else:
+            title_label = "Piani"
+        response = f"**Analisi {title_label} in Ritardo**\n"
         response += f"**ASL:** {user_asl}\n"
         response += f"**Struttura:** {uoc_name}\n"
         if uos_name:
             response += f"**UOS:** {uos_name}\n"
-        response += f"**Piani in ritardo:** {total_plans_delayed}\n"
+        response += f"**{title_label} in ritardo:** {total_plans_delayed}\n"
         response += f"**Controlli mancanti totali:** {total_delay}\n"
         response += "\n─────────────────────────────────────\n"
 
@@ -630,11 +638,11 @@ class ResponseFormatter:
             response += f"   Completamento: {percentuale_eseguita:.1f}%\n\n"
 
         if total_plans_delayed > 10:
-            response += f"\n**Nota:** Altri {total_plans_delayed - 10} piani in ritardo disponibili.\n"
+            response += f"\n**Nota:** Altri {total_plans_delayed - 10} {title_label.lower()} in ritardo disponibili.\n"
 
         response += "\n─────────────────────────────────────\n"
         response += "**Raccomandazioni:**\n"
-        response += "• Prioritizza i piani con maggior ritardo\n"
+        response += f"• Prioritizza {'le attività' if tipo == 'attivita' else 'i piani'} con maggior ritardo\n"
         response += "• Verifica risorse disponibili per recupero\n"
         response += "• Pianifica interventi straordinari se necessario\n"
 

@@ -94,11 +94,15 @@ INTENT_DESCRIPTIONS = {
     "query_data": "interrogazione dati su misura"
 }
 
-# Intent che restituiscono risposte dirette senza passaggio LLM
-DIRECT_RESPONSE_INTENTS = {
-    "greet", "goodbye", "fallback",
-    "confirm_show_details", "decline_show_details"
-}
+# Intent che restituiscono risposte dirette senza passaggio LLM (caricati da DB)
+def _get_direct_response_intents() -> set:
+    try:
+        from .intent_metadata_service import get_intent_metadata_service
+        return get_intent_metadata_service().get_direct_response_intents()
+    except Exception:
+        return {"greet", "goodbye", "fallback", "confirm_show_details", "decline_show_details"}
+
+DIRECT_RESPONSE_INTENTS = None
 
 
 def clean_excessive_newlines(text: str) -> str:
@@ -231,6 +235,9 @@ def response_generator_node(state: Dict[str, Any], llm_client, event_callback=No
     data = tool_output.get("data", {})
 
     # Intent con risposte dirette (greet, goodbye, fallback, confirm/decline)
+    global DIRECT_RESPONSE_INTENTS
+    if DIRECT_RESPONSE_INTENTS is None:
+        DIRECT_RESPONSE_INTENTS = _get_direct_response_intents()
     if intent in DIRECT_RESPONSE_INTENTS or tool_type == "fallback":
         if isinstance(data, dict) and "formatted_response" in data:
             state["final_response"] = data["formatted_response"]

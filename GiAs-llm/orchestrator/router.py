@@ -36,6 +36,8 @@ class Router:
     # Richiede validazione con 200+ messaggi prima di attivare in produzione
     MINIMAL_HEURISTICS = True
 
+    # VALID_INTENTS e REQUIRED_SLOTS: caricati da DB via IntentMetadataService al __init__.
+    # Valori di classe come fallback (usati se il servizio non è disponibile).
     VALID_INTENTS = [
         "greet", "goodbye", "ask_help",
         "ask_piano_stabilimenti", "ask_piano_description", "ask_piano_statistics", "search_piani_by_topic",
@@ -55,15 +57,16 @@ class Router:
         "table", "operation", "filters", "group_by", "order_by", "limit",
     }
 
-    # Intent che richiedono slot obbligatori
     REQUIRED_SLOTS = {
         "ask_piano_description": ["piano_code"],
         "ask_piano_stabilimenti": ["piano_code"],
         "check_if_plan_delayed": ["piano_code"],
         "search_piani_by_topic": ["topic"],
-        "ask_establishment_history": ["num_registrazione", "numero_riconoscimento", "partita_iva", "ragione_sociale"],  # almeno uno
+        "ask_establishment_history": ["num_registrazione", "numero_riconoscimento", "partita_iva", "ragione_sociale"],
         "ask_nearby_priority": ["location"],
     }
+
+    _metadata_loaded = False
 
     # =========================================================================
     # PROMPT V2 - Template semi-dinamico
@@ -681,10 +684,30 @@ OUTPUT:"""
         self.llm_client = llm_client or LLMClient()
         self.enable_cache = enable_cache
         self.intent_cache = IntentCache(ttl_seconds=cache_ttl) if enable_cache else None
+        self._load_metadata_from_service()
         self._build_system_prompt()
         logger.info(f"Router configurato con modello: {self.llm_client.model}")
         if enable_cache:
             logger.info(f"Intent cache attivata (TTL: {cache_ttl}s)")
+
+    @classmethod
+    def _load_metadata_from_service(cls):
+        """Carica VALID_INTENTS e REQUIRED_SLOTS da IntentMetadataService (DB-first)."""
+        if cls._metadata_loaded:
+            return
+        try:
+            from .intent_metadata_service import get_intent_metadata_service
+            svc = get_intent_metadata_service()
+            valid = svc.get_valid_intents()
+            required = svc.get_required_slots()
+            if valid:
+                cls.VALID_INTENTS = valid
+            if required:
+                cls.REQUIRED_SLOTS = required
+            cls._metadata_loaded = True
+            logger.info(f"[Router] Metadati caricati da IntentMetadataService: {len(valid)} intent")
+        except Exception as e:
+            logger.warning(f"[Router] Fallback a metadati hardcoded: {e}")
 
     def _build_system_prompt(self):
         """Costruisce il prompt di classificazione dal servizio DB o fallback hardcoded."""

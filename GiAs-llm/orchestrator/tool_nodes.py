@@ -515,7 +515,20 @@ def delayed_plans_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     if not uos and state["metadata"].get("user_id"):
         uos = get_uos_from_user_id(state["metadata"].get("user_id"))
 
-    result = priority_tool(asl=asl, uoc=uoc, action="delayed_plans", uos=uos)
+    # Determina se l'utente chiede piani, attività o entrambi dal messaggio
+    msg = (state.get("message") or "").lower()
+    tipo = state.get("slots", {}).get("tipo")
+    if not tipo:
+        if "attivit" in msg and "pian" not in msg:
+            tipo = "attivita"
+        elif "pian" in msg and "attivit" not in msg:
+            tipo = "piano"
+        elif "attivit" in msg and "pian" in msg:
+            tipo = "tutti"
+        else:
+            tipo = "piano"
+
+    result = priority_tool(asl=asl, uoc=uoc, action="delayed_plans", uos=uos, tipo=tipo)
     state["tool_output"] = {"type": "delayed_plans", "data": result}
     return state
 
@@ -849,25 +862,38 @@ TOOL_REGISTRY = {
     "decline_details_tool": decline_details_tool,
 }
 
-# Mapping intent → nome nodo tool
-INTENT_TO_TOOL = {
-    "greet": "greet_tool",
-    "goodbye": "goodbye_tool",
-    "ask_help": "help_tool",
-    "ask_piano_description": "piano_description_tool",
-    "ask_piano_stabilimenti": "piano_stabilimenti_tool",
-    "ask_piano_statistics": "piano_statistics_tool",
-    "search_piani_by_topic": "search_piani_tool",
-    "ask_priority_establishment": "priority_establishment_tool",
-    "ask_risk_based_priority": "risk_predictor_tool",
-    "ask_suggest_controls": "suggest_controls_tool",
-    "ask_nearby_priority": "nearby_priority_tool",
-    "ask_delayed_plans": "delayed_plans_tool",
-    "check_if_plan_delayed": "check_plan_delayed_tool",
-    "ask_establishment_history": "establishment_history_tool",
-    "ask_top_risk_activities": "top_risk_activities_tool",
-    "info_procedure": "info_procedure_tool",
-    "query_data": "query_data_tool",
-    "confirm_show_details": "confirm_details_tool",
-    "decline_show_details": "decline_details_tool",
-}
+# Mapping intent → nome nodo tool (caricato da DB via IntentMetadataService)
+def _get_intent_to_tool() -> dict:
+    try:
+        from .intent_metadata_service import get_intent_metadata_service
+        return get_intent_metadata_service().get_intent_to_tool()
+    except Exception:
+        # Fallback hardcoded se DB non disponibile
+        return {
+            "greet": "greet_tool", "goodbye": "goodbye_tool", "ask_help": "help_tool",
+            "ask_piano_description": "piano_description_tool",
+            "ask_piano_stabilimenti": "piano_stabilimenti_tool",
+            "ask_piano_statistics": "piano_statistics_tool",
+            "search_piani_by_topic": "search_piani_tool",
+            "ask_priority_establishment": "priority_establishment_tool",
+            "ask_risk_based_priority": "risk_predictor_tool",
+            "ask_suggest_controls": "suggest_controls_tool",
+            "ask_nearby_priority": "nearby_priority_tool",
+            "ask_delayed_plans": "delayed_plans_tool",
+            "check_if_plan_delayed": "check_plan_delayed_tool",
+            "ask_establishment_history": "establishment_history_tool",
+            "ask_top_risk_activities": "top_risk_activities_tool",
+            "info_procedure": "info_procedure_tool",
+            "query_data": "query_data_tool",
+            "confirm_show_details": "confirm_details_tool",
+            "decline_show_details": "decline_details_tool",
+        }
+
+INTENT_TO_TOOL = None
+
+def get_intent_to_tool_map() -> dict:
+    """Accessor lazy per INTENT_TO_TOOL."""
+    global INTENT_TO_TOOL
+    if INTENT_TO_TOOL is None:
+        INTENT_TO_TOOL = _get_intent_to_tool()
+    return INTENT_TO_TOOL

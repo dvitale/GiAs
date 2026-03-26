@@ -71,24 +71,37 @@ CONFIDENCE_HIGH = _thresholds["high"]
 CONFIDENCE_AMBIGUITY_DELTA = _thresholds["delta"]
 CONFIDENCE_MIN = _thresholds["min"]
 
-# Intent auto-sufficienti che non richiedono slot obbligatori
-SELF_SUFFICIENT_INTENTS = {
-    "greet", "goodbye", "ask_help",
-    "ask_priority_establishment", "ask_risk_based_priority",
-    "ask_suggest_controls", "ask_delayed_plans",
-    "ask_piano_statistics", "ask_top_risk_activities",
-    "confirm_show_details", "decline_show_details",
-}
+# Intent auto-sufficienti e required slots: caricati da IntentMetadataService (DB-first)
+def _load_dm_metadata():
+    """Carica SELF_SUFFICIENT_INTENTS e REQUIRED_SLOTS da IntentMetadataService."""
+    try:
+        from .intent_metadata_service import get_intent_metadata_service
+        svc = get_intent_metadata_service()
+        return svc.get_self_sufficient_intents(), svc.get_required_slots()
+    except Exception:
+        # Fallback hardcoded se il servizio non è disponibile (es. import circolari al boot)
+        return (
+            {"greet", "goodbye", "ask_help",
+             "ask_priority_establishment", "ask_risk_based_priority",
+             "ask_suggest_controls", "ask_delayed_plans",
+             "ask_piano_statistics", "ask_top_risk_activities",
+             "confirm_show_details", "decline_show_details"},
+            {"ask_piano_description": ["piano_code"],
+             "ask_piano_stabilimenti": ["piano_code"],
+             "check_if_plan_delayed": ["piano_code"],
+             "search_piani_by_topic": ["topic"],
+             "ask_establishment_history": ["num_registrazione", "numero_riconoscimento", "partita_iva", "ragione_sociale"],
+             "ask_nearby_priority": ["location"]},
+        )
 
-# Required slots per intent (mirror di Router.REQUIRED_SLOTS)
-REQUIRED_SLOTS = {
-    "ask_piano_description": ["piano_code"],
-    "ask_piano_stabilimenti": ["piano_code"],
-    "check_if_plan_delayed": ["piano_code"],
-    "search_piani_by_topic": ["topic"],
-    "ask_establishment_history": ["num_registrazione", "numero_riconoscimento", "partita_iva", "ragione_sociale"],
-    "ask_nearby_priority": ["location"],
-}
+# Lazy init: popolate alla prima chiamata evaluate()
+SELF_SUFFICIENT_INTENTS = None
+REQUIRED_SLOTS = None
+
+def _ensure_dm_metadata():
+    global SELF_SUFFICIENT_INTENTS, REQUIRED_SLOTS
+    if SELF_SUFFICIENT_INTENTS is None:
+        SELF_SUFFICIENT_INTENTS, REQUIRED_SLOTS = _load_dm_metadata()
 
 from .constants import SLOT_PROMPTS
 
@@ -154,6 +167,7 @@ class DialogueManagerResult:
 
 def _get_missing_slots(intent: str, slots: Dict[str, Any]) -> List[str]:
     """Restituisce la lista di slot obbligatori mancanti per l'intent."""
+    _ensure_dm_metadata()
     required = REQUIRED_SLOTS.get(intent, [])
     if intent == "ask_establishment_history":
         # Almeno un identificatore necessario
@@ -261,8 +275,8 @@ def _build_strategy_question(intent: str) -> Optional[str]:
 
 def _resolve_tool(intent: str) -> str:
     """Risolve il nome del tool per un intent."""
-    from .tool_nodes import INTENT_TO_TOOL
-    return INTENT_TO_TOOL.get(intent, "fallback_tool")
+    from .tool_nodes import get_intent_to_tool_map
+    return get_intent_to_tool_map().get(intent, "fallback_tool")
 
 
 def _rule_slot_continuation(
@@ -449,6 +463,8 @@ def evaluate(
     Valuta lo stato del dialogo e decide l'azione successiva applicando
     le regole in ordine di priorita'.
     """
+    _ensure_dm_metadata()
+
     ds = dialogue_state
     ds["turn_count"] = ds.get("turn_count", 0) + 1
     ds["timestamp"] = __import__("time").time()

@@ -10,11 +10,15 @@ Pattern analogo a two_phase.py per il suffix.
 from typing import Dict, Any, List, Optional
 
 
-# Intent esclusi dai suggerimenti di follow-up
-EXCLUDED_INTENTS = {
-    "greet", "goodbye", "ask_help",
-    "confirm_show_details", "decline_show_details", "fallback"
-}
+# Intent esclusi dai suggerimenti di follow-up (caricati da DB)
+def _get_excluded_intents() -> set:
+    try:
+        from .intent_metadata_service import get_intent_metadata_service
+        return get_intent_metadata_service().get_followup_excluded_intents()
+    except Exception:
+        return {"greet", "goodbye", "ask_help", "confirm_show_details", "decline_show_details", "fallback"}
+
+EXCLUDED_INTENTS = None
 
 # Header del blocco suggerimenti
 FOLLOWUP_HEADER = "\n\n---\n**Vuoi approfondire?** Ecco cosa posso fare:"
@@ -43,6 +47,10 @@ class FollowUpSuggestionEngine:
         """
         if state.get("has_more_details"):
             return False
+
+        global EXCLUDED_INTENTS
+        if EXCLUDED_INTENTS is None:
+            EXCLUDED_INTENTS = _get_excluded_intents()
 
         intent = state.get("intent", "")
         if intent in EXCLUDED_INTENTS or not intent:

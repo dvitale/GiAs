@@ -71,7 +71,8 @@ class IntentMetadataService:
                            two_phase_threshold, required_slots,
                            keywords, context_keywords, negative_keywords,
                            is_direct_response, disambiguation_rules,
-                           query_equivalent, notes, section_number
+                           query_equivalent, notes, section_number,
+                           self_sufficient, followup_excluded
                     FROM intents
                     ORDER BY section_number
                 """)).fetchall()
@@ -101,6 +102,8 @@ class IntentMetadataService:
                         "query_equivalent": row[15],
                         "notes": row[16],
                         "section_number": row[17],
+                        "self_sufficient": row[18] if len(row) > 18 else False,
+                        "followup_excluded": row[19] if len(row) > 19 else False,
                     }
 
                 # Carica esempi
@@ -134,10 +137,24 @@ class IntentMetadataService:
 
     def _load_from_python_fallback(self):
         """Fallback a INTENT_REGISTRY + hardcoded."""
-        from orchestrator.intent_metadata import (
-            INTENT_REGISTRY, CATEGORY_HIERARCHY, CATEGORY_EMOJI
-        )
-        from orchestrator.response_node import DIRECT_RESPONSE_INTENTS
+        from orchestrator.intent_metadata import INTENT_REGISTRY
+
+        # Costanti hardcoded come fallback (mirror dei valori DB)
+        _DIRECT_RESPONSE_INTENTS = {
+            "greet", "goodbye", "fallback",
+            "confirm_show_details", "decline_show_details"
+        }
+        _SELF_SUFFICIENT_INTENTS = {
+            "greet", "goodbye", "ask_help",
+            "ask_priority_establishment", "ask_risk_based_priority",
+            "ask_suggest_controls", "ask_delayed_plans",
+            "ask_piano_statistics", "ask_top_risk_activities",
+            "confirm_show_details", "decline_show_details",
+        }
+        _FOLLOWUP_EXCLUDED_INTENTS = {
+            "greet", "goodbye", "ask_help",
+            "confirm_show_details", "decline_show_details", "fallback"
+        }
 
         section = 0
         for intent_id, meta in INTENT_REGISTRY.items():
@@ -156,11 +173,13 @@ class IntentMetadataService:
                 "keywords": meta.keywords,
                 "context_keywords": meta.context_keywords,
                 "negative_keywords": meta.negative_keywords,
-                "is_direct_response": intent_id in DIRECT_RESPONSE_INTENTS,
+                "is_direct_response": intent_id in _DIRECT_RESPONSE_INTENTS,
                 "disambiguation_rules": meta.disambiguation_rules,
                 "query_equivalent": None,
                 "notes": None,
                 "section_number": section,
+                "self_sufficient": intent_id in _SELF_SUFFICIENT_INTENTS,
+                "followup_excluded": intent_id in _FOLLOWUP_EXCLUDED_INTENTS,
             }
 
             # Esempi dal registry come few_shot
@@ -408,6 +427,55 @@ class IntentMetadataService:
             k: v["two_phase_threshold"]
             for k, v in self._intents.items()
             if v.get("two_phase_threshold") is not None
+        }
+
+    # --- Metodi broker: singola fonte di verità per costanti consumate dall'orchestratore ---
+
+    def get_valid_intents(self) -> List[str]:
+        """Lista ordinata di tutti gli intent validi (rimpiazza Router.VALID_INTENTS)."""
+        self._ensure_loaded()
+        return list(self._intents.keys())
+
+    def get_required_slots(self) -> Dict[str, List[str]]:
+        """Mapping intent -> slot obbligatori (rimpiazza Router.REQUIRED_SLOTS)."""
+        self._ensure_loaded()
+        return {
+            k: v["required_slots"]
+            for k, v in self._intents.items()
+            if v.get("required_slots")
+        }
+
+    def get_self_sufficient_intents(self) -> set:
+        """Set di intent che non richiedono slot (rimpiazza SELF_SUFFICIENT_INTENTS)."""
+        self._ensure_loaded()
+        return {
+            k for k, v in self._intents.items()
+            if v.get("self_sufficient")
+        }
+
+    def get_direct_response_intents(self) -> set:
+        """Set di intent con risposta diretta senza LLM (rimpiazza DIRECT_RESPONSE_INTENTS)."""
+        self._ensure_loaded()
+        return {
+            k for k, v in self._intents.items()
+            if v.get("is_direct_response")
+        }
+
+    def get_followup_excluded_intents(self) -> set:
+        """Set di intent esclusi dai follow-up (rimpiazza EXCLUDED_INTENTS)."""
+        self._ensure_loaded()
+        return {
+            k for k, v in self._intents.items()
+            if v.get("followup_excluded")
+        }
+
+    def get_intent_to_tool(self) -> Dict[str, str]:
+        """Mapping intent -> graph_node (rimpiazza INTENT_TO_TOOL)."""
+        self._ensure_loaded()
+        return {
+            k: v["graph_node"]
+            for k, v in self._intents.items()
+            if v.get("graph_node")
         }
 
     def get_intent_metadata_for_chatlog(self, intent: str) -> Dict[str, Any]:

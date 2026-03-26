@@ -8,15 +8,20 @@ in detail_context e mostra solo un sommario + "Vuoi vedere i dettagli?"
 from typing import Dict, Any
 
 
-TWO_PHASE_THRESHOLDS = {
-    "ask_establishment_history": 3,
-    "ask_risk_based_priority": 3,
-    "ask_priority_establishment": 3,
-    "ask_suggest_controls": 3,
-    "search_piani_by_topic": 3,
-    "ask_piano_stabilimenti": 3,
-    "ask_nearby_priority": 10,
-}
+# Soglie two-phase: caricate da DB via IntentMetadataService
+def _get_two_phase_thresholds() -> dict:
+    try:
+        from .intent_metadata_service import get_intent_metadata_service
+        return get_intent_metadata_service().get_two_phase_thresholds()
+    except Exception:
+        return {
+            "ask_establishment_history": 3, "ask_risk_based_priority": 3,
+            "ask_priority_establishment": 3, "ask_suggest_controls": 3,
+            "search_piani_by_topic": 3, "ask_piano_stabilimenti": 3,
+            "ask_nearby_priority": 10,
+        }
+
+TWO_PHASE_THRESHOLDS = None
 
 TWO_PHASE_SUFFIX = "\n\n---\n**Vuoi vedere tutti i dettagli?** (rispondi *sì* o *no*)"
 
@@ -47,6 +52,9 @@ def apply_two_phase_check(
     Returns:
         result (potenzialmente modificato)
     """
+    global TWO_PHASE_THRESHOLDS
+    if TWO_PHASE_THRESHOLDS is None:
+        TWO_PHASE_THRESHOLDS = _get_two_phase_thresholds()
     threshold = TWO_PHASE_THRESHOLDS.get(intent, 5)
     if item_count > threshold and isinstance(result, dict) and "formatted_response" in result:
         state["has_more_details"] = True

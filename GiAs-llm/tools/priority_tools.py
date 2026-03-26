@@ -53,6 +53,10 @@ def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = N
 
         delayed_piani = BusinessLogic.calculate_delayed_plans(diff_filtered, piano_id=piano_code)
 
+        # Filtra solo piani (escludi attività con prefisso "ATT ") quando non specificato un piano
+        if not piano_code and 'indicatore' in delayed_piani.columns:
+            delayed_piani = delayed_piani[~delayed_piani['indicatore'].str.upper().str.startswith('ATT ')].copy()
+
         if delayed_piani.empty:
             if piano_code:
                 return {
@@ -173,9 +177,9 @@ def _get_piano_data_from_df(diff_df: pd.DataFrame, piano_code: str) -> Dict[str,
 
 
 @tool("delayed_plans")
-def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[str] = None, uos: Optional[str] = None) -> Dict[str, Any]:
+def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[str] = None, uos: Optional[str] = None, tipo: Optional[str] = None) -> Dict[str, Any]:
     """
-    Analizza i piani in ritardo per una specifica struttura.
+    Analizza i piani o le attività in ritardo per una specifica struttura.
     Se piano_code è specificato, verifica solo se quel piano è in ritardo.
 
     Args:
@@ -183,9 +187,10 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
         uoc: Nome della UOC (Unità Operativa Complessa) - opzionale per query aggregate
         piano_code: Codice piano specifico per verifica (es. "B47")
         uos: Nome della UOS (Unità Operativa Semplice) - opzionale
+        tipo: "piano" (default), "attivita" o "tutti" - filtra per tipo indicatore
 
     Returns:
-        Dict con piani in ritardo o verifica piano specifico
+        Dict con piani/attività in ritardo o verifica piano specifico
     """
     if not asl:
         return {"error": "ASL non specificata"}
@@ -212,6 +217,16 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
 
         delayed_df = BusinessLogic.calculate_delayed_plans(filtered_df, piano_id=None)
 
+        # Filtra per tipo: "piano" (senza prefisso ATT), "attivita" (con prefisso ATT), "tutti"
+        # Gli indicatori con "ATT " sono attività, quelli senza sono piani
+        effective_tipo = (tipo or "piano").lower()
+        if not piano_code and 'indicatore' in delayed_df.columns and effective_tipo != "tutti":
+            is_att = delayed_df['indicatore'].str.upper().str.startswith('ATT ')
+            if effective_tipo == "attivita":
+                delayed_df = delayed_df[is_att].copy()
+            else:  # "piano"
+                delayed_df = delayed_df[~is_att].copy()
+
         if delayed_df.empty:
             if piano_code:
                 # Recupera dati del piano anche se non in ritardo per mostrare i dettagli
@@ -235,12 +250,13 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
                     "eseguiti": piano_data.get('eseguiti', 0),
                     "formatted_response": response
                 }
+            entity_label = "attività" if effective_tipo == "attivita" else "piano"
             return {
-                "info": "Nessun piano in ritardo",
+                "info": f"Nessun {entity_label} in ritardo",
                 "asl": asl,
                 "uoc": uoc,
                 "delayed_plans": [],
-                "formatted_response": f"✅ Nessun piano risulta in ritardo per la struttura **{uoc}**."
+                "formatted_response": f"✅ Nessun {entity_label} risulta in ritardo per la struttura **{uoc}**."
             }
 
         # Se richiesto un piano specifico, verifica solo quello
@@ -340,7 +356,8 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
             top_delayed=top_delayed,
             worst_plan_details=worst_plan_details,
             worst_plan_id=worst_plan_id,
-            uos_name=uos
+            uos_name=uos,
+            tipo=effective_tipo
         )
 
         delayed_plans_list = top_delayed.to_dict(orient='records')
@@ -408,7 +425,7 @@ def suggest_controls(asl: Optional[str] = None, limit: int = 5) -> Dict[str, Any
 
 def priority_tool(asl: Optional[str] = None, uoc: Optional[str] = None,
                   piano_code: Optional[str] = None, action: str = "priority",
-                  uos: Optional[str] = None) -> Dict[str, Any]:
+                  uos: Optional[str] = None, tipo: Optional[str] = None) -> Dict[str, Any]:
     """
     Router per funzionalità di priorità e programmazione.
 
@@ -418,6 +435,7 @@ def priority_tool(asl: Optional[str] = None, uoc: Optional[str] = None,
         piano_code: Codice piano opzionale
         action: Tipo di azione ("priority", "delayed_plans", "suggest")
         uos: Nome UOS (Unità Operativa Semplice) - opzionale
+        tipo: "piano" (default), "attivita" o "tutti" - filtra per tipo indicatore
 
     Returns:
         Dict con risultati o messaggio di errore
@@ -428,7 +446,7 @@ def priority_tool(asl: Optional[str] = None, uoc: Optional[str] = None,
         priority_func = get_priority_establishment.func if hasattr(get_priority_establishment, 'func') else get_priority_establishment
 
         if action == "delayed_plans":
-            return delayed_func(asl, uoc, uos=uos)
+            return delayed_func(asl, uoc, uos=uos, tipo=tipo)
         elif action == "suggest":
             return suggest_func(asl)
         else:
