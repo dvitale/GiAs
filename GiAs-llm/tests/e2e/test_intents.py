@@ -1,5 +1,5 @@
 """
-Test E2E per tutti i 20 intent.
+Test E2E per tutti i 21 intent.
 Ogni test replica chiamata frontend completa con metadata.
 """
 
@@ -68,6 +68,10 @@ INTENT_TESTS = [
     # Nearby priority (1)
     ("stabilimenti vicino a Benevento", "ask_nearby_priority",
      ["stabil", "vicin", "km", "benevento"]),
+
+    # Query data (1)
+    ("quanti controlli sono stati fatti nel 2024", "query_data",
+     ["controll", "2024"]),
 ]
 
 
