@@ -67,10 +67,10 @@ INSERT INTO schema_metadata VALUES (
   pii_columns = EXCLUDED.pii_columns, row_count_approx = EXCLUDED.row_count_approx,
   updated_at = NOW();
 
--- 3. cu_eseguiti_x (~3.2M righe)
+-- 3. cu_eseguiti_nc (~3.2M righe)
 INSERT INTO schema_metadata VALUES (
-  'controlli', 'cu_eseguiti_x', 'controlli_df',
-  'Controlli ufficiali eseguiti nel 2025. Contiene dettagli su ASL, UOC, piano, macroarea, stabilimento, non conformità e coordinate. Alias piano/indicatore estratti in colonne dedicate.',
+  'controlli', 'cu_eseguiti_nc', 'controlli_df',
+  'Controlli ufficiali eseguiti nel 2025 con esito non conformità. Contiene dettagli su ASL, UOC, piano, macroarea, stabilimento, tipo e numero di non conformità rilevate, comune e coordinate. Alias piano/indicatore estratti in colonne dedicate.',
   '[
     {"name":"descrizione_asl","type":"varchar","description_it":"Nome ASL (es. NAPOLI 1 CENTRO, BENEVENTO)","filterable":true},
     {"name":"descrizione_uoc","type":"varchar","description_it":"Unità Operativa Complessa","filterable":true},
@@ -83,6 +83,12 @@ INSERT INTO schema_metadata VALUES (
     {"name":"attivita_cu","type":"varchar","description_it":"Linea di attività controllata","filterable":true},
     {"name":"sezione","type":"varchar","description_it":"Sezione PRISCAV del controllo","filterable":true},
     {"name":"data_inizio_controllo","type":"date","description_it":"Data inizio controllo","filterable":true},
+    {"name":"id_controllo","type":"varchar","description_it":"Identificativo univoco del controllo ufficiale","filterable":true},
+    {"name":"tipo_non_conformita","type":"varchar","description_it":"Tipo di non conformità rilevata (es. GRAVE, NON GRAVE, NESSUNA NC RILEVATA)","filterable":true},
+    {"name":"numero_nc_gravi","type":"integer","description_it":"Numero di non conformità gravi rilevate nel controllo","filterable":false},
+    {"name":"numero_nc_non_gravi","type":"integer","description_it":"Numero di non conformità non gravi rilevate nel controllo","filterable":false},
+    {"name":"oggetto_non_conformita","type":"varchar","description_it":"Oggetto o categoria della non conformità rilevata","filterable":true},
+    {"name":"comune","type":"varchar","description_it":"Comune dello stabilimento controllato","filterable":true},
     {"name":"num_riconoscimento","type":"varchar","description_it":"Numero riconoscimento stabilimento","filterable":true},
     {"name":"num_registrazione","type":"varchar","description_it":"Numero registrazione stabilimento (IT...)","filterable":false},
     {"name":"ragione_sociale","type":"varchar","description_it":"Ragione sociale dello stabilimento","filterable":false},
@@ -131,30 +137,12 @@ INSERT INTO schema_metadata VALUES (
   pii_columns = EXCLUDED.pii_columns, row_count_approx = EXCLUDED.row_count_approx,
   updated_at = NOW();
 
--- 5. ocse_isp_semp (storico NC 2016-2025)
-INSERT INTO schema_metadata VALUES (
-  'nc_storiche', 'ocse_isp_semp', 'ocse_df',
-  'Non conformità storiche aggregate per macroarea e anno (2016-2025). Base per calcolo risk score.',
-  '[
-    {"name":"macroarea_sottoposta_a_controllo","type":"varchar","description_it":"Macroarea sottoposta a controllo","filterable":true},
-    {"name":"aggregazione_sottoposta_a_controllo","type":"varchar","description_it":"Aggregazione di attività sottoposta a controllo","filterable":true},
-    {"name":"linea_attivita_sottoposta_a_controllo","type":"varchar","description_it":"Linea attività sottoposta a controllo","filterable":true},
-    {"name":"anno_controllo","type":"integer","description_it":"Anno di riferimento (2016-2025)","filterable":true,"sample_values":["2020","2021","2022","2023","2024","2025"]},
-    {"name":"asl","type":"varchar","description_it":"Nome ASL","filterable":true},
-    {"name":"comune","type":"varchar","description_it":"Comune dello stabilimento","filterable":true},
-    {"name":"tipo_controllo","type":"varchar","description_it":"Tipo di controllo eseguito","filterable":true},
-    {"name":"numero_nc_gravi","type":"integer","description_it":"Numero NC gravi","filterable":false},
-    {"name":"numero_nc_non_gravi","type":"integer","description_it":"Numero NC non gravi","filterable":false}
-  ]'::jsonb,
-  '[{"target_table":"masterlist","source_col":"macroarea_sottoposta_a_controllo","target_col":"macroarea","description":"Classificazione attività"}]'::jsonb,
-  '{}'::jsonb,
-  '{}', 50000, TRUE, NOW()
-) ON CONFLICT (table_key) DO UPDATE SET
-  table_name = EXCLUDED.table_name, df_variable = EXCLUDED.df_variable,
-  description_it = EXCLUDED.description_it, columns = EXCLUDED.columns,
-  relationships = EXCLUDED.relationships, valid_values = EXCLUDED.valid_values,
-  pii_columns = EXCLUDED.pii_columns, row_count_approx = EXCLUDED.row_count_approx,
-  updated_at = NOW();
+-- 5. ocse_isp_semp (rimosso: sostituito da cu_eseguiti_nc che include le colonne NC)
+-- INSERT INTO schema_metadata VALUES (
+--   'nc_storiche', 'ocse_isp_semp', 'ocse_df', ...
+-- ) -- RIMOSSO: tabella ocse_isp_semp non più utilizzata.
+-- Le informazioni sulle non conformità sono ora in cu_eseguiti_nc
+-- (colonne: tipo_non_conformita, numero_nc_gravi, numero_nc_non_gravi, oggetto_non_conformita).
 
 -- 6. cu_diff_programmati_eseguiti (indicatori programmati vs eseguiti)
 INSERT INTO schema_metadata VALUES (

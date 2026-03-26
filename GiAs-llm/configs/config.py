@@ -197,16 +197,6 @@ class LLMBackendConfig:
             }
 
     @classmethod
-    def is_ollama(cls) -> bool:
-        """Ritorna True se il backend è Ollama"""
-        return cls.get_backend_type() == "ollama"
-
-    @classmethod
-    def is_llamacpp(cls) -> bool:
-        """Ritorna True se il backend è Llama.cpp"""
-        return cls.get_backend_type() == "llamacpp"
-
-    @classmethod
     def is_external_provider(cls) -> bool:
         """Ritorna True se il backend invia dati a server esterni"""
         return cls.get_backend_type() in cls.EXTERNAL_BACKENDS
@@ -281,6 +271,22 @@ class RiskPredictorConfig:
         return cls.get_predictor_type() == "statistical"
 
 
+def _load_config_json_cached() -> Dict[str, Any]:
+    """Carica config.json una sola volta e lo tiene in cache."""
+    if not hasattr(_load_config_json_cached, '_cache'):
+        import json
+        config_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "config.json"
+        )
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                _load_config_json_cached._cache = json.load(f)
+        except Exception:
+            _load_config_json_cached._cache = {}
+    return _load_config_json_cached._cache
+
+
 class AppConfig:
     """Configurazione generale applicazione"""
 
@@ -320,42 +326,13 @@ class AppConfig:
 
     @classmethod
     def get_fallback_config(cls) -> Dict[str, Any]:
-        """
-        Ottiene configurazione fallback recovery da config.json.
-
-        Returns:
-            Dict con configurazione fallback o None se non presente
-        """
-        import json
-        config_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "config.json"
-        )
-
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config_data = json.load(f)
-                return config_data.get("fallback_recovery")
-        except Exception as e:
-            print(f"[WARNING] Could not load fallback config from config.json: {e}")
-            return None
+        """Ottiene configurazione fallback recovery da config.json (cached)."""
+        return _load_config_json_cached().get("fallback_recovery")
 
     @classmethod
     def is_guided_learning_enabled(cls) -> bool:
-        """
-        Ritorna True se il guided learning è abilitato in config.json.
-        """
-        import json
-        config_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "config.json"
-        )
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config_data = json.load(f)
-                return config_data.get("guided_learning", {}).get("enabled", False)
-        except Exception:
-            return False
+        """Ritorna True se il guided learning è abilitato in config.json (cached)."""
+        return _load_config_json_cached().get("guided_learning", {}).get("enabled", False)
 
     @classmethod
     def print_config(cls):

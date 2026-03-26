@@ -89,7 +89,6 @@ INTENT_DESCRIPTIONS = {
     "check_if_plan_delayed": "verifica se un piano specifico è in ritardo",
     "ask_establishment_history": "storico controlli e NC per stabilimento",
     "ask_top_risk_activities": "top attività con risk score più elevato",
-    "analyze_nc_by_category": "analisi non conformità per categoria specifica",
     "ask_help": "informazioni sulle funzionalità disponibili",
     "info_procedure": "informazioni su procedure operative da documentazione",
     "query_data": "interrogazione dati su misura"
@@ -177,7 +176,6 @@ def extract_response_context(intent: str, slots: Dict[str, Any], tool_output: Di
         "ask_suggest_controls": "suggerimenti controlli",
         "ask_establishment_history": "storico stabilimento",
         "ask_top_risk_activities": "top rischio",
-        "analyze_nc_by_category": "NC per categoria",
     }
     if intent in intent_context:
         context_parts.insert(0, intent_context[intent])

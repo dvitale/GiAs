@@ -89,7 +89,6 @@ TABLE_KEY_TO_DF = {
     "masterlist": "attivita_df",
     "controlli": "controlli_df",
     "mai_controllati": "osa_mai_controllati_df",
-    "nc_storiche": "ocse_df",
     "programmazione": "diff_prog_eseg_df",
     "personale": "personale_df",
 }
@@ -97,9 +96,9 @@ TABLE_KEY_TO_DF = {
 # Alias comuni che l'LLM potrebbe usare
 TABLE_ALIASES = {
     "piani_monitoraggio": "piani",
+    "cu_eseguiti_nc": "controlli",
     "cu_eseguiti_x": "controlli",
     "osa_mai_controllati": "mai_controllati",
-    "ocse_isp_semp": "nc_storiche",
     "cu_diff_programmati_eseguiti": "programmazione",
     "personale": "personale",
 }
@@ -120,6 +119,10 @@ COLUMN_ALIASES = {
         "stabilimento": "num_riconoscimento",
         "latitudine": "latitudine_stab",
         "longitudine": "longitudine_stab",
+        "nc_gravi": "numero_nc_gravi",
+        "nc_non_gravi": "numero_nc_non_gravi",
+        "tipo_nc": "tipo_non_conformita",
+        "oggetto_nc": "oggetto_non_conformita",
     },
     "masterlist": {
         "norma": "NORMA",
@@ -133,14 +136,6 @@ COLUMN_ALIASES = {
         "attivita": "attivita",
         "latitudine": "latitudine_stab",
         "longitudine": "longitudine_stab",
-    },
-    "nc_storiche": {
-        "macroarea": "macroarea_sottoposta_a_controllo",
-        "aggregazione": "aggregazione_sottoposta_a_controllo",
-        "linea_attivita": "linea_attivita_sottoposta_a_controllo",
-        "attivita": "linea_attivita_sottoposta_a_controllo",
-        "anno": "anno_controllo",
-        "year": "anno_controllo",
     },
     "programmazione": {
         "asl": "descrizione_asl",
@@ -263,7 +258,7 @@ class SafeQueryExecutor:
             # Import diretto (funziona nel contesto del server dove agents.data è già caricato)
             from agents.data import (
                 piani_df, attivita_df, controlli_df,
-                osa_mai_controllati_df, ocse_df, diff_prog_eseg_df,
+                osa_mai_controllati_df, diff_prog_eseg_df,
                 personale_df
             )
             df_map = {
@@ -271,7 +266,6 @@ class SafeQueryExecutor:
                 "masterlist": attivita_df,
                 "controlli": controlli_df,
                 "mai_controllati": osa_mai_controllati_df,
-                "nc_storiche": ocse_df,
                 "programmazione": diff_prog_eseg_df,
                 "personale": personale_df,
             }

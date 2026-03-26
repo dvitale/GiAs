@@ -162,10 +162,6 @@ class PostgreSQLDataSource(DataSource):
         """Load OSA mai controllati data."""
         return self._load_table("osa_mai_controllati")
 
-    def load_ocse(self) -> pd.DataFrame:
-        """Load OCSE data."""
-        return self._load_table("ocse")
-
     def load_diff_prog_eseg(self) -> pd.DataFrame:
         """Load diff programmati/eseguiti data."""
         return self._load_table("diff_prog_eseg")
@@ -208,10 +204,6 @@ class PostgreSQLDataSource(DataSource):
     def get_osa_mai_controllati(self) -> pd.DataFrame:
         """Get OSA mai controllati data (compatibility method)."""
         return self.load_osa_mai_controllati()
-
-    def get_ocse(self) -> pd.DataFrame:
-        """Get OCSE data (compatibility method)."""
-        return self.load_ocse()
 
     def get_diff_prog_eseg(self) -> pd.DataFrame:
         """Get diff programmati/eseguiti data (compatibility method)."""

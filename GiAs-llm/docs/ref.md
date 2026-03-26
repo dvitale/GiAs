@@ -25,7 +25,7 @@ Rendere multi-turno i seguenti intent che supportano filtri:
 Rimangono invariati come workflow lineare:
 - greet, goodbye, ask_help
 - ask_piano_description, ask_piano_stabilimenti, ask_piano_generic, ask_piano_statistics
-- check_if_plan_delayed, ask_top_risk_activities, analyze_nc_by_category
+- check_if_plan_delayed, ask_top_risk_activities
 - confirm_show_details, decline_show_details, fallback
 
 ## 3. Architettura Proposta

@@ -599,7 +599,7 @@ async def chat_stream_v1(message: ChatMessage):
                     event = await asyncio.get_event_loop().run_in_executor(
                         None, event_queue.get, True, 0.5
                     )
-                except:
+                except Exception:
                     continue
                 if event is None:
                     break

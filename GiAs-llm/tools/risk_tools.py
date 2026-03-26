@@ -1,6 +1,5 @@
 from typing import Dict, Any, Optional
 import pandas as pd
-import re
 
 try:
     from langchain_core.tools import tool
@@ -64,23 +63,13 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
             }
 
         if piano_code:
-            try:
-                from agents.data import controlli_df
-            except ImportError:
-                import sys
-                import os
-                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                from agents.data import controlli_df
-            controlli_df_copy = controlli_df.copy()
-
-            # Usa alias_indicatore con matching esatto o sottopiani (A1, A1_A, ma non A10)
-            piano_upper = str(piano_code).upper()
-            if piano_upper.startswith("ATT "):
-                piano_upper = piano_upper[4:]
-            pattern = rf'^(ATT\s+)?{re.escape(piano_upper)}(?:[_ ]|$)'
-            attivita_piano = controlli_df_copy[
-                controlli_df_copy['alias_indicatore'].str.upper().str.match(pattern, na=False)
-            ][['macroarea_cu', 'aggregazione_cu', 'attivita_cu']].drop_duplicates()
+            # Delega il matching del codice piano a DataRetriever (regex condivisa, no duplicazione)
+            controlli_piano = DataRetriever.get_controlli_by_piano(piano_code)
+            attivita_piano = (
+                controlli_piano[['macroarea_cu', 'aggregazione_cu', 'attivita_cu']].drop_duplicates()
+                if controlli_piano is not None and not controlli_piano.empty
+                else pd.DataFrame(columns=['macroarea_cu', 'aggregazione_cu', 'attivita_cu'])
+            )
 
             if attivita_piano.empty:
                 return {
@@ -169,16 +158,10 @@ def _analyze_controlled_establishments_risk(piano_code: str) -> Dict[str, Any]:
         controlli_df = DataRetriever.get_controlli_by_piano(piano_code)
 
         if controlli_df is None or controlli_df.empty:
-            # Suggerisci che potrebbe essere una categoria NC
-            from agents.data_agent import VALID_NC_CATEGORIES
-            hint = ""
-            if piano_code.upper() in [cat.upper() for cat in VALID_NC_CATEGORIES]:
-                hint = f"\n\n💡 **Suggerimento**: '{piano_code}' è una categoria di **Non Conformità (NC)**, non un piano di controllo.\n\nProva con: \"Analizza le non conformità {piano_code}\""
-
             return {
                 "error": f"Nessun controllo trovato per il piano {piano_code}",
                 "piano_code": piano_code,
-                "formatted_response": f"Non ci sono controlli eseguiti nel 2025 per il **piano {piano_code}**.{hint}"
+                "formatted_response": f"Non ci sono controlli eseguiti per il **piano {piano_code}**."
             }
 
         # Usa la funzione aggiornata che include NC
@@ -390,151 +373,3 @@ def _format_establishments_with_sanctions(asl: Optional[str], establishments: li
     return response
 
 
-@tool("analyze_nc_by_category")
-def analyze_nc_by_category(categoria: str, asl: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Analizza non conformità per categoria specifica.
-
-    Args:
-        categoria: Nome categoria NC (es. 'HACCP', 'IGIENE DEGLI ALIMENTI')
-        asl: Filtro opzionale per ASL specifica
-
-    Returns:
-        Dict con analisi NC per categoria
-    """
-    try:
-        # Importa qui per evitare errori circolari
-        from agents.data_agent import VALID_NC_CATEGORIES
-
-        # Normalizzazione case-insensitive
-        categoria = categoria.upper()
-
-        # Validazione categoria
-        if categoria not in VALID_NC_CATEGORIES:
-            categorie_list = '\n'.join([f"  • {cat}" for cat in VALID_NC_CATEGORIES])
-            return {
-                "error": f"Categoria non valida. Categorie disponibili: {', '.join(VALID_NC_CATEGORIES)}",
-                "formatted_response": f"**⚠️ Categoria NC non riconosciuta**\n\nLa categoria **'{categoria}'** non è valida.\n\n**📋 Categorie NC disponibili:**\n{categorie_list}\n\n💡 **Nota**: Se stai cercando un piano di controllo (es. A1, B2), prova con: \"di cosa tratta il piano {categoria}?\""
-            }
-
-        # Ottieni dati NC per categoria
-        nc_data = DataRetriever.get_nc_by_category(categoria, asl)
-
-        if nc_data.empty:
-            asl_text = f" per l'ASL **{asl}**" if asl else " nel database regionale"
-            return {
-                "error": f"Nessun dato trovato per categoria {categoria}{asl_text}",
-                "formatted_response": f"**📊 Analisi NC - {categoria}**\n\n❌ Non sono state trovate **non conformità (NC) di categoria '{categoria}'**{asl_text} nel 2025.\n\n💡 **Nota**: Questa è una categoria di NC (Non Conformità), non un piano di controllo.\n\nSe intendevi cercare un piano, prova con: \"di cosa tratta il piano [codice]?\""
-            }
-
-        # Converti e pulisci dati numerici prima del calcolo
-        nc_data['numero_nc_gravi'] = pd.to_numeric(nc_data['numero_nc_gravi'], errors='coerce').fillna(0)
-        nc_data['numero_nc_non_gravi'] = pd.to_numeric(nc_data['numero_nc_non_gravi'], errors='coerce').fillna(0)
-
-        # Analisi statistiche
-        stats = {
-            'categoria': categoria,
-            'asl_filtro': asl,
-            'totale_controlli': len(nc_data),
-            'nc_gravi': int(nc_data['numero_nc_gravi'].sum()),
-            'nc_non_gravi': int(nc_data['numero_nc_non_gravi'].sum()),
-            'stabilimenti_coinvolti': nc_data['numero_riconoscimento'].nunique(),
-            'asl_coinvolte': nc_data['asl'].unique().tolist()
-        }
-
-        # Ottieni stabilimenti con più NC in questa categoria (filtra per ASL se specificata)
-        stabilimenti_nc = DataRetriever.get_establishments_with_nc_category(categoria, 5, asl)
-
-        # Formatta response italiana (temporaneo - simplified formatter)
-        asl_header = f" - ASL **{asl}**" if asl else ""
-        formatted_response = f"**📊 Analisi NC - {categoria}**{asl_header}\n\n"
-        formatted_response += f"• **Controlli totali:** {stats['totale_controlli']:,}\n"
-        formatted_response += f"• **NC gravi:** {stats['nc_gravi']}\n"
-        formatted_response += f"• **NC non gravi:** {stats['nc_non_gravi']}\n"
-        formatted_response += f"• **Stabilimenti coinvolti:** {stats['stabilimenti_coinvolti']}\n"
-        if asl:
-            formatted_response += f"• **ASL:** {asl}\n"
-        if not stabilimenti_nc.empty:
-            formatted_response += f"\n**🚨 Stabilimenti Critici:**\n"
-            for row in stabilimenti_nc.head(3).itertuples(index=False):
-                formatted_response += f"- {row.numero_riconoscimento} ({row.asl}) - {int(row.tot_nc_categoria)} NC\n"
-
-        return {
-            "status": "success",
-            "categoria": categoria,
-            "statistiche": stats,
-            "stabilimenti_critici": stabilimenti_nc.to_dict('records') if not stabilimenti_nc.empty else [],
-            "formatted_response": formatted_response
-        }
-
-    except Exception as e:
-        return {
-            "error": f"Errore nell'analisi categoria NC: {str(e)}",
-            "formatted_response": f"Si è verificato un errore durante l'analisi delle non conformità per la categoria {categoria}."
-        }
-
-
-@tool("predict_high_risk_categories")
-def predict_high_risk_categories(macroarea: str, aggregazione: str) -> Dict[str, Any]:
-    """
-    Predice categorie NC più probabili per linea di attività.
-
-    Args:
-        macroarea: Macroarea della linea di attività (es. 'RISTORAZIONE')
-        aggregazione: Aggregazione linea di attività (es. 'RISTORANTI')
-
-    Returns:
-        Dict con categorie NC ad alto rischio per la linea di attività
-    """
-    try:
-        # Ottieni risk scores categorizzati
-        risk_scores = RiskAnalyzer.calculate_categorized_risk_scores()
-
-        if risk_scores.empty:
-            return {
-                "error": "Dati di rischio non disponibili",
-                "formatted_response": "Non sono disponibili dati storici sufficienti per prevedere le categorie di rischio."
-            }
-
-        # Filtra per macroarea e aggregazione
-        filtered_risks = risk_scores[
-            (risk_scores['macroarea'].str.contains(macroarea, case=False, na=False)) &
-            (risk_scores['aggregazione'].str.contains(aggregazione, case=False, na=False))
-        ]
-
-        if filtered_risks.empty:
-            return {
-                "error": f"Nessun dato trovato per {macroarea} - {aggregazione}",
-                "formatted_response": f"Non sono stati trovati dati storici per la linea di attività {macroarea} - {aggregazione}."
-            }
-
-        # Ordina per punteggio rischio e prendi top 5 categorie
-        top_categories = filtered_risks.nlargest(5, 'punteggio_rischio_categoria')
-
-        # Prepara risultati
-        prediction_data = {
-            'macroarea': macroarea,
-            'aggregazione': aggregazione,
-            'categorie_alto_rischio': top_categories[['categoria_nc', 'punteggio_rischio_categoria', 'prob_nc', 'impatto']].to_dict('records')
-        }
-
-        # Formatta response italiana (temporaneo - simplified formatter)
-        formatted_response = f"**🔮 Predizione Rischio - {macroarea}**\n\n"
-        formatted_response += f"**🎯 Linea di attività:** {aggregazione}\n\n"
-        formatted_response += f"**📊 Top 3 Categorie NC Alto Rischio:**\n"
-        for idx, row in enumerate(top_categories.head(3).itertuples(index=False), 1):
-            formatted_response += f"{idx}. **{row.categoria_nc}** (Score: {row.punteggio_rischio_categoria:.1f})\n"
-
-        return {
-            "status": "success",
-            "macroarea": macroarea,
-            "aggregazione": aggregazione,
-            "predizione": prediction_data,
-            "formatted_response": formatted_response
-        }
-
-    except Exception as e:
-        return {
-            "error": f"Errore nella predizione rischio: {str(e)}",
-            "formatted_response": f"Si è verificato un errore durante la predizione delle categorie di rischio per {macroarea} - {aggregazione}."
-        }

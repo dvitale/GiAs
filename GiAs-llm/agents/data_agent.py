@@ -21,7 +21,6 @@ try:
         attivita_df,
         controlli_df,
         osa_mai_controllati_df,
-        ocse_df,
         diff_prog_eseg_df
     )
     from agents.utils import enhanced_similarity, expand_terms, filter_by_asl
@@ -34,29 +33,10 @@ except ImportError:
         attivita_df,
         controlli_df,
         osa_mai_controllati_df,
-        ocse_df,
         diff_prog_eseg_df
     )
     from agents.utils import enhanced_similarity, expand_terms, filter_by_asl
 
-
-# Costanti per l'analisi delle categorie di non conformità
-NC_CATEGORY_WEIGHTS = {
-    'HACCP': 1.0,  # Massima criticità - sistema preventivo
-    'IGIENE DEGLI ALIMENTI': 0.9,  # Alto rischio sanitario
-    'CONDIZIONI DELLA STRUTTURA E DELLE ATTREZZATURE': 0.8,
-    'CONDIZIONI DI PULIZIA E SANIFICAZIONE': 0.8,
-    'IGIENE DELLE LAVORAZIONI': 0.7,
-    'RINTRACCIABILITÀ/RITIRO/RICHIAMO': 0.6,  # Critico per gestione crisi
-    'IGIENE DEL PERSONALE': 0.5,
-    'RICONOSCIMENTO/REGISTRAZIONE': 0.4,  # Amministrativo
-    'ETICHETTATURA': 0.3,  # Meno critico per sicurezza
-    'LOTTA AGLI INFESTANTI': 0.5,
-    'MOCA': 0.4
-}
-
-# Lista delle categorie valide per validazione
-VALID_NC_CATEGORIES = list(NC_CATEGORY_WEIGHTS.keys())
 
 
 class DataRetriever:
@@ -561,7 +541,7 @@ class DataRetriever:
         ragione_sociale: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Cerca stabilimento in entrambe le tabelle (controlli_df e ocse_df).
+        Cerca stabilimento in controlli_df (cu_eseguiti_nc con NC inline).
 
         Normalizzazione uniforme:
         - numero_riconoscimento/numero_registrazione: .upper().replace(" ", "")
@@ -577,17 +557,15 @@ class DataRetriever:
         Returns:
             Dict con:
             - found: bool
-            - source: "controlli_df", "ocse_df", "both" o None
+            - source: "controlli_df" o None
             - establishment_info: dict con info stabilimento
             - controlli_df_matches: DataFrame controlli_df filtrato (può essere vuoto)
-            - ocse_df_matches: DataFrame ocse_df filtrato (può essere vuoto)
         """
         result = {
             "found": False,
             "source": None,
             "establishment_info": {},
-            "controlli_df_matches": pd.DataFrame(),
-            "ocse_df_matches": pd.DataFrame()
+            "controlli_df_matches": pd.DataFrame()
         }
 
         # Almeno un parametro deve essere specificato
@@ -595,10 +573,9 @@ class DataRetriever:
             return result
 
         controlli_matches = pd.DataFrame()
-        ocse_matches = pd.DataFrame()
 
         # =====================================================================
-        # RICERCA IN controlli_df
+        # RICERCA IN controlli_df (cu_eseguiti_nc con NC inline)
         # =====================================================================
         if not controlli_df.empty:
             filters_controlli = []
@@ -643,82 +620,23 @@ class DataRetriever:
                 controlli_matches = controlli_df[combined_filter].copy()
 
         # =====================================================================
-        # RICERCA IN ocse_df
-        # =====================================================================
-        if not ocse_df.empty:
-            filters_ocse = []
-
-            # numero_riconoscimento - normalizzato, prefix match
-            if numero_riconoscimento and 'numero_riconoscimento' in ocse_df.columns:
-                num_norm = numero_riconoscimento.upper().replace(" ", "")
-                filters_ocse.append(
-                    ocse_df['numero_riconoscimento'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
-                )
-
-            # numero_registrazione - normalizzato (cerca anche in numero_riconoscimento con contains)
-            if numero_registrazione:
-                num_norm = numero_registrazione.upper().replace(" ", "")
-                reg_filter_parts = []
-                if 'numero_registrazione' in ocse_df.columns:
-                    reg_filter_parts.append(
-                        ocse_df['numero_registrazione'].fillna('').str.upper().str.replace(" ", "", regex=False).str.startswith(num_norm)
-                    )
-                if 'numero_riconoscimento' in ocse_df.columns:
-                    reg_filter_parts.append(
-                        ocse_df['numero_riconoscimento'].fillna('').str.upper().str.replace(" ", "", regex=False).str.contains(num_norm, na=False, regex=False)
-                    )
-                if reg_filter_parts:
-                    combined = reg_filter_parts[0]
-                    for part in reg_filter_parts[1:]:
-                        combined = combined | part
-                    filters_ocse.append(combined)
-
-            if filters_ocse:
-                combined_filter = filters_ocse[0]
-                for f in filters_ocse[1:]:
-                    combined_filter = combined_filter | f
-                ocse_matches = ocse_df[combined_filter].copy()
-
-        # =====================================================================
         # COSTRUZIONE RISULTATO
         # =====================================================================
-        found_in_controlli = not controlli_matches.empty
-        found_in_ocse = not ocse_matches.empty
-
-        if found_in_controlli or found_in_ocse:
+        if not controlli_matches.empty:
             result["found"] = True
-
-            if found_in_controlli and found_in_ocse:
-                result["source"] = "both"
-            elif found_in_controlli:
-                result["source"] = "controlli_df"
-            else:
-                result["source"] = "ocse_df"
-
+            result["source"] = "controlli_df"
             result["controlli_df_matches"] = controlli_matches
-            result["ocse_df_matches"] = ocse_matches
 
-            # Estrai info stabilimento dalla prima riga disponibile
-            if found_in_controlli:
-                first_row = controlli_matches.iloc[0]
-                result["establishment_info"] = {
-                    "ragione_sociale": first_row.get('ragione_sociale', 'N.D.'),
-                    "num_registrazione": first_row.get('num_registrazione', 'N.D.'),
-                    "num_riconoscimento": first_row.get('num_riconoscimento', 'N.D.'),
-                    "partita_iva": first_row.get('partita_iva', 'N.D.'),
-                    "asl": first_row.get('descrizione_asl', 'N.D.'),
-                    "source": "controlli_df"
-                }
-            elif found_in_ocse:
-                first_row = ocse_matches.iloc[0]
-                result["establishment_info"] = {
-                    "numero_riconoscimento": first_row.get('numero_riconoscimento', 'N.D.'),
-                    "numero_registrazione": first_row.get('numero_registrazione', 'N.D.'),
-                    "asl": first_row.get('asl', 'N.D.'),
-                    "comune": first_row.get('comune', 'N.D.'),
-                    "macroarea": first_row.get('macroarea_sottoposta_a_controllo', 'N.D.'),
-                    "source": "ocse_df"
-                }
+            first_row = controlli_matches.iloc[0]
+            result["establishment_info"] = {
+                "ragione_sociale": first_row.get('ragione_sociale', 'N.D.'),
+                "num_registrazione": first_row.get('num_registrazione', 'N.D.'),
+                "num_riconoscimento": first_row.get('num_riconoscimento', 'N.D.'),
+                "partita_iva": first_row.get('partita_iva', 'N.D.'),
+                "asl": first_row.get('descrizione_asl', 'N.D.'),
+                "comune": first_row.get('comune', 'N.D.'),
+                "source": "controlli_df"
+            }
 
         return result
 
@@ -733,21 +651,19 @@ class DataRetriever:
         """
         Recupera storico controlli per stabilimento identificato da:
         - num_registrazione (es. "IT 123", "UE IT 2287 M")
-        - numero_riconoscimento (es. "UE IT 15 273") - cerca anche in ocse_df
+        - numero_riconoscimento (es. "UE IT 15 273")
         - partita_iva (solo numeri)
         - ragione_sociale (ricerca parziale case-insensitive)
 
-        Usa find_establishment() per cercare in entrambe le tabelle
-        (controlli_df e ocse_df) e unisce i risultati.
+        Usa find_establishment() per cercare in controlli_df (cu_eseguiti_nc
+        con NC inline).
 
         Returns:
-            DataFrame con controlli ordinati per data (più recenti primi) o None
+            DataFrame con controlli ordinati per data (piu recenti primi) o None
         """
-        # Almeno un parametro deve essere specificato
         if not any([num_registrazione, numero_riconoscimento, partita_iva, ragione_sociale]):
             return None
 
-        # Usa find_establishment() per ricerca unificata
         search_result = DataRetriever.find_establishment(
             numero_riconoscimento=numero_riconoscimento,
             numero_registrazione=num_registrazione,
@@ -758,55 +674,7 @@ class DataRetriever:
         if not search_result["found"]:
             return None
 
-        result_df = pd.DataFrame()
-        controlli_matches = search_result["controlli_df_matches"]
-        ocse_matches = search_result["ocse_df_matches"]
-
-        # =====================================================================
-        # CASO 1: Trovato in controlli_df (o entrambi)
-        # =====================================================================
-        if not controlli_matches.empty:
-            result_df = controlli_matches.copy()
-
-            # Join con NC (ocse_df) se disponibile
-            if not ocse_df.empty and 'id_controllo' in result_df.columns:
-                # Join left per mantenere tutti i controlli anche senza NC
-                result_df = result_df.merge(
-                    ocse_df[['id_controllo_ufficiale', 'numero_nc_gravi', 'numero_nc_non_gravi',
-                             'tipo_non_conformita', 'oggetto_non_conformita']],
-                    left_on='id_controllo',
-                    right_on='id_controllo_ufficiale',
-                    how='left'
-                )
-
-        # =====================================================================
-        # CASO 2: Trovato SOLO in ocse_df (stabilimento con NC ma non in controlli_df)
-        # =====================================================================
-        elif not ocse_matches.empty:
-            # Costruisci un DataFrame "pseudo-controlli" dai dati NC
-            result_df = ocse_matches.copy()
-
-            # Rinomina colonne per compatibilità con il formatter
-            rename_map = {
-                'numero_riconoscimento': 'num_registrazione',
-                'id_controllo_ufficiale': 'id_controllo',
-                'anno_controllo': 'anno_controllo',
-                'macroarea_sottoposta_a_controllo': 'macroarea_cu',
-                'aggregazione_sottoposta_a_controllo': 'aggregazione_cu',
-                'linea_attivita_sottoposta_a_controllo': 'attivita_cu'
-            }
-            result_df = result_df.rename(columns={
-                k: v for k, v in rename_map.items() if k in result_df.columns
-            })
-
-            # Aggiungi colonne mancanti con valori di default
-            if 'ragione_sociale' not in result_df.columns:
-                result_df['ragione_sociale'] = 'N.D. (solo dati NC)'
-            if 'descrizione_asl' not in result_df.columns and 'asl' in result_df.columns:
-                result_df['descrizione_asl'] = result_df['asl']
-
-            # Marca la fonte come "ocse_df" per il formatter
-            result_df['_source'] = 'ocse_df'
+        result_df = search_result["controlli_df_matches"].copy()
 
         if result_df.empty:
             return None
@@ -883,131 +751,10 @@ class DataRetriever:
         return filtered_df
 
     @staticmethod
-    def get_nc_by_category(categoria: str, asl: Optional[str] = None) -> pd.DataFrame:
-        """
-        Filtra dataset OCSE per categoria NC specifica.
-
-        Args:
-            categoria: Nome categoria NC (es. 'HACCP', 'IGIENE DEGLI ALIMENTI')
-            asl: Filtro opzionale per ASL specifica
-
-        Returns:
-            DataFrame filtrato per categoria NC
-        """
-        if ocse_df.empty:
-            return pd.DataFrame()
-
-        # Normalizzazione case-insensitive
-        categoria = categoria.upper()
-
-        # Validazione categoria
-        if categoria not in VALID_NC_CATEGORIES:
-            return pd.DataFrame()
-
-        # Filtra per categoria NC (partial match case-insensitive) - no copy, solo lettura
-        filtered = ocse_df[ocse_df['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
-
-        # Filtra per ASL se specificata
-        if asl:
-            try:
-                filtered = filter_by_asl(filtered, asl, 'asl')
-            except Exception:
-                # Se il filtro ASL fallisce, continuiamo senza filtro ASL
-                pass
-
-        return filtered
-
-    @staticmethod
-    def get_establishments_with_nc_category(categoria: str, limit: int = 20, asl: Optional[str] = None) -> pd.DataFrame:
-        """
-        Identifica stabilimenti con NC storiche per categoria specifica.
-
-        Args:
-            categoria: Nome categoria NC
-            limit: Numero massimo di stabilimenti da restituire
-            asl: Filtro opzionale per ASL specifica
-
-        Returns:
-            DataFrame con stabilimenti che hanno avuto NC nella categoria
-        """
-        if ocse_df.empty:
-            return pd.DataFrame()
-
-        # Normalizzazione case-insensitive
-        categoria = categoria.upper()
-
-        # Validazione categoria
-        if categoria not in VALID_NC_CATEGORIES:
-            return pd.DataFrame()
-
-        # Filtra per categoria NC prima, poi copy solo del sottoinsieme (evita copy dell'intero ocse_df)
-        ocse_copy = ocse_df[ocse_df['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
-
-        # Filtra per ASL se specificata
-        if asl:
-            try:
-                ocse_copy = filter_by_asl(ocse_copy, asl, 'asl')
-            except Exception:
-                pass
-
-        if ocse_copy.empty:
-            return pd.DataFrame()
-
-        # Copy del sottoinsieme filtrato (necessario per pd.to_numeric in-place)
-        ocse_copy = ocse_copy.copy()
-
-        # Pulizia dati NC
-        ocse_copy['numero_nc_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_gravi'], errors='coerce'
-        ).fillna(0)
-        ocse_copy['numero_nc_non_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_non_gravi'], errors='coerce'
-        ).fillna(0)
-
-        # Aggrega per stabilimento
-        establishment_nc = ocse_copy.groupby([
-            'numero_riconoscimento',
-            'asl',
-            'comune',
-            'macroarea_sottoposta_a_controllo',
-            'aggregazione_sottoposta_a_controllo'
-        ]).agg({
-            'numero_nc_gravi': 'sum',
-            'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
-        }).reset_index()
-
-        establishment_nc.columns = [
-            'numero_riconoscimento', 'asl', 'comune', 'macroarea', 'aggregazione',
-            'tot_nc_gravi', 'tot_nc_non_gravi', 'controlli_totali'
-        ]
-
-        # Calcola totale NC
-        establishment_nc['tot_nc_categoria'] = (
-            establishment_nc['tot_nc_gravi'] +
-            establishment_nc['tot_nc_non_gravi']
-        )
-
-        # Calcola percentuale NC per la categoria
-        establishment_nc['percentuale_nc_categoria'] = (
-            establishment_nc['tot_nc_categoria'] /
-            establishment_nc['controlli_totali'].replace(0, 1) * 100
-        ).round(2)
-
-        # Aggiungi informazione categoria
-        establishment_nc['categoria_nc'] = categoria
-
-        # Ordina per numero totale di NC nella categoria (decrescente)
-        establishment_nc = establishment_nc.sort_values(
-            'tot_nc_categoria', ascending=False
-        )
-
-        return establishment_nc.head(limit)
-
-    @staticmethod
     def get_establishments_with_most_sanctions(asl: Optional[str] = None, limit: int = 20) -> pd.DataFrame:
         """
-        Identifica stabilimenti con più NC/sanzioni storiche (tutte le categorie).
+        Identifica stabilimenti con piu NC/sanzioni (tutte le categorie).
+        Usa controlli_df (cu_eseguiti_nc) con NC inline.
 
         Args:
             asl: Filtro opzionale per ASL specifica
@@ -1016,69 +763,58 @@ class DataRetriever:
         Returns:
             DataFrame con stabilimenti ordinati per numero totale di NC
         """
-        if ocse_df.empty:
+        if controlli_df.empty:
             return pd.DataFrame()
 
-        # Filtra per ASL prima di copiare (evita copy dell'intero ocse_df)
+        # Filtra solo righe con NC
+        nc_df = controlli_df[controlli_df['tipo_non_conformita'] != 'NESSUNA NC RILEVATA']
+
         if asl:
             try:
-                ocse_filtered = filter_by_asl(ocse_df, asl, 'asl')
+                nc_df = filter_by_asl(nc_df, asl, 'descrizione_asl')
             except Exception:
-                ocse_filtered = ocse_df
-        else:
-            ocse_filtered = ocse_df
+                pass
 
-        if ocse_filtered.empty:
+        if nc_df.empty:
             return pd.DataFrame()
 
-        # Copy solo del sottoinsieme (necessario per pd.to_numeric in-place)
-        ocse_copy = ocse_filtered.copy()
+        nc_copy = nc_df.copy()
+        nc_copy['numero_nc_gravi'] = pd.to_numeric(nc_copy['numero_nc_gravi'], errors='coerce').fillna(0)
+        nc_copy['numero_nc_non_gravi'] = pd.to_numeric(nc_copy['numero_nc_non_gravi'], errors='coerce').fillna(0)
 
-        # Pulizia dati NC
-        ocse_copy['numero_nc_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_gravi'], errors='coerce'
-        ).fillna(0)
-        ocse_copy['numero_nc_non_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_non_gravi'], errors='coerce'
-        ).fillna(0)
+        # Aggrega per stabilimento
+        groupby_cols = ['num_riconoscimento', 'descrizione_asl', 'macroarea_cu', 'aggregazione_cu']
+        if 'comune' in nc_copy.columns:
+            groupby_cols.insert(2, 'comune')
 
-        # Aggrega per stabilimento (numero_riconoscimento)
-        establishment_nc = ocse_copy.groupby([
-            'numero_riconoscimento',
-            'asl',
-            'comune',
-            'macroarea_sottoposta_a_controllo',
-            'aggregazione_sottoposta_a_controllo'
-        ]).agg({
+        establishment_nc = nc_copy.groupby(groupby_cols).agg({
             'numero_nc_gravi': 'sum',
             'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
+            'id_controllo': 'nunique'
         }).reset_index()
 
-        establishment_nc.columns = [
-            'numero_riconoscimento', 'asl', 'comune', 'macroarea', 'aggregazione',
-            'tot_nc_gravi', 'tot_nc_non_gravi', 'controlli_totali'
-        ]
+        # Rinomina per compatibilita
+        rename_map = {
+            'num_riconoscimento': 'numero_riconoscimento',
+            'descrizione_asl': 'asl',
+            'macroarea_cu': 'macroarea',
+            'aggregazione_cu': 'aggregazione',
+            'numero_nc_gravi': 'tot_nc_gravi',
+            'numero_nc_non_gravi': 'tot_nc_non_gravi',
+            'id_controllo': 'controlli_totali'
+        }
+        establishment_nc = establishment_nc.rename(columns=rename_map)
 
-        # Calcola totale NC
-        establishment_nc['tot_nc'] = (
-            establishment_nc['tot_nc_gravi'] +
-            establishment_nc['tot_nc_non_gravi']
-        )
-
-        # Filtra solo stabilimenti con almeno una NC
+        establishment_nc['tot_nc'] = establishment_nc['tot_nc_gravi'] + establishment_nc['tot_nc_non_gravi']
         establishment_nc = establishment_nc[establishment_nc['tot_nc'] > 0]
 
         if establishment_nc.empty:
             return pd.DataFrame()
 
-        # Calcola percentuale NC
         establishment_nc['percentuale_nc'] = (
-            establishment_nc['tot_nc'] /
-            establishment_nc['controlli_totali'].replace(0, 1) * 100
+            establishment_nc['tot_nc'] / establishment_nc['controlli_totali'].replace(0, 1) * 100
         ).round(2)
 
-        # Ordina per numero totale di NC (decrescente)
         establishment_nc = establishment_nc.sort_values(
             ['tot_nc', 'tot_nc_gravi'], ascending=[False, False]
         )
@@ -1095,10 +831,8 @@ class BusinessLogic:
     @staticmethod
     def aggregate_stabilimenti_by_piano(controlli_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
         """
-        Aggrega controlli per tipologia stabilimento includendo non conformità.
-
-        Approccio: join diretto su id_controllo per contare solo le NC
-        dei controlli effettivamente presenti nel DataFrame.
+        Aggrega controlli per tipologia stabilimento includendo non conformita.
+        NC sono inline in controlli_df (cu_eseguiti_nc).
 
         Returns:
             DataFrame con top_n tipologie ordinate per count, incluse NC
@@ -1106,58 +840,19 @@ class BusinessLogic:
         if controlli_df.empty:
             return pd.DataFrame()
 
-        # Approccio semplice: join controlli con NC usando id_controllo
-        if not ocse_df.empty and 'id_controllo' in controlli_df.columns:
-            try:
-                # Prepara dati NC con pulizia valori
-                nc_data = ocse_df[['id_controllo_ufficiale', 'numero_nc_gravi', 'numero_nc_non_gravi']].copy()
-                nc_data['numero_nc_gravi'] = pd.to_numeric(nc_data['numero_nc_gravi'], errors='coerce').fillna(0).astype('int64')
-                nc_data['numero_nc_non_gravi'] = pd.to_numeric(nc_data['numero_nc_non_gravi'], errors='coerce').fillna(0).astype('int64')
+        df = controlli_df.copy()
+        df['numero_nc_gravi'] = pd.to_numeric(df.get('numero_nc_gravi', 0), errors='coerce').fillna(0).astype('int64')
+        df['numero_nc_non_gravi'] = pd.to_numeric(df.get('numero_nc_non_gravi', 0), errors='coerce').fillna(0).astype('int64')
 
-                # Aggrega NC per id_controllo (un controllo può avere più righe NC)
-                nc_per_controllo = nc_data.groupby('id_controllo_ufficiale').agg({
-                    'numero_nc_gravi': 'sum',
-                    'numero_nc_non_gravi': 'sum'
-                }).reset_index()
-
-                # Join controlli con NC
-                controlli_con_nc = controlli_df.merge(
-                    nc_per_controllo,
-                    left_on='id_controllo',
-                    right_on='id_controllo_ufficiale',
-                    how='left'
-                )
-
-                # Riempi NaN con 0
-                controlli_con_nc['numero_nc_gravi'] = controlli_con_nc['numero_nc_gravi'].fillna(0).astype('int64')
-                controlli_con_nc['numero_nc_non_gravi'] = controlli_con_nc['numero_nc_non_gravi'].fillna(0).astype('int64')
-
-                # Aggrega per tipologia stabilimento
-                stabilimenti_count = controlli_con_nc.groupby(
-                    ['macroarea_cu', 'aggregazione_cu', 'attivita_cu']
-                ).agg({
-                    'id_controllo': 'count',  # Numero controlli
-                    'numero_nc_gravi': 'sum',
-                    'numero_nc_non_gravi': 'sum'
-                }).reset_index()
-
-                stabilimenti_count = stabilimenti_count.rename(columns={'id_controllo': 'count'})
-
-            except Exception as e:
-                print(f"⚠️ Errore nel join NC: {e}, fallback a conteggio semplice")
-                # Fallback: solo conteggio controlli senza NC
-                stabilimenti_count = controlli_df.groupby(
-                    ['macroarea_cu', 'aggregazione_cu', 'attivita_cu']
-                ).size().reset_index(name='count')
-                stabilimenti_count['numero_nc_gravi'] = 0
-                stabilimenti_count['numero_nc_non_gravi'] = 0
-        else:
-            # Nessun dato NC disponibile
-            stabilimenti_count = controlli_df.groupby(
-                ['macroarea_cu', 'aggregazione_cu', 'attivita_cu']
-            ).size().reset_index(name='count')
-            stabilimenti_count['numero_nc_gravi'] = 0
-            stabilimenti_count['numero_nc_non_gravi'] = 0
+        # Aggrega per tipologia - nunique per conteggio controlli (1:N per NC)
+        stabilimenti_count = df.groupby(
+            ['macroarea_cu', 'aggregazione_cu', 'attivita_cu']
+        ).agg({
+            'id_controllo': 'nunique',
+            'numero_nc_gravi': 'sum',
+            'numero_nc_non_gravi': 'sum'
+        }).reset_index()
+        stabilimenti_count = stabilimenti_count.rename(columns={'id_controllo': 'count'})
 
         # Calcola metriche di rischio
         if not stabilimenti_count.empty:
@@ -1433,43 +1128,33 @@ class RiskAnalyzer:
     @staticmethod
     def calculate_risk_scores() -> pd.DataFrame:
         """
-        Calcola punteggio rischio per attività da dataset OCSE (NC storiche) con caching.
+        Calcola punteggio rischio per attivita da controlli_df (cu_eseguiti_nc) con caching.
 
-        Formula migliorata:
-        risk_score = P(NC) × Impatto
-        P(NC) = (numero totale di NC) / (numero di controlli)
-        Impatto = (numero NC gravi) / (numero di controlli)
+        Formula: risk_score = P(NC) x Impatto
+        P(NC) = (NC totali) / (controlli totali)
+        Impatto = (NC gravi) / (controlli totali)
 
         Returns:
-            DataFrame con punteggi rischio per attività
+            DataFrame con punteggi rischio per attivita
         """
-        # Check cache first
         if RiskAnalyzer._risk_scores_cache is not None:
             print("[RiskAnalyzer] Using cached risk scores")
             return RiskAnalyzer._risk_scores_cache
 
-        if ocse_df.empty:
+        if controlli_df.empty:
             return pd.DataFrame()
 
-        ocse_copy = ocse_df.copy()
+        df = controlli_df.copy()
+        df['numero_nc_gravi'] = pd.to_numeric(df['numero_nc_gravi'], errors='coerce').fillna(0)
+        df['numero_nc_non_gravi'] = pd.to_numeric(df['numero_nc_non_gravi'], errors='coerce').fillna(0)
 
-        # Pulizia dati NC
-        ocse_copy['numero_nc_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_gravi'], errors='coerce'
-        ).fillna(0)
-        ocse_copy['numero_nc_non_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_non_gravi'], errors='coerce'
-        ).fillna(0)
-
-        # Aggrega per attività
-        rischio_per_attivita = ocse_copy.groupby([
-            'macroarea_sottoposta_a_controllo',
-            'aggregazione_sottoposta_a_controllo',
-            'linea_attivita_sottoposta_a_controllo'
+        # Aggrega per attivita - nunique per conteggio controlli (1:N per NC)
+        rischio_per_attivita = df.groupby([
+            'macroarea_cu', 'aggregazione_cu', 'attivita_cu'
         ]).agg({
             'numero_nc_gravi': 'sum',
             'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
+            'id_controllo': 'nunique'
         }).reset_index()
 
         rischio_per_attivita.columns = [
@@ -1531,64 +1216,38 @@ class RiskAnalyzer:
     @staticmethod
     def calculate_categorized_risk_scores() -> pd.DataFrame:
         """
-        Calcola punteggio rischio per attività con dettaglio per categoria NC.
-
-        Estende il calcolo base aggiungendo:
-        - Analisi per categoria di non conformità
-        - Pesi specifici per categoria
-        - Breakdown dettagliato delle NC per tipo
+        Calcola punteggio rischio per attivita con dettaglio per categoria NC.
+        Usa controlli_df (cu_eseguiti_nc) con NC inline.
 
         Returns:
-            DataFrame con punteggi rischio per attività e categoria NC
+            DataFrame con punteggi rischio per attivita e categoria NC
         """
-        # Check cache first
         if RiskAnalyzer._categorized_risk_scores_cache is not None:
             print("[RiskAnalyzer] Using cached categorized risk scores")
             return RiskAnalyzer._categorized_risk_scores_cache
 
-        # Usa il DataFrame globale ocse_df importato da agents.data
-        if ocse_df.empty:
+        if controlli_df.empty:
             return pd.DataFrame()
 
-        ocse_copy = ocse_df.copy()
-
-        # Pulizia dati NC
-        ocse_copy['numero_nc_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_gravi'], errors='coerce'
-        ).fillna(0)
-        ocse_copy['numero_nc_non_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_non_gravi'], errors='coerce'
-        ).fillna(0)
-
-        # Normalizza categorie NC: mappa varianti a categorie canoniche
-        def normalize_nc_category(value):
-            """Normalizza oggetto_non_conformita a categoria canonica."""
-            if pd.isna(value):
-                return None
-            value_upper = str(value).upper()
-            for categoria in VALID_NC_CATEGORIES:
-                if categoria.upper() in value_upper:
-                    return categoria
-            return None
-
-        ocse_copy['categoria_nc_normalized'] = ocse_copy['oggetto_non_conformita'].apply(normalize_nc_category)
-
-        # Filtra solo record con categorie NC valide (dopo normalizzazione)
-        ocse_copy = ocse_copy[ocse_copy['categoria_nc_normalized'].notna()]
-
-        if ocse_copy.empty:
+        # Filtra solo righe con NC
+        nc_df = controlli_df[controlli_df['tipo_non_conformita'] != 'NESSUNA NC RILEVATA'].copy()
+        if nc_df.empty:
             return pd.DataFrame()
 
-        # Aggrega per attività E categoria NC (usa categoria normalizzata)
-        rischio_per_categoria = ocse_copy.groupby([
-            'macroarea_sottoposta_a_controllo',
-            'aggregazione_sottoposta_a_controllo',
-            'linea_attivita_sottoposta_a_controllo',
-            'categoria_nc_normalized'
+        nc_df['numero_nc_gravi'] = pd.to_numeric(nc_df['numero_nc_gravi'], errors='coerce').fillna(0)
+        nc_df['numero_nc_non_gravi'] = pd.to_numeric(nc_df['numero_nc_non_gravi'], errors='coerce').fillna(0)
+
+        # Usa oggetto_non_conformita come categoria (gia normalizzato nel DB)
+        nc_df = nc_df[nc_df['oggetto_non_conformita'].notna()]
+        if nc_df.empty:
+            return pd.DataFrame()
+
+        rischio_per_categoria = nc_df.groupby([
+            'macroarea_cu', 'aggregazione_cu', 'attivita_cu', 'oggetto_non_conformita'
         ]).agg({
             'numero_nc_gravi': 'sum',
             'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
+            'id_controllo': 'nunique'
         }).reset_index()
 
         rischio_per_categoria.columns = [
@@ -1596,49 +1255,23 @@ class RiskAnalyzer:
             'tot_nc_gravi', 'tot_nc_non_gravi', 'numero_controlli_totali'
         ]
 
-        # Calcola totale NC per categoria
         rischio_per_categoria['tot_nc_totali'] = (
-            rischio_per_categoria['tot_nc_gravi'] +
-            rischio_per_categoria['tot_nc_non_gravi']
+            rischio_per_categoria['tot_nc_gravi'] + rischio_per_categoria['tot_nc_non_gravi']
         )
-
-        # Evita divisione per zero
         rischio_per_categoria['numero_controlli_safe'] = rischio_per_categoria['numero_controlli_totali'].replace(0, 1)
+        rischio_per_categoria['prob_nc'] = rischio_per_categoria['tot_nc_totali'] / rischio_per_categoria['numero_controlli_safe']
+        rischio_per_categoria['impatto'] = rischio_per_categoria['tot_nc_gravi'] / rischio_per_categoria['numero_controlli_safe']
 
-        # Calcola probabilità NC e impatto per categoria
-        rischio_per_categoria['prob_nc'] = (
-            rischio_per_categoria['tot_nc_totali'] /
-            rischio_per_categoria['numero_controlli_safe']
-        )
-
-        rischio_per_categoria['impatto'] = (
-            rischio_per_categoria['tot_nc_gravi'] /
-            rischio_per_categoria['numero_controlli_safe']
-        )
-
-        # Applica peso categoria
-        rischio_per_categoria['peso_categoria'] = rischio_per_categoria['categoria_nc'].map(
-            NC_CATEGORY_WEIGHTS
-        ).fillna(0.5)  # Default weight per categorie non mappate
-
-        # Risk Score = P(NC) × Impatto × Peso_Categoria × 100
+        # Risk Score = P(NC) x Impatto x 100
         rischio_per_categoria['punteggio_rischio_categoria'] = (
-            rischio_per_categoria['prob_nc'] *
-            rischio_per_categoria['impatto'] *
-            rischio_per_categoria['peso_categoria'] * 100
+            rischio_per_categoria['prob_nc'] * rischio_per_categoria['impatto'] * 100
         ).round(3)
 
-        # Pulizia: rimuovi colonne helper
         rischio_per_categoria = rischio_per_categoria.drop(columns=['numero_controlli_safe'])
-
-        # Filtra solo record con rischio > 0
-        rischio_per_categoria = rischio_per_categoria[
-            rischio_per_categoria['punteggio_rischio_categoria'] > 0
-        ]
+        rischio_per_categoria = rischio_per_categoria[rischio_per_categoria['punteggio_rischio_categoria'] > 0]
 
         result = rischio_per_categoria.sort_values('punteggio_rischio_categoria', ascending=False)
 
-        # Cache the result
         RiskAnalyzer._categorized_risk_scores_cache = result
         print(f"[RiskAnalyzer] Cached categorized risk scores: {len(result)} categories")
 
@@ -1648,76 +1281,53 @@ class RiskAnalyzer:
     def analyze_nc_category_trends(categoria: str, periodo_mesi: int = 12) -> pd.DataFrame:
         """
         Analizza trend temporali delle NC per categoria specifica.
+        Usa controlli_df (cu_eseguiti_nc) con NC inline.
 
         Args:
             categoria: Nome categoria NC (es. 'HACCP', 'IGIENE DEGLI ALIMENTI')
             periodo_mesi: Numero di mesi di analisi retrospettiva (default: 12)
 
         Returns:
-            DataFrame con trend mensili delle NC per categoria e ASL
+            DataFrame con trend annuali delle NC per categoria e ASL
         """
-        if ocse_df.empty:
+        if controlli_df.empty:
             return pd.DataFrame()
 
-        # Normalizzazione case-insensitive
         categoria = categoria.upper()
 
-        # Validazione categoria
-        if categoria not in VALID_NC_CATEGORIES:
-            return pd.DataFrame()
-
-        # Filtra per categoria prima, poi copy solo del sottoinsieme (evita copy dell'intero ocse_df)
-        ocse_copy = ocse_df[ocse_df['oggetto_non_conformita'].str.contains(categoria, case=False, na=False)]
-
-        if ocse_copy.empty:
-            return pd.DataFrame()
-
-        # Copy del sottoinsieme filtrato (necessario per modifiche in-place)
-        ocse_copy = ocse_copy.copy()
-
-        # Converti data_inizio_attivita a datetime se possibile
-        # Usiamo anno_controllo come fallback per l'analisi temporale
-        ocse_copy['anno_controllo'] = pd.to_numeric(
-            ocse_copy['anno_controllo'], errors='coerce'
-        )
-
-        # Filtra per periodo (approssimazione con anno_controllo)
-        # Se periodo_mesi <= 12, prendiamo solo l'anno corrente/recente
-        anno_corrente = 2025  # Anno dei dati attuali
-        if periodo_mesi <= 12:
-            ocse_copy = ocse_copy[ocse_copy['anno_controllo'] >= anno_corrente]
-
-        # Pulisci dati NC
-        ocse_copy['numero_nc_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_gravi'], errors='coerce'
-        ).fillna(0)
-        ocse_copy['numero_nc_non_gravi'] = pd.to_numeric(
-            ocse_copy['numero_nc_non_gravi'], errors='coerce'
-        ).fillna(0)
-
-        # Aggrega per ASL e anno
-        trend_data = ocse_copy.groupby([
-            'asl',
-            'anno_controllo'
-        ]).agg({
-            'numero_nc_gravi': 'sum',
-            'numero_nc_non_gravi': 'sum',
-            'id_controllo_ufficiale': 'nunique'  # FIX: count conta righe, nunique conta controlli unici
-        }).reset_index()
-
-        trend_data.columns = [
-            'asl', 'anno', 'nc_gravi', 'nc_non_gravi', 'controlli_totali'
+        # Filtra righe con NC nella categoria
+        nc_df = controlli_df[
+            (controlli_df['tipo_non_conformita'] != 'NESSUNA NC RILEVATA') &
+            (controlli_df['oggetto_non_conformita'].str.contains(categoria, case=False, na=False))
         ]
 
-        # Calcola totali e percentuali
+        if nc_df.empty:
+            return pd.DataFrame()
+
+        nc_copy = nc_df.copy()
+
+        # Deriva anno da data_inizio_controllo
+        nc_copy['anno_controllo'] = pd.to_datetime(nc_copy['data_inizio_controllo'], errors='coerce').dt.year
+
+        if periodo_mesi <= 12:
+            anno_corrente = 2025
+            nc_copy = nc_copy[nc_copy['anno_controllo'] >= anno_corrente]
+
+        nc_copy['numero_nc_gravi'] = pd.to_numeric(nc_copy['numero_nc_gravi'], errors='coerce').fillna(0)
+        nc_copy['numero_nc_non_gravi'] = pd.to_numeric(nc_copy['numero_nc_non_gravi'], errors='coerce').fillna(0)
+
+        trend_data = nc_copy.groupby(['descrizione_asl', 'anno_controllo']).agg({
+            'numero_nc_gravi': 'sum',
+            'numero_nc_non_gravi': 'sum',
+            'id_controllo': 'nunique'
+        }).reset_index()
+
+        trend_data.columns = ['asl', 'anno', 'nc_gravi', 'nc_non_gravi', 'controlli_totali']
         trend_data['nc_totali'] = trend_data['nc_gravi'] + trend_data['nc_non_gravi']
         trend_data['percentuale_nc'] = (
             trend_data['nc_totali'] / trend_data['controlli_totali'].replace(0, 1) * 100
         ).round(2)
-
         trend_data['categoria_nc'] = categoria
-
-        # Ordina per ASL e anno
         trend_data = trend_data.sort_values(['asl', 'anno'])
 
         return trend_data

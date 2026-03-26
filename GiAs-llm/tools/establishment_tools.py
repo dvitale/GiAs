@@ -4,6 +4,10 @@ Establishment History Tools
 Tool per consultare lo storico controlli di stabilimenti specifici.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 try:
     from langchain_core.tools import tool
 except ImportError:
@@ -46,8 +50,8 @@ def get_establishment_history(
 
     Almeno uno dei parametri deve essere specificato.
 
-    Cerca in entrambe le tabelle (controlli_df e ocse_df) per trovare
-    lo stabilimento e le relative non conformità.
+    Cerca in controlli_df (cu_eseguiti_nc con NC inline) per trovare
+    lo stabilimento e le relative non conformita.
 
     Restituisce:
     - Storico controlli ordinati per data (più recenti primi)
@@ -135,9 +139,7 @@ def get_establishment_history(
         }
 
     except Exception as e:
-        print(f"❌ [get_establishment_history] Errore: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"[get_establishment_history] Errore: {e}", exc_info=True)
 
         return {
             "formatted_response": f"❌ **Errore** durante il recupero dello storico controlli.\n\n"

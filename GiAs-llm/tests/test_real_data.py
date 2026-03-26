@@ -138,14 +138,17 @@ def main():
     print("TEST SISTEMA CON DATI REALI")
     print("=" * 60 + "\n")
 
-    from agents.data import piani_df, controlli_df, osa_mai_controllati_df, ocse_df, diff_prog_eseg_df, attivita_df
+    from agents.data import piani_df, controlli_df, osa_mai_controllati_df, diff_prog_eseg_df, attivita_df
 
-    print(f"📊 Dataset caricati:")
+    # Verifica colonne NC presenti in controlli_df (cu_eseguiti_nc)
+    assert 'tipo_non_conformita' in controlli_df.columns, \
+        "Colonna 'tipo_non_conformita' mancante in controlli_df (cu_eseguiti_nc)"
+
+    print(f"Dataset caricati:")
     print(f"   - Piani: {len(piani_df)}")
     print(f"   - Attività: {len(attivita_df)}")
     print(f"   - Controlli: {len(controlli_df)}")
     print(f"   - OSA mai controllati: {len(osa_mai_controllati_df)}")
-    print(f"   - OCSE (NC): {len(ocse_df)}")
     print(f"   - Programmati vs Eseguiti: {len(diff_prog_eseg_df)}")
     print()
 

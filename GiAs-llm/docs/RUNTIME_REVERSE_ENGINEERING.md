@@ -237,9 +237,8 @@ agents/data.py
 |-----------|-------------------|-----------|
 | `piani_df` | `piani_monitoraggio` | Piani di controllo (alias, descrizione, indicatori) |
 | `attivita_df` | `masterlist` | Anagrafica stabilimenti |
-| `controlli_df` | `cu_eseguiti` | Controlli ufficiali eseguiti |
+| `controlli_df` | `cu_eseguiti_nc` | Controlli ufficiali eseguiti con esito NC |
 | `osa_mai_controllati_df` | `osa_mai_controllati` | Stabilimenti mai controllati |
-| `ocse_df` | `ocse_isp_semp` | Storico non conformità (2016-2025) |
 | `diff_prog_eseg_df` | `cu_diff_programmati_eseguiti` | Delta programmati vs eseguiti |
 | `personale_df` | `personale` | Struttura organizzativa utenti (ASL, UOC) |
 
@@ -792,7 +791,6 @@ Se l'intent cambia tra turni (es. `ask_piano_description` → `ask_delayed_plans
 | `check_if_plan_delayed` | `check_plan_delayed_tool` | `priority_tool(asl, "check", piano)` | `tools/priority_tools.py` | `piano_code` |
 | `ask_establishment_history` | `establishment_history_tool` | `get_establishment_history()` | `tools/establishment_tools.py` | almeno 1 tra `num_registrazione`, `partita_iva`, `ragione_sociale` |
 | `ask_top_risk_activities` | `top_risk_activities_tool` | `get_top_risk_activities()` | `tools/risk_analysis_tools.py` | — |
-| `analyze_nc_by_category` | `analyze_nc_tool` | `analyze_nc_by_category()` | `tools/risk_tools.py` | `categoria` |
 | `info_procedure` | `info_procedure_tool` | (RAG retrieve + LLM) | `tools/procedure_tools.py` | — |
 | `confirm_show_details` | `confirm_details_tool` | (inline) | `tool_nodes.py:111` | — |
 | `decline_show_details` | `decline_details_tool` | (inline) | `tool_nodes.py:144` | — |

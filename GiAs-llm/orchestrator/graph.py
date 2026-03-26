@@ -406,12 +406,12 @@ class ConversationGraph:
         ])
 
         # Calcola raw_message_type
-        from .dialogue_manager import _is_refinement, _is_oppure, _is_vague
-        if _is_oppure(message):
+        from .dialogue_manager import is_refinement, is_oppure, is_vague
+        if is_oppure(message):
             raw_type = "oppure"
-        elif _is_refinement(message):
+        elif is_refinement(message):
             raw_type = "refinement"
-        elif _is_vague(message):
+        elif is_vague(message):
             raw_type = "vague_request"
         elif needs_clarification:
             raw_type = "continuation"
@@ -513,15 +513,8 @@ class ConversationGraph:
     # FALLBACK TOOL (preservato dal vecchio grafo)
     # =========================================================================
 
-    # Mapping slot → human-readable prompt
-    SLOT_PROMPTS = {
-        "piano_code": "Quale piano? (es. A1, B2, C3)",
-        "topic": "Su quale argomento? (es. latte, bovini, benessere animale)",
-        "num_registrazione": "Qual è il numero di registrazione dello stabilimento? (es. IT 123456)",
-        "partita_iva": "Qual è la partita IVA dello stabilimento?",
-        "ragione_sociale": "Qual è la ragione sociale dello stabilimento?",
-        "categoria": "Quale categoria di non conformità? (es. HACCP, IGIENE, STRUTTURE)",
-    }
+    # Importato da orchestrator.constants (fonte unica)
+    from .constants import SLOT_PROMPTS
 
     def _get_missing_slots(self, intent: str, slots: Dict[str, Any]) -> list:
         from orchestrator.router import Router
@@ -550,7 +543,6 @@ class ConversationGraph:
             "ask_piano_stabilimenti": "gli stabilimenti di un piano",
             "check_if_plan_delayed": "il ritardo di un piano",
             "search_piani_by_topic": "la ricerca di piani per argomento",
-            "analyze_nc_by_category": "l'analisi NC per categoria",
         }
         label = intent_labels.get(intent, "questa richiesta")
         prompts = [f"- {self.SLOT_PROMPTS.get(s, f'Specifica: {s}')}" for s in missing_slots]
@@ -595,7 +587,7 @@ class ConversationGraph:
             try:
                 from configs.config import AppConfig
                 config = AppConfig.get_fallback_config()
-            except:
+            except Exception:
                 config = None
             self._fallback_engine = FallbackRecoveryEngine(self.llm_client, config)
 

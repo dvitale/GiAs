@@ -133,10 +133,12 @@
 | "top 10 attività a rischio" | ask_top_risk_activities | 1.11s | ✅ |
 
 ### NC Analysis
+> **Nota**: l'intent `analyze_nc_by_category` è stato rimosso (migrazione a `cu_eseguiti_nc`). Le query NC sono ora gestite tramite `query_data`.
+
 | Query | Intent | Tempo | Stato |
 |-------|--------|-------|-------|
-| "analizza le non conformità HACCP" | analyze_nc_by_category | 6.81s | ✅ |
-| "NC categoria IGIENE DEGLI ALIMENTI" | analyze_nc_by_category | 7.28s | ✅ |
+| "analizza le non conformità HACCP" | analyze_nc_by_category | 6.81s | ✅ (storico) |
+| "NC categoria IGIENE DEGLI ALIMENTI" | analyze_nc_by_category | 7.28s | ✅ (storico) |
 
 ---
 

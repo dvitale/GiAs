@@ -172,9 +172,8 @@ class SchemaCatalog:
             "  Valori: sezione: SEZIONE A=Sicurezza Alimentare, SEZIONE B=Sanità Animale, SEZIONE C=Igiene Allevamenti, "
             "SEZIONE D=Alimentazione Animale, SEZIONE E=Farmacosorveglianza, SEZIONE F=Benessere Animale, SEZIONE G=Sottoprodotti\n"
             "- masterlist ~105,000 righe: Tassonomia attività (NORMA, MACROAREA, AGGREGAZIONE, LINEA DI ATTIVITA)\n"
-            "- cu_eseguiti_x ~3,200,000 righe: Controlli eseguiti 2025 (descrizione_asl, descrizione_uoc, descrizione_piano, macroarea_cu, sezione, data_inizio_controllo, num_riconoscimento, alias_piano_attivita, alias_indicatore)\n"
+            "- cu_eseguiti_nc ~400,000 righe: Controlli eseguiti 2019-2025 con NC inline (descrizione_asl, descrizione_uoc, descrizione_piano, macroarea_cu, sezione, data_inizio_controllo, num_riconoscimento, alias_piano_attivita, alias_indicatore, tipo_non_conformita, numero_nc_gravi, numero_nc_non_gravi, oggetto_non_conformita, comune)\n"
             "- osa_mai_controllati ~643,000 righe: Stabilimenti mai controllati (asl, comune, macroarea, aggregazione, attivita)\n"
-            "- ocse_isp_semp: NC storiche 2016-2025 (macroarea_sottoposta_a_controllo, aggregazione_sottoposta_a_controllo, anno_controllo, asl, comune)\n"
             "- cu_diff_programmati_eseguiti: Programmati vs eseguiti per indicatore, descrizione_asl, descrizione_uoc, anno\n"
             "- personale ~100,000 righe: Struttura organizzativa (user_id, asl, descrizione_area_struttura_complessa)"
         )

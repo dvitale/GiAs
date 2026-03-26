@@ -1,11 +1,14 @@
 -- ============================================================================
 -- VIEW: v_risk_score_per_attivita
 -- ============================================================================
--- Calcola il risk score per tipologia di attivita' basato su dati storici NC.
+-- Calcola il risk score per tipologia di attivita' basato su dati NC 2025.
+--
+-- Fonte dati: cu_eseguiti_nc (sostituisce ocse_isp_semp).
+-- Sono considerati solo i controlli con NC effettive (tipo_non_conformita != 'NESSUNA NC RILEVATA').
 --
 -- Formula: risk_score = P(NC) × Impatto × 100
---   - P(NC) = (NC gravi + NC non gravi) / controlli
---   - Impatto = NC gravi / controlli
+--   - P(NC) = (NC gravi + NC non gravi) / controlli distinti
+--   - Impatto = NC gravi / controlli distinti
 --
 -- Soglie calibrate su distribuzione reale (P90=6.6, P75=3.0, P50=0.66):
 --   - ALTO RISCHIO: > 7 (top 10%)
@@ -14,7 +17,8 @@
 --   - RISCHIO MINIMO: < 1 (bottom 50%)
 --
 -- Fix applicati:
---   - COALESCE per gestire NULL nei campi NC (90% del dataset ha NULL)
+--   - COALESCE per gestire NULL nei campi NC
+--   - COUNT(DISTINCT id_controllo) per conteggio controlli ufficiali univoci
 --   - NULLS LAST per evitare NULL in cima alla classifica
 --   - Filtro risk_score > 0 per escludere attivita' senza NC
 -- ============================================================================
@@ -24,13 +28,14 @@ DROP VIEW IF EXISTS v_risk_score_per_attivita;
 CREATE VIEW v_risk_score_per_attivita AS
 WITH aggregated AS (
     SELECT
-        macroarea_sottoposta_a_controllo AS macroarea,
-        aggregazione_sottoposta_a_controllo AS aggregazione,
-        linea_attivita_sottoposta_a_controllo AS linea_attivita,
+        macroarea_cu AS macroarea,
+        aggregazione_cu AS aggregazione,
+        attivita_cu AS linea_attivita,
         COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) AS tot_nc_gravi,
         COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0) AS tot_nc_non_gravi,
-        COUNT(*) AS numero_controlli_totali
-    FROM ocse_isp_semp
+        COUNT(DISTINCT id_controllo) AS numero_controlli_totali
+    FROM cu_eseguiti_nc
+    WHERE tipo_non_conformita != 'NESSUNA NC RILEVATA'
     GROUP BY 1, 2, 3
 ),
 with_metrics AS (
@@ -105,21 +110,21 @@ ORDER BY risk_score DESC NULLS LAST;
 
 /*
 SELECT
-    macroarea_sottoposta_a_controllo AS macroarea,
-    aggregazione_sottoposta_a_controllo AS aggregazione,
-    linea_attivita_sottoposta_a_controllo AS linea_attivita,
+    macroarea_cu AS macroarea,
+    aggregazione_cu AS aggregazione,
+    attivita_cu AS linea_attivita,
     COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) AS tot_nc_gravi,
     COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0) AS tot_nc_non_gravi,
-    COUNT(*) AS numero_controlli,
+    COUNT(DISTINCT id_controllo) AS numero_controlli,
     -- Risk Score = P(NC) × Impatto × 100
     ROUND(
         (
             (COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) +
              COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0))::FLOAT /
-            NULLIF(COUNT(*), 0)
+            NULLIF(COUNT(DISTINCT id_controllo), 0)
         ) * (
             COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0)::FLOAT /
-            NULLIF(COUNT(*), 0)
+            NULLIF(COUNT(DISTINCT id_controllo), 0)
         ) * 100
     , 3) AS risk_score,
     -- Categoria
@@ -127,38 +132,39 @@ SELECT
         WHEN (
             (COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) +
              COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0))::FLOAT /
-            NULLIF(COUNT(*), 0)
+            NULLIF(COUNT(DISTINCT id_controllo), 0)
         ) * (
             COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0)::FLOAT /
-            NULLIF(COUNT(*), 0)
+            NULLIF(COUNT(DISTINCT id_controllo), 0)
         ) * 100 > 7 THEN 'ALTO'
         WHEN (
             (COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) +
              COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0))::FLOAT /
-            NULLIF(COUNT(*), 0)
+            NULLIF(COUNT(DISTINCT id_controllo), 0)
         ) * (
             COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0)::FLOAT /
-            NULLIF(COUNT(*), 0)
+            NULLIF(COUNT(DISTINCT id_controllo), 0)
         ) * 100 > 3 THEN 'MEDIO'
         WHEN (
             (COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) +
              COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0))::FLOAT /
-            NULLIF(COUNT(*), 0)
+            NULLIF(COUNT(DISTINCT id_controllo), 0)
         ) * (
             COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0)::FLOAT /
-            NULLIF(COUNT(*), 0)
+            NULLIF(COUNT(DISTINCT id_controllo), 0)
         ) * 100 > 1 THEN 'BASSO'
         ELSE 'MINIMO'
     END AS risk_category
-FROM ocse_isp_semp
+FROM cu_eseguiti_nc
+WHERE tipo_non_conformita != 'NESSUNA NC RILEVATA'
 GROUP BY 1, 2, 3
 HAVING (
     (COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) +
      COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0))::FLOAT /
-    NULLIF(COUNT(*), 0)
+    NULLIF(COUNT(DISTINCT id_controllo), 0)
 ) * (
     COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0)::FLOAT /
-    NULLIF(COUNT(*), 0)
+    NULLIF(COUNT(DISTINCT id_controllo), 0)
 ) * 100 > 0
 ORDER BY risk_score DESC NULLS LAST;
 */

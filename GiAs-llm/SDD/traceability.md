@@ -59,7 +59,7 @@
 | IC-048 | Multi-candidate output con max 2 alternative valide | `orchestrator/router.py` | `Router.classify()` | TRACCIATO |
 | IC-052 | Slot normalizzazione (uppercase piano_code, asl, categoria) | `orchestrator/router.py` | `Router._validate_result()` | TRACCIATO |
 | IC-053 | Self-sufficient intents senza slot obbligatori | `orchestrator/router.py` | `Router.REQUIRED_SLOTS` | TRACCIATO |
-| IC-054 | analyze_nc_by_category default HACCP | `orchestrator/router.py` | `Router._validate_result()` | TRACCIATO |
+| IC-054 | analyze_nc_by_category default HACCP | `orchestrator/router.py` | `Router._validate_result()` | RIMOSSO |
 | IC-055 | Router hot-reload (metadati, prompt, cache) | `orchestrator/router.py` | `Router.reload()` | TRACCIATO |
 | IC-NF-001 | Performance cache ~0.001s, lazy loading thread-safe | `orchestrator/intent_cache.py` | `IntentCache` | TRACCIATO |
 | IC-NF-004 | LLM location extraction timeout 10s, max_tokens 150 | `orchestrator/router.py` | `Router._extract_location_with_llm()` | TRACCIATO |
@@ -105,7 +105,7 @@
 | TE-023 | establishment_history_tool: risultati multipli con two-phase | `tools/establishment_tools.py` | `get_establishment_history()` | TRACCIATO |
 | TE-024 | establishment_history_tool: multi-identifier + limite 50 | `tools/establishment_tools.py` | `get_establishment_history()` | TRACCIATO |
 | TE-025 | top_risk_activities_tool: top N con soglie calibrate | `tools/risk_analysis_tools.py` | `get_top_risk_activities()` | TRACCIATO |
-| TE-026 | analyze_nc_tool: NC per categoria con top 3 stabilimenti critici | `tools/risk_analysis_tools.py` | `analyze_nc_by_category()` | TRACCIATO |
+| TE-026 | analyze_nc_tool: NC per categoria con top 3 stabilimenti critici | `tools/risk_analysis_tools.py` | `analyze_nc_by_category()` | RIMOSSO |
 | TE-027 | info_procedure_tool: RAG con contesto conversazionale | `tools/procedure_tools.py` | `get_procedure_info()` | TRACCIATO |
 | TE-028 | nearby_priority_tool: geocodifica, verifica ASL, filtro prossimita' + rischio | `tools/proximity_tools.py` | `nearby_priority()` | TRACCIATO |
 | TE-031 | nearby_priority_tool: risultati multipli con two-phase | `tools/proximity_tools.py` | `nearby_priority()` | TRACCIATO |
@@ -228,7 +228,7 @@
 | RA-05 | Auto-degradazione ML -> rule-based e fallback su eccezione | `tools/predictor_tools.py` | `get_ml_risk_prediction()` | TRACCIATO |
 | RA-07 | Taxonomy map con fallback hardcoded | `predictor_ml/predictor.py` | `MLRiskPredictor._load_taxonomy()` | TRACCIATO |
 | RA-08 | Top risk activities con soglie calibrate P90/P75/P50 | `tools/risk_analysis_tools.py` | `get_top_risk_activities()` | TRACCIATO |
-| RA-09 | Analisi NC per categoria con top 5 stabilimenti critici | `tools/risk_analysis_tools.py` | `analyze_nc_by_category()` | TRACCIATO |
+| RA-09 | Analisi NC per categoria con top 5 stabilimenti critici | `tools/risk_analysis_tools.py` | `analyze_nc_by_category()` | RIMOSSO |
 | RA-10 | Stabilimenti con piu' sanzioni con gravita' visiva | `tools/risk_analysis_tools.py` | `get_establishments_with_sanctions()` | TRACCIATO |
 | RA-NF01 | Normalizzazione ASL bidirezionale (7 ASL campane) | `predictor_ml/predictor.py` | `MLRiskPredictor._normalize_asl_*()` | TRACCIATO |
 | RA-NF02 | Spiegazioni interpretabili euristiche (explain=True) | `predictor_ml/predictor.py` | `MLRiskPredictor._generate_explanation()` | TRACCIATO |

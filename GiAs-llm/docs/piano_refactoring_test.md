@@ -747,8 +747,7 @@ INTENT_TESTS = [
     # Top risk activities
     ("attività più rischiose", "ask_top_risk_activities", r"rischio|attivit"),
 
-    # NC analysis
-    ("analizza le non conformità HACCP", "analyze_nc_by_category", r"NC|HACCP|conformit"),
+    # NC analysis: analyze_nc_by_category rimosso, ora tramite query_data su cu_eseguiti_nc
 
     # Two-phase (richiedono contesto)
     # Testati separatamente in test_two_phase.py

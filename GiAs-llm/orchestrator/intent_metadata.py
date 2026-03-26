@@ -233,19 +233,6 @@ INTENT_REGISTRY: Dict[str, IntentMetadata] = {
         emoji="📜"
     ),
 
-    "analyze_nc_by_category": IntentMetadata(
-        intent_id="analyze_nc_by_category",
-        label="Analisi NC per Categoria",
-        description="Analisi non conformità aggregate per categoria",
-        category="Storico e Analisi",
-        keywords=["analisi", "nc", "categoria", "tipologia", "distribuzione"],
-        context_keywords=["non conformità", "aggregate"],
-        negative_keywords=["stabilimento", "piano"],
-        examples=["Analisi NC per categoria", "Distribuzione non conformità", "NC aggregate"],
-        requires_slots=[],
-        emoji="📈"
-    ),
-
     # ===== CATEGORIA: Two-Phase (Interni) =====
     "confirm_show_details": IntentMetadata(
         intent_id="confirm_show_details",
@@ -294,6 +281,24 @@ INTENT_REGISTRY: Dict[str, IntentMetadata] = {
         emoji="📋"
     ),
 
+    # ===== DATI E ANALISI =====
+    "query_data": IntentMetadata(
+        intent_id="query_data",
+        label="Interrogazione Dati su Misura",
+        description="Interrogazioni ad-hoc su dati tabulari non coperte da intent specifici",
+        category="Dati e Analisi",
+        keywords=["quanti", "distribuzione", "conteggio", "tabella", "dati", "aggregazione"],
+        context_keywords=["controlli", "stabilimenti", "asl", "anno", "macroarea"],
+        negative_keywords=["piano", "descrizione", "ritardo", "rischio", "priorità", "storico", "vicino"],
+        examples=[
+            "Quanti controlli sono stati eseguiti nell'ASL Benevento?",
+            "Distribuzione NC per anno",
+            "Quanti controlli per macroarea?",
+        ],
+        requires_slots=[],
+        emoji="📊"
+    ),
+
     # ===== FALLBACK =====
     "fallback": IntentMetadata(
         intent_id="fallback",
@@ -332,16 +337,20 @@ CATEGORY_HIERARCHY: Dict[str, List[str]] = {
         "check_if_plan_delayed"
     ],
     "Storico e Analisi": [
-        "ask_establishment_history",
-        "analyze_nc_by_category"
+        "ask_establishment_history"
     ],
     "Procedure Operative": [
         "info_procedure"
     ],
+    "Dati e Analisi": [
+        "query_data"
+    ],
     "Altro": [
         "greet",
         "goodbye",
-        "ask_help"
+        "ask_help",
+        "confirm_show_details",
+        "decline_show_details"
     ]
 }
 
@@ -354,6 +363,7 @@ CATEGORY_EMOJI: Dict[str, str] = {
     "Ritardi e Monitoraggio": "⏰",
     "Storico e Analisi": "📈",
     "Procedure Operative": "📋",
+    "Dati e Analisi": "📊",
     "Altro": "ℹ️"
 }
 

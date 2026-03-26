@@ -50,7 +50,7 @@ Nonostante le difese, il modello 3B ha problemi reali quando:
 
 1. **Ambiguità semantica tra intent simili**: Confonde `ask_risk_based_priority` (stabilimenti) con `ask_top_risk_activities` (tipologie attività). Confonde `ask_delayed_plans` (lista tutti) con `check_if_plan_delayed` (verifica uno). Il prompt ha regole di disambiguazione esplicite, ma il 3B le ignora nel ~15% dei casi.
 
-2. **Messaggi atipici che aggirano le heuristics**: "come mi organizzo oggi?" (dovrebbe → `ask_priority_establishment`), "problemi nelle macellerie?" (dovrebbe → `ask_risk_based_priority` o `analyze_nc_by_category`). Le heuristics non matchano; il LLM deve decidere da solo.
+2. **Messaggi atipici che aggirano le heuristics**: "come mi organizzo oggi?" (dovrebbe → `ask_priority_establishment`), "problemi nelle macellerie?" (dovrebbe → `ask_risk_based_priority` o `ask_top_risk_activities`). Le heuristics non matchano; il LLM deve decidere da solo.
 
 3. **Formato risposta instabile**: Il 3B a volte aggiunge testo prima/dopo il JSON, o usa chiavi alternative ("tipo" invece di "intent"). Il parser a 3 stadi compensa, ma rallenta.
 

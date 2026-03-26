@@ -14,7 +14,7 @@ from typing import Dict, Any
 try:
     from tools.piano_tools import piano_tool, get_piano_statistics
     from tools.priority_tools import priority_tool, suggest_controls
-    from tools.risk_tools import risk_tool, analyze_nc_by_category, get_establishments_with_sanctions
+    from tools.risk_tools import risk_tool, get_establishments_with_sanctions
     from tools.search_tools import search_tool
     from tools.establishment_tools import get_establishment_history
     from tools.risk_analysis_tools import get_top_risk_activities
@@ -28,7 +28,7 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from tools.piano_tools import piano_tool, get_piano_statistics
     from tools.priority_tools import priority_tool, suggest_controls
-    from tools.risk_tools import risk_tool, analyze_nc_by_category, get_establishments_with_sanctions
+    from tools.risk_tools import risk_tool, get_establishments_with_sanctions
     from tools.search_tools import search_tool
     from tools.establishment_tools import get_establishment_history
     from tools.risk_analysis_tools import get_top_risk_activities
@@ -94,7 +94,6 @@ _HARDCODED_HELP = (
     "- [Controlli nei dintorni di Via Roma 15, Napoli entro 3 km]\n"
     "\n**📜 Storico e Analisi**\n"
     "- [Storico controlli stabilimento]\n"
-    "- [Analisi NC per categoria]\n"
     "\n**📋 Procedure Operative**\n"
     "- [Qual e' la procedura per ispezione semplice?]\n"
     "- [Come si esegue un controllo ufficiale?]\n"
@@ -591,17 +590,6 @@ def top_risk_activities_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     return state
 
 
-def analyze_nc_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
-    categoria = state["slots"].get("categoria", "HACCP")
-    asl = state["metadata"].get("asl")
-
-    analyze_nc_func = _unwrap_tool(analyze_nc_by_category)
-    result = analyze_nc_func(categoria=categoria, asl=asl)
-
-    state["tool_output"] = {"type": "analyze_nc_by_category", "data": result}
-    return state
-
-
 def info_procedure_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
     """RAG tool per informazioni su procedure operative documentate."""
     query = state.get("message", "")
@@ -855,7 +843,6 @@ TOOL_REGISTRY = {
     "check_plan_delayed_tool": check_plan_delayed_tool,
     "establishment_history_tool": establishment_history_tool,
     "top_risk_activities_tool": top_risk_activities_tool,
-    "analyze_nc_tool": analyze_nc_tool,
     "info_procedure_tool": info_procedure_tool,
     "query_data_tool": query_data_tool,
     "confirm_details_tool": confirm_details_tool,
@@ -879,7 +866,6 @@ INTENT_TO_TOOL = {
     "check_if_plan_delayed": "check_plan_delayed_tool",
     "ask_establishment_history": "establishment_history_tool",
     "ask_top_risk_activities": "top_risk_activities_tool",
-    "analyze_nc_by_category": "analyze_nc_tool",
     "info_procedure": "info_procedure_tool",
     "query_data": "query_data_tool",
     "confirm_show_details": "confirm_details_tool",

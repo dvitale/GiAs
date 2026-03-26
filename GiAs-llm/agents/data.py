@@ -21,18 +21,16 @@ try:
     attivita_df = _datasets.get("attivita", pd.DataFrame())
     controlli_df = _datasets.get("controlli", pd.DataFrame())
     osa_mai_controllati_df = _datasets.get("osa_mai_controllati", pd.DataFrame())
-    ocse_df = _datasets.get("ocse", pd.DataFrame())
     diff_prog_eseg_df = _datasets.get("diff_prog_eseg", pd.DataFrame())
     personale_df = _datasets.get("personale", pd.DataFrame())
 
-    print(f"[Data] Caricati: piani={len(piani_df)}, attivita={len(attivita_df)}, controlli={len(controlli_df)}, osa={len(osa_mai_controllati_df)}, ocse={len(ocse_df)}, diff_prog_eseg={len(diff_prog_eseg_df)}, personale={len(personale_df)}")
+    print(f"[Data] Caricati: piani={len(piani_df)}, attivita={len(attivita_df)}, controlli={len(controlli_df)}, osa={len(osa_mai_controllati_df)}, diff_prog_eseg={len(diff_prog_eseg_df)}, personale={len(personale_df)}")
 except Exception as e:
     print(f"[Data] Errore caricamento dati: {e}")
     piani_df = pd.DataFrame()
     attivita_df = pd.DataFrame()
     controlli_df = pd.DataFrame()
     osa_mai_controllati_df = pd.DataFrame()
-    ocse_df = pd.DataFrame()
     diff_prog_eseg_df = pd.DataFrame()
     personale_df = pd.DataFrame()
 
@@ -48,7 +46,7 @@ def load_data(data_dir: str = None):
         Questa funzione ricarica i dati dalla sorgente configurata.
         Per compatibilità, il parametro data_dir è mantenuto ma ignorato.
     """
-    global piani_df, attivita_df, controlli_df, osa_mai_controllati_df, ocse_df, diff_prog_eseg_df, personale_df, _data_source, _datasets
+    global piani_df, attivita_df, controlli_df, osa_mai_controllati_df, diff_prog_eseg_df, personale_df, _data_source, _datasets
 
     try:
         # Reload from configured data source
@@ -59,7 +57,6 @@ def load_data(data_dir: str = None):
         attivita_df = _datasets.get("attivita", pd.DataFrame())
         controlli_df = _datasets.get("controlli", pd.DataFrame())
         osa_mai_controllati_df = _datasets.get("osa_mai_controllati", pd.DataFrame())
-        ocse_df = _datasets.get("ocse", pd.DataFrame())
         diff_prog_eseg_df = _datasets.get("diff_prog_eseg", pd.DataFrame())
         personale_df = _datasets.get("personale", pd.DataFrame())
 

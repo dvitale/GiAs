@@ -1,8 +1,13 @@
 # Piano di Implementazione: Integrazione Categorie Non Conformità
 
+> **Nota storica (2026-03-25)**: Il piano è stato superato dalla migrazione a `cu_eseguiti_nc`.
+> L'intent `analyze_nc_by_category` e il tool corrispondente sono stati rimossi.
+> Le non conformità per categoria sono ora interrogabili tramite `query_data` su `cu_eseguiti_nc`
+> filtrando per `oggetto_non_conformita`.
+
 **Data Creazione**: 2026-01-09
 **Ultima Modifica**: 2026-01-09
-**Status Generale**: 🟡 In Corso
+**Status Generale**: SUPERATO (migrazione cu_eseguiti_nc)
 
 ## Architettura del Sistema Identificata
 

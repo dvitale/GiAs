@@ -87,21 +87,10 @@ REQUIRED_SLOTS = {
     "check_if_plan_delayed": ["piano_code"],
     "search_piani_by_topic": ["topic"],
     "ask_establishment_history": ["num_registrazione", "numero_riconoscimento", "partita_iva", "ragione_sociale"],
-    "analyze_nc_by_category": ["categoria"],
     "ask_nearby_priority": ["location"],
 }
 
-# Prompt per slot mancanti
-SLOT_PROMPTS = {
-    "piano_code": "Quale piano? (es. A1, B2, C3)",
-    "topic": "Su quale argomento? (es. latte, bovini, benessere animale)",
-    "num_registrazione": "Qual è il numero di registrazione dello stabilimento? (es. IT 123456)",
-    "numero_riconoscimento": "Qual è il numero di riconoscimento UE dello stabilimento? (es. UE IT 15 273)",
-    "partita_iva": "Qual è la partita IVA dello stabilimento?",
-    "ragione_sociale": "Qual è la ragione sociale dello stabilimento?",
-    "categoria": "Quale categoria di non conformità? (es. HACCP, IGIENE, STRUTTURE)",
-    "location": "Dove ti trovi? (es. Via Roma 15, Napoli)",
-}
+from .constants import SLOT_PROMPTS
 
 # Pattern per rilevare richieste vaghe
 VAGUE_PATTERNS = [
@@ -174,13 +163,13 @@ def _get_missing_slots(intent: str, slots: Dict[str, Any]) -> List[str]:
     return [r for r in required if not slots.get(r)]
 
 
-def _is_oppure(message: str) -> bool:
+def is_oppure(message: str) -> bool:
     """Rileva se il messaggio è una variante di 'oppure?'"""
     msg = message.strip().lower()
     return any(re.match(p, msg) for p in OPPURE_PATTERNS)
 
 
-def _is_refinement(message: str) -> bool:
+def is_refinement(message: str) -> bool:
     """Rileva se il messaggio è un raffinamento di query precedente."""
     msg = message.strip().lower()
     return any(re.search(p, msg) for p in REFINEMENT_PATTERNS)
@@ -192,7 +181,7 @@ def _is_confirmation(message: str) -> bool:
     return any(re.match(p, msg) for p in CONFIRM_PATTERNS)
 
 
-def _is_vague(message: str) -> bool:
+def is_vague(message: str) -> bool:
     """Rileva se il messaggio è una richiesta vaga."""
     msg = message.strip().lower()
     return any(re.search(p, msg) for p in VAGUE_PATTERNS)
@@ -270,6 +259,183 @@ def _build_strategy_question(intent: str) -> Optional[str]:
     return initial_q + "\n\n" + "\n".join(options)
 
 
+def _resolve_tool(intent: str) -> str:
+    """Risolve il nome del tool per un intent."""
+    from .tool_nodes import INTENT_TO_TOOL
+    return INTENT_TO_TOOL.get(intent, "fallback_tool")
+
+
+def _rule_slot_continuation(
+    ds: DialogueState, current_slots: Dict[str, Any], extracted_slots: Dict[str, Any]
+) -> Optional[DialogueManagerResult]:
+    """REGOLA 0: continuazione dopo richiesta slot mancanti."""
+    if not (ds.get("confirmed_intent") and ds.get("missing_slots") and extracted_slots):
+        return None
+
+    pending_intent = ds["confirmed_intent"]
+    pending_missing = ds["missing_slots"]
+    filled = [s for s in pending_missing if current_slots.get(s)]
+
+    if not filled:
+        return None
+
+    still_missing = _get_missing_slots(pending_intent, current_slots)
+    if still_missing:
+        return None
+
+    tool_name = _resolve_tool(pending_intent)
+    ds["last_tool_intent"] = pending_intent
+    ds["last_tool_slots"] = current_slots
+    ds["missing_slots"] = None
+
+    logger.info(f"[DM] Slot continuation: {pending_intent} con slot {filled}")
+    return DialogueManagerResult(
+        action="execute", target_tool=tool_name,
+        updated_state=ds, intent=pending_intent, slots=current_slots,
+    )
+
+
+def _rule_oppure(message: str, ds: DialogueState) -> Optional[DialogueManagerResult]:
+    """REGOLA 7: gestione 'oppure?' per alternative."""
+    if not (is_oppure(message) and ds.get("confirmed_intent")):
+        return None
+
+    intent = ds["confirmed_intent"]
+    if not has_strategies(intent):
+        return DialogueManagerResult(
+            action="ask_user",
+            question="Non ci sono alternative disponibili per questa richiesta.",
+            updated_state=ds,
+        )
+
+    config = get_strategy_config(intent)
+    strategies = config.get("strategies", [])
+    current_id = ds.get("confirmed_strategy_id")
+
+    current_idx = 0
+    for i, s in enumerate(strategies):
+        if s["id"] == current_id:
+            current_idx = i
+            break
+
+    next_idx = (current_idx + 1) % len(strategies)
+    next_strategy = strategies[next_idx]
+
+    ds["confirmed_strategy"] = next_strategy["label"]
+    ds["confirmed_strategy_id"] = next_strategy["id"]
+
+    question = (
+        f"**Alternativa**: {next_strategy['label']}\n\n"
+        f"{next_strategy.get('description', '')}\n\n"
+        f"Vuoi procedere con questa opzione?"
+    )
+    return DialogueManagerResult(action="ask_user", question=question, updated_state=ds)
+
+
+def _rule_refinement(
+    message: str, ds: DialogueState, current_slots: Dict[str, Any]
+) -> Optional[DialogueManagerResult]:
+    """REGOLA 5: raffinamento di query precedente."""
+    if not (is_refinement(message) and ds.get("last_tool_intent")):
+        return None
+
+    intent = ds["last_tool_intent"]
+    refined_slots = merge_slots(ds.get("last_tool_slots", {}), current_slots)
+    refined_slots = merge_slots(refined_slots, ds.get("filters", {}))
+    ds["slots"] = refined_slots
+
+    tool_name = _resolve_tool(intent)
+    if not tool_name or tool_name == "fallback_tool":
+        return None
+
+    logger.info(f"[DM] Refinement: re-execute {intent} con filtri {ds.get('filters', {})}")
+    return DialogueManagerResult(
+        action="execute", target_tool=tool_name,
+        updated_state=ds, intent=intent, slots=refined_slots,
+    )
+
+
+def _rule_strategy_confirmation(
+    message: str, ds: DialogueState, current_slots: Dict[str, Any]
+) -> Optional[DialogueManagerResult]:
+    """REGOLA 6: conferma strategia pendente."""
+    if not (_is_confirmation(message) and ds.get("confirmed_intent") and ds.get("confirmed_strategy_id")):
+        return None
+
+    intent = ds["confirmed_intent"]
+    strategy_id = ds["confirmed_strategy_id"]
+    config = get_strategy_config(intent)
+
+    for s in config.get("strategies", []):
+        if s["id"] == strategy_id:
+            mapped_intent = s["intent_mapping"]
+            tool_name = _resolve_tool(mapped_intent)
+            if tool_name and tool_name != "fallback_tool":
+                ds["last_tool_intent"] = mapped_intent
+                ds["last_tool_slots"] = current_slots
+                return DialogueManagerResult(
+                    action="execute", target_tool=tool_name,
+                    updated_state=ds, intent=mapped_intent, slots=current_slots,
+                )
+    return None
+
+
+def _rule_high_confidence_execute(
+    message: str, ds: DialogueState, current_slots: Dict[str, Any],
+    top_intent: str, top_confidence: float
+) -> Optional[DialogueManagerResult]:
+    """REGOLA 1+2: intent chiaro — esegui o chiedi slot mancanti."""
+    if top_confidence < CONFIDENCE_HIGH:
+        return None
+
+    missing = _get_missing_slots(top_intent, current_slots)
+
+    if not missing or top_intent in SELF_SUFFICIENT_INTENTS:
+        ds["confirmed_intent"] = top_intent
+
+        # Scelta strategia per richieste vaghe
+        if (
+            top_intent in CONVERSATIONAL_INTENTS
+            and has_strategies(top_intent)
+            and not ds.get("confirmed_strategy_id")
+            and is_vague(message)
+        ):
+            question = _build_strategy_question(top_intent)
+            if question:
+                return DialogueManagerResult(action="ask_user", question=question, updated_state=ds)
+
+        tool_name = _resolve_tool(top_intent)
+        ds["last_tool_intent"] = top_intent
+        ds["last_tool_slots"] = current_slots
+        return DialogueManagerResult(
+            action="execute", target_tool=tool_name,
+            updated_state=ds, intent=top_intent, slots=current_slots,
+        )
+
+    # REGOLA 2: slot mancanti
+    ds["confirmed_intent"] = top_intent
+    ds["missing_slots"] = missing
+    question = _build_slot_question(top_intent, missing)
+    return DialogueManagerResult(action="ask_user", question=question, updated_state=ds)
+
+
+def _rule_ambiguous(
+    ds: DialogueState, candidates: List[IntentCandidate],
+    top_confidence: float
+) -> Optional[DialogueManagerResult]:
+    """REGOLA 3: intent ambiguo (2+ candidati con confidence simile)."""
+    if not (
+        len(candidates) >= 2
+        and top_confidence >= CONFIDENCE_MIN
+        and top_confidence - candidates[1]["confidence"] < CONFIDENCE_AMBIGUITY_DELTA
+    ):
+        return None
+
+    ds["intent_candidates"] = candidates[:3]
+    question = _build_disambiguation_question(candidates)
+    return DialogueManagerResult(action="ask_user", question=question, updated_state=ds)
+
+
 def evaluate(
     message: str,
     candidates: List[IntentCandidate],
@@ -280,17 +446,8 @@ def evaluate(
     """
     Funzione principale del Dialogue Manager.
 
-    Valuta lo stato del dialogo e decide l'azione successiva.
-
-    Args:
-        message: Messaggio utente corrente
-        candidates: Lista candidati intent dal Router (ordinati per confidence)
-        extracted_slots: Slot estratti dal Router
-        dialogue_state: Stato dialogo accumulato dai turni precedenti
-        raw_message_type: Tipo messaggio dal Router
-
-    Returns:
-        DialogueManagerResult con azione e dettagli
+    Valuta lo stato del dialogo e decide l'azione successiva applicando
+    le regole in ordine di priorita'.
     """
     ds = dialogue_state
     ds["turn_count"] = ds.get("turn_count", 0) + 1
@@ -305,255 +462,62 @@ def evaluate(
     if new_filters:
         ds["filters"] = merge_slots(ds.get("filters", {}), new_filters)
 
-    # =========================================================================
-    # REGOLA 0: Continuazione dopo richiesta slot mancanti
-    # Se c'è un confirmed_intent con missing_slots e l'utente ha fornito slot,
-    # continua con l'intent salvato invece di riclassificare da zero.
-    # =========================================================================
-    if ds.get("confirmed_intent") and ds.get("missing_slots") and extracted_slots:
-        pending_intent = ds["confirmed_intent"]
-        pending_missing = ds["missing_slots"]
+    # --- Regole context-based (prima dei candidati) ---
 
-        # Verifica se almeno uno degli slot mancanti è stato fornito
-        filled = [s for s in pending_missing if current_slots.get(s)]
+    result = _rule_slot_continuation(ds, current_slots, extracted_slots)
+    if result:
+        return result
 
-        if filled:
-            # Slot forniti - verifica se ora abbiamo tutto il necessario
-            still_missing = _get_missing_slots(pending_intent, current_slots)
+    result = _rule_oppure(message, ds)
+    if result:
+        return result
 
-            if not still_missing:
-                # Tutti gli slot necessari presenti - esegui!
-                from .tool_nodes import INTENT_TO_TOOL
-                tool_name = INTENT_TO_TOOL.get(pending_intent, "fallback_tool")
+    result = _rule_refinement(message, ds, current_slots)
+    if result:
+        return result
 
-                ds["last_tool_intent"] = pending_intent
-                ds["last_tool_slots"] = current_slots
-                ds["missing_slots"] = None  # Reset
+    result = _rule_strategy_confirmation(message, ds, current_slots)
+    if result:
+        return result
 
-                logger.info(f"[DM] Slot continuation: {pending_intent} con slot {filled}")
+    # --- Analisi candidati dal Router ---
 
-                return DialogueManagerResult(
-                    action="execute",
-                    target_tool=tool_name,
-                    updated_state=ds,
-                    intent=pending_intent,
-                    slots=current_slots,
-                )
-
-    # =========================================================================
-    # REGOLA 7: "Oppure?"
-    # =========================================================================
-    if _is_oppure(message) and ds.get("confirmed_intent"):
-        intent = ds["confirmed_intent"]
-        if has_strategies(intent):
-            config = get_strategy_config(intent)
-            strategies = config.get("strategies", [])
-            current_id = ds.get("confirmed_strategy_id")
-
-            # Trova prossima strategia
-            current_idx = 0
-            for i, s in enumerate(strategies):
-                if s["id"] == current_id:
-                    current_idx = i
-                    break
-
-            next_idx = (current_idx + 1) % len(strategies)
-            next_strategy = strategies[next_idx]
-
-            question = (
-                f"**Alternativa**: {next_strategy['label']}\n\n"
-                f"{next_strategy.get('description', '')}\n\n"
-                f"Vuoi procedere con questa opzione?"
-            )
-
-            ds["confirmed_strategy"] = next_strategy["label"]
-            ds["confirmed_strategy_id"] = next_strategy["id"]
-
-            return DialogueManagerResult(
-                action="ask_user",
-                question=question,
-                updated_state=ds,
-            )
-
-        return DialogueManagerResult(
-            action="ask_user",
-            question="Non ci sono alternative disponibili per questa richiesta.",
-            updated_state=ds,
-        )
-
-    # =========================================================================
-    # REGOLA 5: Refinement
-    # =========================================================================
-    if _is_refinement(message) and ds.get("last_tool_intent"):
-        # Re-esecuzione con filtri aggiornati
-        intent = ds["last_tool_intent"]
-        refined_slots = merge_slots(ds.get("last_tool_slots", {}), current_slots)
-        refined_slots = merge_slots(refined_slots, ds.get("filters", {}))
-
-        ds["slots"] = refined_slots
-
-        from .tool_nodes import INTENT_TO_TOOL
-        tool_name = INTENT_TO_TOOL.get(intent)
-
-        if tool_name:
-            logger.info(f"[DM] Refinement: re-execute {intent} con filtri {ds.get('filters', {})}")
-            return DialogueManagerResult(
-                action="execute",
-                target_tool=tool_name,
-                updated_state=ds,
-                intent=intent,
-                slots=refined_slots,
-            )
-
-    # =========================================================================
-    # REGOLA 6: Conferma strategia pendente
-    # =========================================================================
-    if _is_confirmation(message) and ds.get("confirmed_intent") and ds.get("confirmed_strategy_id"):
-        intent = ds["confirmed_intent"]
-        strategy_id = ds["confirmed_strategy_id"]
-
-        # Trova la strategia e il suo intent_mapping
-        config = get_strategy_config(intent)
-        for s in config.get("strategies", []):
-            if s["id"] == strategy_id:
-                mapped_intent = s["intent_mapping"]
-                from .tool_nodes import INTENT_TO_TOOL
-                tool_name = INTENT_TO_TOOL.get(mapped_intent)
-
-                if tool_name:
-                    ds["last_tool_intent"] = mapped_intent
-                    ds["last_tool_slots"] = current_slots
-
-                    return DialogueManagerResult(
-                        action="execute",
-                        target_tool=tool_name,
-                        updated_state=ds,
-                        intent=mapped_intent,
-                        slots=current_slots,
-                    )
-        # Strategy non trovata - fallthrough
-
-    # =========================================================================
-    # Analisi candidati dal Router
-    # =========================================================================
     if not candidates:
-        return DialogueManagerResult(
-            action="fallback",
-            updated_state=ds,
-        )
+        return DialogueManagerResult(action="fallback", updated_state=ds)
 
     top = candidates[0]
     top_intent = top["intent"]
     top_confidence = top["confidence"]
 
-    # Merge slot del candidato top
     if top.get("slots"):
         current_slots = merge_slots(current_slots, top["slots"])
         ds["slots"] = current_slots
 
-    # =========================================================================
-    # REGOLA 1: Intent chiaro, slot completi
-    # =========================================================================
-    if top_confidence >= CONFIDENCE_HIGH:
-        missing = _get_missing_slots(top_intent, current_slots)
+    result = _rule_high_confidence_execute(message, ds, current_slots, top_intent, top_confidence)
+    if result:
+        return result
 
-        if not missing or top_intent in SELF_SUFFICIENT_INTENTS:
-            ds["confirmed_intent"] = top_intent
+    result = _rule_ambiguous(ds, candidates, top_confidence)
+    if result:
+        return result
 
-            # Controlla se serve scelta strategia (Regola 6)
-            if (
-                top_intent in CONVERSATIONAL_INTENTS
-                and has_strategies(top_intent)
-                and not ds.get("confirmed_strategy_id")
-                and _is_vague(message)
-            ):
-                question = _build_strategy_question(top_intent)
-                if question:
-                    return DialogueManagerResult(
-                        action="ask_user",
-                        question=question,
-                        updated_state=ds,
-                    )
-
-            # Esegui direttamente
-            from .tool_nodes import INTENT_TO_TOOL
-            tool_name = INTENT_TO_TOOL.get(top_intent, "fallback_tool")
-
-            ds["last_tool_intent"] = top_intent
-            ds["last_tool_slots"] = current_slots
-
-            return DialogueManagerResult(
-                action="execute",
-                target_tool=tool_name,
-                updated_state=ds,
-                intent=top_intent,
-                slots=current_slots,
-            )
-
-        # ==================================================================
-        # REGOLA 2: Intent chiaro, slot mancanti
-        # ==================================================================
-        ds["confirmed_intent"] = top_intent
-        ds["missing_slots"] = missing
-        question = _build_slot_question(top_intent, missing)
-
-        return DialogueManagerResult(
-            action="ask_user",
-            question=question,
-            updated_state=ds,
-        )
-
-    # =========================================================================
-    # REGOLA 3: Intent ambiguo (2+ candidati con confidence simile)
-    # =========================================================================
-    if (
-        len(candidates) >= 2
-        and top_confidence >= CONFIDENCE_MIN
-        and top_confidence - candidates[1]["confidence"] < CONFIDENCE_AMBIGUITY_DELTA
-    ):
-        ds["intent_candidates"] = candidates[:3]
-        question = _build_disambiguation_question(candidates)
-
-        return DialogueManagerResult(
-            action="ask_user",
-            question=question,
-            updated_state=ds,
-        )
-
-    # =========================================================================
     # REGOLA 4: Nessun candidato valido
-    # =========================================================================
     if top_confidence < CONFIDENCE_MIN:
-        return DialogueManagerResult(
-            action="fallback",
-            updated_state=ds,
-        )
+        return DialogueManagerResult(action="fallback", updated_state=ds)
 
-    # =========================================================================
     # Default: intent con confidence media — prova a eseguire
-    # =========================================================================
     ds["confirmed_intent"] = top_intent
     missing = _get_missing_slots(top_intent, current_slots)
 
     if missing and top_intent not in SELF_SUFFICIENT_INTENTS:
         ds["missing_slots"] = missing
         question = _build_slot_question(top_intent, missing)
-        return DialogueManagerResult(
-            action="ask_user",
-            question=question,
-            updated_state=ds,
-        )
+        return DialogueManagerResult(action="ask_user", question=question, updated_state=ds)
 
-    from .tool_nodes import INTENT_TO_TOOL
-    tool_name = INTENT_TO_TOOL.get(top_intent, "fallback_tool")
-
+    tool_name = _resolve_tool(top_intent)
     ds["last_tool_intent"] = top_intent
     ds["last_tool_slots"] = current_slots
-
     return DialogueManagerResult(
-        action="execute",
-        target_tool=tool_name,
-        updated_state=ds,
-        intent=top_intent,
-        slots=current_slots,
+        action="execute", target_tool=tool_name,
+        updated_state=ds, intent=top_intent, slots=current_slots,
     )

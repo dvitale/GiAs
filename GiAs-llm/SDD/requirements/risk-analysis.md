@@ -34,7 +34,7 @@
 
 ### RA-09 Analisi NC per categoria
 - **Pattern EARS**: QUANDO viene richiesta l'analisi NC per categoria (tool analyze_nc_by_category), il sistema DEVE validare la categoria contro VALID_NC_CATEGORIES (11 categorie), calcolare statistiche aggregate (totale controlli, NC gravi/non gravi, stabilimenti coinvolti) e identificare i top 5 stabilimenti critici, con filtro opzionale per ASL.
-- **Status**: IMPLEMENTATO
+- **Status**: RIMOSSO (tool analyze_nc_by_category rimosso; le NC per categoria sono interrogabili tramite query_data su cu_eseguiti_nc filtrando oggetto_non_conformita)
 
 ### RA-10 Stabilimenti con piu' sanzioni
 - **Pattern EARS**: QUANDO viene richiesta la lista stabilimenti con piu' sanzioni (tool establishments_with_sanctions), il sistema DEVE restituire stabilimenti ordinati per numero totale NC con percentuale NC per controllo, con gravita' visiva (rosso >= 5 NC gravi, arancio 2-4, giallo 0-1).

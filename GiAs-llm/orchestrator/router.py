@@ -1,7 +1,10 @@
 import json
+import logging
 import re
 import time
 from typing import Dict, Any, Optional, Tuple, List
+
+logger = logging.getLogger(__name__)
 
 try:
     from llm.client import LLMClient
@@ -39,7 +42,7 @@ class Router:
         "ask_priority_establishment", "ask_risk_based_priority", "ask_suggest_controls",
         "ask_nearby_priority",
         "ask_delayed_plans", "check_if_plan_delayed", "ask_establishment_history",
-        "ask_top_risk_activities", "analyze_nc_by_category",
+        "ask_top_risk_activities",
         "info_procedure", "query_data",
         "confirm_show_details", "decline_show_details", "fallback"
     ]
@@ -59,7 +62,6 @@ class Router:
         "check_if_plan_delayed": ["piano_code"],
         "search_piani_by_topic": ["topic"],
         "ask_establishment_history": ["num_registrazione", "numero_riconoscimento", "partita_iva", "ragione_sociale"],  # almeno uno
-        "analyze_nc_by_category": ["categoria"],
         "ask_nearby_priority": ["location"],
     }
 
@@ -135,7 +137,6 @@ ask_establishment_history(num_registrazione|partita_iva|ragione_sociale) - stori
 
 [Procedure]
 info_procedure - procedure operative, come si fa, passi per, definizioni termini GISA/Matrix (cos'e X)
-analyze_nc_by_category(categoria) - analisi NC per categoria
 
 [Dati]
 query_data - interrogazione dati su misura NON coperta dagli intent sopra (usa SOLO se nessun intent specifico corrisponde). Confidence MAI > 0.80.
@@ -155,9 +156,8 @@ DATI DISPONIBILI:
   Filtri: sezione(SEZIONE A,SEZIONE B,SEZIONE C), alias(A1,A22,B2), alias_indicatore, campionamento
   Valori: sezione: SEZIONE A=Sicurezza Alimentare, SEZIONE B=Sanità Animale, SEZIONE C=Igiene Allevamenti, SEZIONE D=Alimentazione Animale, SEZIONE E=Farmacosorveglianza, SEZIONE F=Benessere Animale, SEZIONE G=Sottoprodotti
 - masterlist ~105,000 righe: Tassonomia attività (norma, macroarea, aggregazione, linea_di_attivita)
-- cu_eseguiti_x ~3,200,000 righe: Controlli eseguiti 2025 (ASL, UOC, piano, macroarea, comune, NC, alias_piano_attivita, alias_indicatore)
+- cu_eseguiti_nc ~400,000 righe: Controlli eseguiti 2019-2025 con NC inline (ASL, UOC, piano, macroarea, comune, tipo_non_conformita, numero_nc_gravi, numero_nc_non_gravi, oggetto_non_conformita, alias_piano_attivita, alias_indicatore)
 - osa_mai_controllati ~643,000 righe: Stabilimenti mai controllati (ASL, comune, macroarea)
-- ocse_isp_semp: NC storiche 2016-2025 (macroarea, anno, nc_gravi, nc_non_gravi)
 - cu_diff_programmati_eseguiti: Programmati vs eseguiti per indicatore, ASL, UOC
 - personale ~100,000 righe: Struttura organizzativa (user_id, ASL, UOC)
 
@@ -176,7 +176,7 @@ REGOLE DISAMBIGUAZIONE:
 10. Se la domanda potrebbe corrispondere a 2+ intent con confidence simile, restituisci il migliore come intent principale e gli altri in "alternatives". NON indovinare: è meglio chiedere all'utente che classificare male.
 11. "piani della sezione X" con X in (A-G) → search_piani_by_topic con slot sezione=X
 12. Filtro per MACROAREA/AGGREGAZIONE → estrai come slot per filtrare i risultati dell'intent più vicino
-13. "quanti controlli nell'ASL X" / "controlli eseguiti a BENEVENTO" → query_data (conteggio su cu_eseguiti_x filtrato per ASL). NON è ask_piano_statistics (che riguarda statistiche dei PIANI, non conteggi grezzi di controlli).
+13. "quanti controlli nell'ASL X" / "controlli eseguiti a BENEVENTO" → query_data (conteggio su cu_eseguiti_nc filtrato per ASL). NON è ask_piano_statistics (che riguarda statistiche dei PIANI, non conteggi grezzi di controlli).
 14. query_data per domande su dati tabulari NON coperte dagli intent specifici. Confidence MAI > 0.80.
 15. "più controllati"/"più controlli"/"quanti controlli per stabilimento" = aggregazione dati → query_data. NON ask_priority_establishment (priorità per ritardi) né ask_nearby_priority (MAI controllati vicino a indirizzo).
 16. "nelle mie vicinanze"/"vicino a me" SENZA indirizzo fisico → se la domanda è aggregazione dati, usa query_data con filtro ASL/comune dai metadata. ask_nearby_priority richiede un indirizzo geocodificabile (es. "Via Roma 15, Napoli").
@@ -197,7 +197,7 @@ ESEMPI CRITICI (coppie confuse):
 "mai controllati" → {"reasoning":"stabilimenti mai controllati","intent":"ask_suggest_controls","slots":{},"needs_clarification":false,"confidence":0.90}
 "vicino a Napoli" → {"reasoning":"controlli vicino indirizzo","intent":"ask_nearby_priority","slots":{"location":"Napoli"},"needs_clarification":false,"confidence":0.90}
 "entro 5 km da Via Roma" → {"reasoning":"raggio specifico","intent":"ask_nearby_priority","slots":{"location":"Via Roma","radius_km":5},"needs_clarification":false,"confidence":0.95}
-"NC categoria HACCP" → {"reasoning":"analisi NC HACCP","intent":"analyze_nc_by_category","slots":{"categoria":"HACCP"},"needs_clarification":false,"confidence":0.95}
+"NC categoria HACCP" → {"reasoning":"filtra controlli per oggetto_non_conformita HACCP","intent":"query_data","slots":{},"needs_clarification":false,"confidence":0.75}
 "procedura ispezione" → {"reasoning":"come si fa ispezione","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.90}
 "cos'e il borsellino in Matrix" → {"reasoning":"definizione termine Matrix","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.95}
 "piani della sezione A" → {"reasoning":"cerca piani sezione A=Sicurezza Alimentare","intent":"search_piani_by_topic","slots":{"topic":"sezione A","sezione":"A"},"needs_clarification":false,"confidence":0.95}
@@ -243,7 +243,7 @@ Output: SOLO JSON valido, niente altro."""
     # search_piani_by_topic(topic) | ask_priority_establishment | ask_risk_based_priority | ask_suggest_controls
     # ask_nearby_priority(location,radius_km) | ask_delayed_plans | check_if_plan_delayed(piano_code)
     # ask_establishment_history(num_registrazione|partita_iva|ragione_sociale)
-    # ask_top_risk_activities | analyze_nc_by_category(categoria) | info_procedure
+    # ask_top_risk_activities | info_procedure
     # greet | goodbye | ask_help | confirm_show_details | decline_show_details | fallback
     #
     # SLOT: piano_code(A1,B2), asl(NA1), topic, num_registrazione(IT...), partita_iva(10-11cifre), ragione_sociale, categoria, location(indirizzo), radius_km(5)
@@ -669,10 +669,10 @@ OUTPUT:"""
                 if parsed and isinstance(parsed, dict):
                     address = parsed.get("address")
                     if address and isinstance(address, str) and len(address.strip()) > 2:
-                        print(f"[Router] 📍 LLM location: '{address.strip()}' <- '{message[:50]}'")
+                        logger.info(f"[Router] LLM location: '{address.strip()}' <- '{message[:50]}'")
                         return address.strip()
         except Exception as e:
-            print(f"[Router] ⚠️ LLM location fallback a regex: {e}")
+            logger.warning(f"[Router] LLM location fallback a regex: {e}")
 
         # Fallback: regex
         return self._clean_location_from_message(message)
@@ -682,9 +682,9 @@ OUTPUT:"""
         self.enable_cache = enable_cache
         self.intent_cache = IntentCache(ttl_seconds=cache_ttl) if enable_cache else None
         self._build_system_prompt()
-        print(f"🔧 Router configurato con modello: {self.llm_client.model}")
+        logger.info(f"Router configurato con modello: {self.llm_client.model}")
         if enable_cache:
-            print(f"📦 Intent cache attivata (TTL: {cache_ttl}s)")
+            logger.info(f"Intent cache attivata (TTL: {cache_ttl}s)")
 
     def _build_system_prompt(self):
         """Costruisce il prompt di classificazione dal servizio DB o fallback hardcoded."""
@@ -711,7 +711,7 @@ OUTPUT:"""
                         critical_examples=examples,
                         schema_catalog=schema_catalog or self._static_schema_fallback(),
                     )
-                    print(f"📋 Prompt classificazione costruito da DB ({service.source})")
+                    logger.info(f"Prompt classificazione costruito da DB ({service.source})")
                     return
         except Exception as e:
             import logging
@@ -719,7 +719,7 @@ OUTPUT:"""
 
         # Fallback al prompt hardcoded
         self.CLASSIFICATION_SYSTEM_PROMPT = self._CLASSIFICATION_PROMPT_FALLBACK
-        print(f"📋 Prompt classificazione: fallback hardcoded")
+        logger.info("Prompt classificazione: fallback hardcoded")
 
     @staticmethod
     def _static_schema_fallback() -> str:
@@ -753,54 +753,18 @@ OUTPUT:"""
             dialogue_state.get("confirmed_intent")
             and dialogue_state.get("missing_slots")
         )
-        print(f"[Router DEBUG] message='{message[:50]}', has_pending_slots={has_pending_slots}, confirmed_intent={dialogue_state.get('confirmed_intent')}, missing_slots={dialogue_state.get('missing_slots')}")
+        logger.debug(f"[Router] message='{message[:50]}', has_pending_slots={has_pending_slots}, confirmed_intent={dialogue_state.get('confirmed_intent')}, missing_slots={dialogue_state.get('missing_slots')}")
         if not has_pending_slots and self._is_gibberish(message):
             return self._fallback_response("Messaggio non riconosciuto")
 
         # =====================================================================
         # LAYER 1: Pending slot fill (PRIMA delle heuristics)
-        # Quando c'è un confirmed_intent con missing_slots, processiamo
-        # direttamente la risposta senza ri-classificare il messaggio.
         # =====================================================================
         if has_pending_slots:
-            pending_missing = dialogue_state.get("missing_slots", [])
-            confirmed_intent = dialogue_state.get("confirmed_intent")
-
-            # Prima di slot-filling, verifica se il messaggio è un nuovo intent
-            # (topic change). Se l'heuristic matcha un intent diverso, non fare
-            # slot filling e lascia procedere la classificazione normale.
-            heuristic_check = self._try_heuristics(message, has_detail_context=False)
-            if heuristic_check and heuristic_check.get("intent") != confirmed_intent:
-                has_pending_slots = None  # bypass slot filling
-                # Non fare return qui, prosegui con LAYER 2+
-
-            extracted_slots = self._extract_slots(message)
-
-            if has_pending_slots and "location" in pending_missing:
-                # Usa LLM per estrarre indirizzo da linguaggio naturale.
-                # Fallback automatico a regex se LLM fallisce.
-                cleaned_location = self._extract_location_with_llm(message)
-                if cleaned_location and len(cleaned_location) > 2:
-                    extracted_slots["location"] = cleaned_location
-            elif has_pending_slots and "location" not in extracted_slots:
-                # Fallback: usa messaggio intero per slot non-location pendenti
-                for slot_name in pending_missing:
-                    if slot_name not in extracted_slots:
-                        slot_value = message.strip().rstrip('?.!')
-                        if slot_value and len(slot_value) > 2:
-                            extracted_slots[slot_name] = slot_value
-
-            # Se abbiamo estratto slot pendenti, ritorna con il confirmed_intent
-            # senza passare dall'LLM (che potrebbe misclassificare un indirizzo puro)
-            if has_pending_slots and extracted_slots and confirmed_intent:
-                filled_pending = [s for s in pending_missing if extracted_slots.get(s)]
-                if filled_pending:
-                    return {
-                        "intent": confirmed_intent,
-                        "slots": self._normalize_slots(extracted_slots),
-                        "needs_clarification": False,
-                        "confidence": 0.95,
-                    }
+            slot_result = self._fill_pending_slots(message, dialogue_state, has_detail_context)
+            if slot_result is not None:
+                return slot_result
+            # slot_result is None → topic change o slot non estratti, prosegui
 
         # =====================================================================
         # LAYER 2: Heuristics (bypass LLM per casi ovvi)
@@ -826,18 +790,75 @@ OUTPUT:"""
         if self.enable_cache and self.intent_cache is not None:
             cached_result = self.intent_cache.get(cache_key)
             if cached_result:
-                print(f"[Router] 📦 Cache HIT for: {message[:50]}...")
+                logger.info(f"[Router] Cache HIT for: {message[:50]}...")
                 self.intent_cache.record_time_saved(24000)
                 # Usa SOLO slot estratti dalla query corrente (quelli cached potrebbero essere di sessioni diverse)
                 cached_result["slots"] = extracted_slots
                 return self._post_validate(cached_result)
 
         # =====================================================================
-        # LAYER 5: LLM classification
+        # LAYER 5+6: LLM classification con fallback locale
         # =====================================================================
+        return self._llm_classify(message, metadata, extracted_slots, cache_key)
+
+    def _fill_pending_slots(
+        self, message: str, dialogue_state: Dict[str, Any], has_detail_context: bool
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Layer 1: gestione slot pendenti.
+
+        Se c'e' un confirmed_intent con missing_slots, tenta di estrarre
+        i valori dal messaggio corrente senza ri-classificare.
+
+        Returns:
+            Dict risultato se slot riempiti, None se topic change o slot non estratti.
+        """
+        pending_missing = dialogue_state.get("missing_slots", [])
+        confirmed_intent = dialogue_state.get("confirmed_intent")
+
+        # Verifica topic change: se l'heuristic matcha un intent diverso, bypass
+        heuristic_check = self._try_heuristics(message, has_detail_context=False)
+        if heuristic_check and heuristic_check.get("intent") != confirmed_intent:
+            return None  # prosegui con LAYER 2+
+
+        extracted_slots = self._extract_slots(message)
+
+        if "location" in pending_missing:
+            cleaned_location = self._extract_location_with_llm(message)
+            if cleaned_location and len(cleaned_location) > 2:
+                extracted_slots["location"] = cleaned_location
+        elif "location" not in extracted_slots:
+            for slot_name in pending_missing:
+                if slot_name not in extracted_slots:
+                    slot_value = message.strip().rstrip('?.!')
+                    if slot_value and len(slot_value) > 2:
+                        extracted_slots[slot_name] = slot_value
+
+        if extracted_slots and confirmed_intent:
+            filled_pending = [s for s in pending_missing if extracted_slots.get(s)]
+            if filled_pending:
+                return {
+                    "intent": confirmed_intent,
+                    "slots": self._normalize_slots(extracted_slots),
+                    "needs_clarification": False,
+                    "confidence": 0.95,
+                }
+
+        return None
+
+    def _llm_classify(
+        self, message: str, metadata: Dict[str, Any],
+        extracted_slots: Dict[str, Any], cache_key: str
+    ) -> Dict[str, Any]:
+        """
+        Layer 5+6: classificazione LLM con fallback locale.
+
+        Costruisce il prompt, chiama l'LLM, merge slot, post-valida.
+        Se l'LLM fallisce, usa fallback minimale (greet/goodbye/help).
+        """
         classification_start = time.time()
 
-        # P4: Recupera esempi few-shot dinamici
+        # Few-shot dinamici
         few_shot_examples = ""
         try:
             retriever = get_few_shot_retriever()
@@ -845,38 +866,22 @@ OUTPUT:"""
                 examples = retriever.retrieve(message, top_k=6, score_threshold=0.40, max_per_intent=2)
                 if examples:
                     few_shot_examples = retriever.format_for_prompt(examples)
-                    print(f"[Router] 🎯 Few-shot: {len(examples)} esempi recuperati")
+                    logger.info(f"[Router] Few-shot: {len(examples)} esempi recuperati")
         except Exception as e:
-            print(f"[Router] ⚠️ Few-shot fallback: {e}")
+            logger.warning(f"[Router] Few-shot fallback: {e}")
 
-        # Serializza metadata compatto (no indent)
+        # Serializza metadata e slots
         metadata_str = json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
         extracted_slots_str = json.dumps(extracted_slots, ensure_ascii=False, separators=(',', ':')) if extracted_slots else "{}"
 
-        # Build session context - limitato a ~150 token per preservare contesto LLM
-        session_context = ""
-        session_last_intent = metadata.get("_session_last_intent")
-        session_last_slots = metadata.get("_session_last_slots")
-        session_last_response_context = metadata.get("_session_last_response_context")
-        if session_last_intent or session_last_response_context:
-            session_context = "\nSESSIONE:"
-            if session_last_intent:
-                session_context += f" intent={session_last_intent}"
-            if session_last_slots:
-                # Solo slot chiave, no summary verbose
-                slots_compact = {k: v for k, v in (session_last_slots or {}).items() if v}
-                if slots_compact:
-                    session_context += f", slots={json.dumps(slots_compact, ensure_ascii=False, separators=(',',':'))}"
-            # Contesto semantico per risoluzione riferimenti anaforici (es. "le varianti" -> "del piano A2")
-            if session_last_response_context:
-                session_context += f"\nCONTESTO RISPOSTA PRECEDENTE: {session_last_response_context}"
+        # Session context (~150 token max)
+        session_context = self._build_session_context(metadata)
 
         user_prompt = self.CLASSIFICATION_USER_TEMPLATE.format(
             message=message,
             metadata=metadata_str,
             extracted_slots=extracted_slots_str
         )
-        # P4: Inietta esempi few-shot se disponibili
         if few_shot_examples:
             user_prompt = few_shot_examples + "\n\n" + user_prompt
         if session_context:
@@ -888,27 +893,26 @@ OUTPUT:"""
         ]
 
         try:
-            response = self.llm_client.query(messages=messages, temperature=AppConfig.CLASSIFICATION_TEMPERATURE, json_mode=True)
+            response = self.llm_client.query(
+                messages=messages, temperature=AppConfig.CLASSIFICATION_TEMPERATURE, json_mode=True
+            )
 
             if response:
                 result = self._parse_llm_response(response)
 
                 if self._validate_result(result):
-                    # Merge pre-parsed slots (LLM ha priorità se fornisce valori)
+                    # Merge pre-parsed slots (LLM ha priorita' se fornisce valori)
                     llm_slots = result.get("slots", {})
                     merged_slots = {**extracted_slots, **llm_slots}
-                    # Preserva prefisso ATT da _extract_slots: se il pre-parsing ha
-                    # rilevato "attività X" e impostato piano_code="ATT X", il valore
-                    # dell'LLM (senza ATT) non deve sovrascriverlo
+                    # Preserva prefisso ATT da _extract_slots
                     pre_piano = extracted_slots.get("piano_code", "")
                     if isinstance(pre_piano, str) and pre_piano.startswith("ATT "):
                         merged_slots["piano_code"] = pre_piano
                     result["slots"] = self._normalize_slots(merged_slots)
 
-                    # Post-validation con correzione semantica
                     result = self._post_validate(result, message=message)
 
-                    # Costruisci lista candidati per il dialogue_manager
+                    # Candidati per il dialogue_manager
                     alternatives = result.pop("alternatives", [])
                     candidates = [{"intent": result["intent"], "confidence": result.get("confidence", 0.70), "slots": result.get("slots", {})}]
                     for alt in alternatives[:2]:
@@ -917,22 +921,18 @@ OUTPUT:"""
                             candidates.append({"intent": alt_intent, "confidence": alt.get("confidence", 0.50), "slots": {}})
                     result["_candidates"] = candidates
 
-                    # Cache successful classification
+                    # Cache
                     classification_time = (time.time() - classification_start) * 1000
                     if self.enable_cache and self.intent_cache is not None and result.get("intent") != "fallback":
                         self.intent_cache.set(cache_key, result)
-                        print(f"[Router] 📦 Cached classification for: {message[:50]}... (took {classification_time:.0f}ms)")
+                        logger.info(f"[Router] Cached: {message[:50]}... ({classification_time:.0f}ms)")
 
                     return result
 
         except Exception as e:
-            print(f"[Router] LLM classification error: {e}")
+            logger.error(f"[Router] LLM classification error: {e}")
 
-        # =====================================================================
-        # LAYER 6: Fallback locale per LLM-down
-        # Se arriviamo qui, l'LLM ha fallito (timeout, errore, risposta vuota)
-        # Greet/goodbye/help funzionano senza LLM come fallback minimale.
-        # =====================================================================
+        # Fallback locale per LLM-down
         msg_lower = message.lower().strip()
         if len(msg_lower) < 30 and self.GREET_PATTERNS.match(message):
             return {"intent": "greet", "slots": {}, "needs_clarification": False, "confidence": 0.90}
@@ -944,6 +944,26 @@ OUTPUT:"""
         result = self._fallback_response("LLM non disponibile")
         result["slots"] = self._normalize_slots(extracted_slots)
         return self._post_validate(result)
+
+    def _build_session_context(self, metadata: Dict[str, Any]) -> str:
+        """Costruisce contesto sessione per il prompt LLM (~150 token max)."""
+        session_last_intent = metadata.get("_session_last_intent")
+        session_last_slots = metadata.get("_session_last_slots")
+        session_last_response_context = metadata.get("_session_last_response_context")
+
+        if not session_last_intent and not session_last_response_context:
+            return ""
+
+        context = "\nSESSIONE:"
+        if session_last_intent:
+            context += f" intent={session_last_intent}"
+        if session_last_slots:
+            slots_compact = {k: v for k, v in (session_last_slots or {}).items() if v}
+            if slots_compact:
+                context += f", slots={json.dumps(slots_compact, ensure_ascii=False, separators=(',',':'))}"
+        if session_last_response_context:
+            context += f"\nCONTESTO RISPOSTA PRECEDENTE: {session_last_response_context}"
+        return context
 
     def _try_heuristics(self, message: str, has_detail_context: bool) -> Optional[Dict[str, Any]]:
         """
@@ -1341,9 +1361,6 @@ OUTPUT:"""
             else:
                 result["needs_clarification"] = True
                 result["slots"] = {}
-        elif intent == "analyze_nc_by_category":
-            # Categoria ha default "HACCP" nel tool, quindi non richiede clarification
-            result["needs_clarification"] = False
         else:
             # Tutti i required devono essere presenti
             missing = [r for r in required if not slots.get(r)]
@@ -1410,11 +1427,22 @@ OUTPUT:"""
 
         # Messaggi brevi composti da parole reali (solo lettere/spazi/accenti) →
         # potrebbero essere saluti in altre lingue (hola, bonjour, namaste, yo).
-        # Lasciamo decidere all'LLM invece di bloccarli come gibberish.
+        # Lasciamo decidere all'LLM invece di bloccarli come gibberish,
+        # MA filtriamo pattern che non sono parole reali:
+        # - nessuna vocale (asdfghjkl)
+        # - caratteri ripetuti 3+ volte (xxxyyy, aaabbb)
         if re.match(r'^[a-zà-öø-ÿ\s]+$', msg_lower) and len(msg_lower) >= 2:
-            return False
+            chars_only = msg_lower.replace(' ', '')
+            vowels = len(re.findall(r'[aeiouyàèéìòùäëïöü]', msg_lower))
+            vowel_ratio = vowels / len(chars_only) if chars_only else 0
+            has_char_repetition = bool(re.search(r'(.)\1{2,}', msg_lower))
+            # Parole ripetute ("bla bla bla", "no no no")
+            words = msg_lower.split()
+            has_word_repetition = len(words) >= 3 and len(set(words)) == 1
+            if vowel_ratio >= 0.2 and not has_char_repetition and not has_word_repetition:
+                return False
 
-        # Messaggi brevi con caratteri non-alfabetici e senza keyword → gibberish
+        # Messaggi brevi senza keyword, senza vocali o con pattern ripetitivi → gibberish
         return True
 
     def get_cache_stats(self) -> Dict[str, Any]:
@@ -1438,13 +1466,13 @@ OUTPUT:"""
 
         self._build_system_prompt()
         self.clear_cache()
-        print("[Router] 🔄 Reload completato")
+        logger.info("[Router] Reload completato")
 
     def clear_cache(self) -> None:
         """Clear all cached intent classifications."""
         if self.enable_cache and self.intent_cache is not None:
             self.intent_cache.clear_all()
-            print("[Router] 📦 Cache cleared")
+            logger.info("[Router] Cache cleared")
 
     # =========================================================================
     # WORKFLOW-AWARE CLASSIFICATION (Fase 2: Router Enhancement)

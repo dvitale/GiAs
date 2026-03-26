@@ -377,56 +377,25 @@ LIMIT 50;
 - **Pseudo-SQL** (con fix NULL e ordinamento):
 ```sql
 SELECT
-  macroarea_sottoposta_a_controllo AS macroarea,
-  aggregazione_sottoposta_a_controllo AS aggregazione,
-  linea_attivita_sottoposta_a_controllo AS linea_attivita,
+  macroarea_cu AS macroarea,
+  aggregazione_cu AS aggregazione,
+  attivita_cu AS linea_attivita,
   COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) AS tot_nc_gravi,
   COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0) AS tot_nc_non_gravi,
-  COUNT(*) AS numero_controlli_totali,
+  COUNT(DISTINCT id_controllo) AS numero_controlli_totali,
   ROUND(
     ((COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0) +
-      COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0))::float / NULLIF(COUNT(*), 0)) *
-    (COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0)::float / NULLIF(COUNT(*), 0)) * 100
+      COALESCE(SUM(CAST(numero_nc_non_gravi AS INTEGER)), 0))::float / NULLIF(COUNT(DISTINCT id_controllo), 0)) *
+    (COALESCE(SUM(CAST(numero_nc_gravi AS INTEGER)), 0)::float / NULLIF(COUNT(DISTINCT id_controllo), 0)) * 100
   , 3) AS risk_score
-FROM ocse_isp_semp
+FROM cu_eseguiti_nc
+WHERE tipo_non_conformita != 'NESSUNA NC RILEVATA'
 GROUP BY 1, 2, 3
 HAVING risk_score > 0
 ORDER BY risk_score DESC NULLS LAST
 LIMIT :limit;
 ```
 - **VIEW SQL**: Vedi `sql/risk_score_view.sql` per VIEW completa con categoria rischio.
-
-### analyze_nc_by_category
-- **Tool**: `analyze_nc_by_category`.
-  - Validazione categoria via `VALID_NC_CATEGORIES`.
-  - `DataRetriever.get_nc_by_category`.
-  - Statistiche aggregate + `DataRetriever.get_establishments_with_nc_category`.
-  - `formatted_response` costruita inline.
-- **Risposta**: `formatted_response`.
-- **Domande tipo**: "analizza NC HACCP", "analizza non conformita", "non conformita categoria igiene".
-- **Pseudo-SQL**:
-```sql
-SELECT *
-FROM ocse
-WHERE oggetto_non_conformita ILIKE '%' || :categoria || '%'
-  AND (:asl IS NULL OR asl = :asl);
-
-SELECT
-  numero_riconoscimento,
-  asl,
-  comune,
-  macroarea_sottoposta_a_controllo AS macroarea,
-  aggregazione_sottoposta_a_controllo AS aggregazione,
-  SUM(numero_nc_gravi) AS tot_nc_gravi,
-  SUM(numero_nc_non_gravi) AS tot_nc_non_gravi,
-  COUNT(*) AS controlli_totali
-FROM ocse
-WHERE oggetto_non_conformita ILIKE '%' || :categoria || '%'
-  AND (:asl IS NULL OR asl = :asl)
-GROUP BY 1, 2, 3, 4, 5
-ORDER BY (SUM(numero_nc_gravi) + SUM(numero_nc_non_gravi)) DESC
-LIMIT 20;
-```
 
 ## Note sulla generazione LLM (quando usata)
 

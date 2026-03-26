@@ -86,12 +86,10 @@
         "attivita": "Master list rev 11_filtered.csv",
         "controlli": "vw_cu.csv",
         "osa_mai_controllati": "osa_mai_controllati_con_linea_852-3_filtered.csv",
-        "ocse": "isp_sempl_in_chiaro_2016_2025.csv",
         "diff_prog_eseg": "vw_diff_programmati_eseguiti.csv",
         "personale": "personale_filtered.csv"
       },
-      "personale_separator": "|",
-      "ocse_separator": "$"
+      "personale_separator": "|"
     },
     "postgresql": {
       "enabled": true,
@@ -103,9 +101,8 @@
       "tables": {
         "piani": "piani_monitoraggio",
         "attivita": "masterlist",
-        "controlli": "cu_eseguiti_x",
+        "controlli": "cu_eseguiti_nc",
         "osa_mai_controllati": "osa_mai_controllati",
-        "ocse": "ocse_isp_semp",
         "diff_prog_eseg": "cu_diff_programmati_eseguiti",
         "personale": "personale"
       }

@@ -9,7 +9,7 @@ import re
 import json
 import time
 from typing import List, Dict, Optional, Tuple
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 try:
     from llm.client import LLMClient
@@ -79,8 +79,11 @@ class FallbackRecoveryEngine:
         if config:
             self.config.update(config)
 
-        # Cache per performance
-        self._keyword_cache = {}
+        # Cache per performance — bounded (maxsize=500, TTL=3600s)
+        self._CACHE_MAXSIZE: int = 500
+        self._CACHE_TTL: float = 3600.0
+        self._keyword_cache: OrderedDict = OrderedDict()
+        self._keyword_cache_ts: Dict[str, float] = {}
 
     def suggest_intents(
         self,
@@ -153,6 +156,43 @@ class FallbackRecoveryEngine:
         # Fallback a menu categorizzato
         return self._category_menu(level=1, category=None)
 
+    def _cache_get(self, key: str) -> Optional[List[Dict]]:
+        """Ritorna il valore in cache se presente e non scaduto, altrimenti None.
+
+        Args:
+            key: Chiave di lookup (messaggio normalizzato).
+
+        Returns:
+            Lista di suggerimenti cachata, oppure None se assente/scaduta.
+        """
+        if key not in self._keyword_cache:
+            return None
+        if time.time() - self._keyword_cache_ts[key] > self._CACHE_TTL:
+            # Voce scaduta: rimuovi
+            del self._keyword_cache[key]
+            del self._keyword_cache_ts[key]
+            return None
+        # LRU: sposta in fondo per indicare utilizzo recente
+        self._keyword_cache.move_to_end(key)
+        return self._keyword_cache[key]
+
+    def _cache_set(self, key: str, value: List[Dict]) -> None:
+        """Inserisce un valore in cache, rispettando maxsize con evizione LRU.
+
+        Args:
+            key: Chiave (messaggio normalizzato).
+            value: Lista di suggerimenti da memorizzare.
+        """
+        if key in self._keyword_cache:
+            self._keyword_cache.move_to_end(key)
+        else:
+            # Evizione: rimuovi la voce meno recente se cache piena
+            while len(self._keyword_cache) >= self._CACHE_MAXSIZE:
+                oldest_key, _ = self._keyword_cache.popitem(last=False)
+                self._keyword_cache_ts.pop(oldest_key, None)
+        self._keyword_cache[key] = value
+        self._keyword_cache_ts[key] = time.time()
+
     def _keyword_matching(self, message: str) -> List[Dict]:
         """
         Fase 1: Keyword matching veloce.
@@ -167,8 +207,9 @@ class FallbackRecoveryEngine:
         message_lower = message.lower().strip()
 
         # Check cache
-        if message_lower in self._keyword_cache:
-            return self._keyword_cache[message_lower]
+        cached = self._cache_get(message_lower)
+        if cached is not None:
+            return cached
 
         # Calcola score per ogni intent
         scored_intents = []
@@ -198,7 +239,7 @@ class FallbackRecoveryEngine:
         result = scored_intents[:self.config["max_suggestions"]]
 
         # Cache result
-        self._keyword_cache[message_lower] = result
+        self._cache_set(message_lower, result)
 
         return result
 
@@ -541,6 +582,7 @@ JSON:"""
 
         return "\n".join(lines)
 
-    def clear_cache(self):
-        """Pulisce cache keyword"""
+    def clear_cache(self) -> None:
+        """Pulisce cache keyword (voci e timestamp)."""
         self._keyword_cache.clear()
+        self._keyword_cache_ts.clear()

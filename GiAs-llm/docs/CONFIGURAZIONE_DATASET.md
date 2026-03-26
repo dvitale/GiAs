@@ -85,9 +85,8 @@ _datasets = _data_source.load_all()
   "tables": {
     "piani": "piani_monitoraggio",
     "attivita": "attivita_master",
-    "controlli": "vw_2025_eseguiti",
+    "controlli": "cu_eseguiti_nc",
     "osa_mai_controllati": "osa_mai_controllati",
-    "ocse": "ocse_isp_semp_2025",
     "diff_prog_eseg": "vw_diff_programmati_eseguiti",
     "personale": "personale"
   }
@@ -109,9 +108,8 @@ Il sistema utilizza **7 chiavi logiche** che rimangono invariate indipendentemen
 |---------------|-------------|-------------|-------------------|
 | `piani` | Piani di monitoraggio | `piani_monitoraggio.csv` | `piani_monitoraggio` |
 | `attivita` | Master list attività | `Master list rev 11_filtered.csv` | `attivita_master` |
-| `controlli` | Controlli eseguiti 2025 | `vw_2025_eseguiti_filtered.csv` | `vw_2025_eseguiti` |
+| `controlli` | Controlli eseguiti 2025 con NC | `cu_eseguiti_nc.csv` | `cu_eseguiti_nc` |
 | `osa_mai_controllati` | OSA mai controllati | `osa_mai_controllati_con_linea_852-3_filtered.csv` | `osa_mai_controllati` |
-| `ocse` | Dati OCSE con NC | `OCSE_ISP_SEMP_2025_filtered_v2.csv` | `ocse_isp_semp_2025` |
 | `diff_prog_eseg` | Differenza prog/eseg | `vw_diff_programmmati_eseguiti.csv` | `vw_diff_programmati_eseguiti` |
 | `personale` | Anagrafica personale | `personale_filtered.csv` | `personale` |
 

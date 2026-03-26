@@ -23,6 +23,9 @@ KEEP_COLUMNS: Dict[str, List[str]] = {
         # PII — mantenute per blacklist check
         "num_registrazione", "ragione_sociale", "partita_iva",
         "codice_fiscale", "nominativo_rappresentante",
+        # NC inline (da cu_eseguiti_nc)
+        "tipo_non_conformita", "numero_nc_gravi", "numero_nc_non_gravi",
+        "oggetto_non_conformita", "comune",
     ],
     "osa_mai_controllati": [
         "asl", "macroarea", "aggregazione", "attivita", "comune",
@@ -31,15 +34,6 @@ KEEP_COLUMNS: Dict[str, List[str]] = {
         # PII — mantenute per blacklist check
         "partita_iva", "codice_fiscale", "codice_fiscale_rappresentante",
         "nominativo_rappresentante",
-    ],
-    "ocse": [
-        "id_controllo_ufficiale", "macroarea_sottoposta_a_controllo",
-        "aggregazione_sottoposta_a_controllo",
-        "linea_attivita_sottoposta_a_controllo",
-        "anno_controllo", "asl", "numero_nc_gravi", "numero_nc_non_gravi",
-        "tipo_non_conformita", "oggetto_non_conformita",
-        "numero_registrazione", "numero_riconoscimento", "norma",
-        "comune", "tipo_controllo",
     ],
 }
 
@@ -80,11 +74,6 @@ class DataSource(ABC):
         pass
 
     @abstractmethod
-    def load_ocse(self) -> pd.DataFrame:
-        """Load OCSE data."""
-        pass
-
-    @abstractmethod
     def load_diff_prog_eseg(self) -> pd.DataFrame:
         """Load diff programmati/eseguiti data."""
         pass
@@ -97,7 +86,7 @@ class DataSource(ABC):
     def load_all(self) -> Dict[str, pd.DataFrame]:
         """
         Load all datasets.
-        Applica whitelist colonne ai dataset grandi (controlli, osa, ocse).
+        Applica whitelist colonne ai dataset grandi (controlli, osa).
 
         Returns:
             Dictionary with all dataframes
@@ -107,7 +96,6 @@ class DataSource(ABC):
             "attivita": self.load_attivita(),
             "controlli": self.load_controlli(),
             "osa_mai_controllati": self.load_osa_mai_controllati(),
-            "ocse": self.load_ocse(),
             "diff_prog_eseg": self.load_diff_prog_eseg(),
             "personale": self.load_personale(),
         }

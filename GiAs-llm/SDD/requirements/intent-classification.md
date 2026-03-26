@@ -11,7 +11,7 @@
 - **Status**: IMPLEMENTATO
 
 ### IC-002 Valid intents
-- **Pattern EARS**: Il sistema DEVE riconoscere esattamente 20+1 intent validi: greet, goodbye, ask_help, ask_piano_stabilimenti, ask_piano_description, ask_piano_statistics, search_piani_by_topic, ask_priority_establishment, ask_risk_based_priority, ask_suggest_controls, ask_nearby_priority, ask_delayed_plans, check_if_plan_delayed, ask_establishment_history, ask_top_risk_activities, analyze_nc_by_category, info_procedure, query_data, confirm_show_details, decline_show_details, fallback.
+- **Pattern EARS**: Il sistema DEVE riconoscere esattamente 20+1 intent validi: greet, goodbye, ask_help, ask_piano_stabilimenti, ask_piano_description, ask_piano_statistics, search_piani_by_topic, ask_priority_establishment, ask_risk_based_priority, ask_suggest_controls, ask_nearby_priority, ask_delayed_plans, check_if_plan_delayed, ask_establishment_history, ask_top_risk_activities, info_procedure, query_data, confirm_show_details, decline_show_details, fallback.
 - **Status**: IMPLEMENTATO
 
 ### IC-003 Valid slot keys
@@ -19,7 +19,7 @@
 - **Status**: IMPLEMENTATO
 
 ### IC-004 Required slots per intent
-- **Pattern EARS**: Il sistema DEVE verificare la presenza di slot obbligatori: piano_code per ask_piano_description, ask_piano_stabilimenti, check_if_plan_delayed; topic per search_piani_by_topic; almeno uno tra num_registrazione/numero_riconoscimento/partita_iva/ragione_sociale per ask_establishment_history; categoria per analyze_nc_by_category; location per ask_nearby_priority.
+- **Pattern EARS**: Il sistema DEVE verificare la presenza di slot obbligatori: piano_code per ask_piano_description, ask_piano_stabilimenti, check_if_plan_delayed; topic per search_piani_by_topic; almeno uno tra num_registrazione/numero_riconoscimento/partita_iva/ragione_sociale per ask_establishment_history; location per ask_nearby_priority.
 - **Status**: IMPLEMENTATO
 
 ### IC-005 MINIMAL_HEURISTICS flag
@@ -135,7 +135,7 @@
 
 ### IC-054 analyze_nc_by_category default
 - **Pattern EARS**: QUANDO l'intent e' analyze_nc_by_category, il sistema DEVE impostare needs_clarification=false perche' il tool ha un default "HACCP" per la categoria.
-- **Status**: IMPLEMENTATO
+- **Status**: RIMOSSO (intent analyze_nc_by_category rimosso da VALID_INTENTS; le NC sono ora interrogabili tramite query_data su cu_eseguiti_nc)
 
 ### IC-055 Router hot-reload
 - **Pattern EARS**: Il sistema DEVE supportare il reload a caldo del router (reload()) che ricarica metadati intent da DB, ricostruisce il prompt e svuota la cache.

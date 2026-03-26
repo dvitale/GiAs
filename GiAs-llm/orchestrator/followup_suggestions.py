@@ -90,7 +90,6 @@ class FollowUpSuggestionEngine:
             "check_if_plan_delayed": self._suggest_check_plan,
             "ask_establishment_history": self._suggest_establishment_history,
             "ask_top_risk_activities": self._suggest_top_risk,
-            "analyze_nc_by_category": self._suggest_nc_analysis,
             "info_procedure": self._suggest_info_procedure,
             "query_data": self._suggest_query_data,
         }
@@ -312,20 +311,6 @@ class FollowUpSuggestionEngine:
             {
                 "text": "Analisi non conformita' HACCP",
                 "query": "non conformita' HACCP"
-            },
-        ]
-
-    def _suggest_nc_analysis(
-        self, slots: Dict, data: Dict
-    ) -> List[Dict[str, str]]:
-        return [
-            {
-                "text": "Attivita' piu' rischiose",
-                "query": "attivita' piu' rischiose"
-            },
-            {
-                "text": "Stabilimenti a rischio",
-                "query": "stabilimenti a rischio"
             },
         ]
 

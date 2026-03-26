@@ -27,21 +27,22 @@ User Message → [1] classify (Router) → [2] dialogue_manager (rule-based)
 
 **ConversationState** (TypedDict, ~35 campi): `message`, `metadata` (asl, asl_id, user_id, codice_fiscale), `intent`, `slots`, `needs_clarification`, `_classification_confidence` (0.0-1.0), `tool_output`, `final_response`, `dialogue_state`, `dm_action`, `dm_target_tool`, `dm_question`, `has_more_details`, `detail_context`, `error`.
 
-**Confidence**: router propaga confidence reale → dialogue manager. Soglie in `dialogue_manager.py` (`_MODEL_CONFIDENCE_THRESHOLDS`): high=0.65, min=0.40.
+**Confidence**: router propaga confidence reale → dialogue manager. Soglie in `dialogue_manager.py` (`_MODEL_CONFIDENCE_THRESHOLDS`): high=0.80, min=0.50 (default), adattive per modello.
+
+**Dialogue Manager** (`orchestrator/dialogue_manager.py`): rule engine con funzioni regola separate: `_rule_slot_continuation`, `_rule_oppure`, `_rule_refinement`, `_rule_strategy_confirmation`, `_rule_high_confidence_execute`, `_rule_ambiguous`. `evaluate()` le invoca in sequenza. Helper pubblici: `is_oppure()`, `is_refinement()`, `is_vague()`.
 
 **Topic change**: se `_session_last_intent != intent`, resetta `DialogueState`. Slot carry-forward solo se stesso intent.
 
 ### Intent Classification
 
-**Router** (`orchestrator/router.py`): LLM-first a 3 livelli (heuristics essenziali → pre-parsing slot → LLM con few-shot dinamico). `MINIMAL_HEURISTICS = True` (default). Output JSON: `{reasoning, intent, slots, needs_clarification, confidence}`.
+**Router** (`orchestrator/router.py`): LLM-first a 6 layer (gibberish detection → pending slot fill → heuristics → cache → LLM con few-shot dinamico → fallback locale). Metodo `classify()` orchestra i layer, con logica estratta in `_fill_pending_slots()`, `_llm_classify()`, `_build_session_context()`. Output JSON: `{reasoning, intent, slots, needs_clarification, confidence}`.
 
-**Valid Intents** (21): `greet`, `goodbye`, `ask_help`, `ask_piano_description`, `ask_piano_stabilimenti`, `ask_piano_statistics`, `search_piani_by_topic`, `ask_priority_establishment`, `ask_risk_based_priority`, `ask_suggest_controls`, `ask_delayed_plans`, `check_if_plan_delayed`, `ask_establishment_history`, `ask_top_risk_activities`, `analyze_nc_by_category`, `info_procedure`, `query_data`, `ask_nearby_priority`, `confirm_show_details`, `decline_show_details`, `fallback`
+**Valid Intents** (20): `greet`, `goodbye`, `ask_help`, `ask_piano_description`, `ask_piano_stabilimenti`, `ask_piano_statistics`, `search_piani_by_topic`, `ask_priority_establishment`, `ask_risk_based_priority`, `ask_suggest_controls`, `ask_delayed_plans`, `check_if_plan_delayed`, `ask_establishment_history`, `ask_top_risk_activities`, `info_procedure`, `query_data`, `ask_nearby_priority`, `confirm_show_details`, `decline_show_details`, `fallback`
 
 **Required Slots**:
 - `ask_piano_description`, `ask_piano_stabilimenti`, `check_if_plan_delayed`: `[piano_code]`
 - `search_piani_by_topic`: `[topic]`
 - `ask_establishment_history`: almeno uno tra `[num_registrazione, partita_iva, ragione_sociale]`
-- `analyze_nc_by_category`: `[categoria]`
 - `ask_nearby_priority`: `[location]` (obbligatorio), `[radius_km]` (opzionale, default 5)
 - `query_data`: nessun slot obbligatorio
 
@@ -51,7 +52,7 @@ Prompt in `_build_response_prompt`: spiega risultati in italiano, motiva priorit
 
 ## Data Dependencies
 
-**CSV** (in `agents/data_agent.py`): `piani_df`, `controlli_df`, `osa_mai_controllati_df`, `ocse_df`, `diff_prog_eseg_df`, `personale.csv`. Dataset attivo: `dataset.10/`. Import: `from ..data import <df>`.
+**DataFrame** (in `agents/data_agent.py`): `piani_df`, `controlli_df` (da cu_eseguiti_nc, con NC inline), `osa_mai_controllati_df`, `diff_prog_eseg_df`, `personale_df`. Import: `from ..data import <df>`.
 
 **Qdrant**: 2 collection — `piani_monitoraggio` (730 vettori, 384 dim), `intent_examples` (~150 vettori, 384 dim). Singleton in `agents/qdrant_singleton.py`. Rebuild: `python tools/indexing/build_intent_examples_index.py`.
 
@@ -64,7 +65,7 @@ Prompt in `_build_response_prompt`: spiega risultati in italiano, motiva priorit
 
 ## LLM Client
 
-**Strategy Pattern** in `llm/`: `client.py` (facade) → `providers.py` (Ollama, LlamaCpp, OpenAI, Anthropic, OpenAICompat).
+**Strategy Pattern** in `llm/`: `client.py` (facade) → `providers.py` (Ollama, LlamaCpp, OpenAI, Anthropic, OpenAICompat). Fallback quando LLM non disponibile: `fallback_classifier.py` (classificazione data-driven con pattern→intent mapping).
 
 **Backend**: `GIAS_LLM_BACKEND` env > `config.json` `llm_backend.type` > default. GDPR: `gdpr.allow_external_llm` in config.json (default false).
 
@@ -78,12 +79,13 @@ app/             # FastAPI: api.py, session_manager.py, models.py
 orchestrator/    # graph.py, router.py, dialogue_manager.py, tool_nodes.py,
                  # response_node.py, two_phase.py, followup_suggestions.py,
                  # intent_metadata.py, schema_catalog.py, fallback_recovery.py,
-                 # workflow_strategies.py, few_shot_retriever.py, intent_cache.py
+                 # workflow_strategies.py, few_shot_retriever.py, intent_cache.py,
+                 # constants.py (SLOT_PROMPTS condivisi)
 tools/           # piano_, priority_, risk_, search_, establishment_, procedure_,
                  # query_builder_, proximity_tools.py, geo_utils.py, rag_cache.py
   hybrid_search/ # hybrid_engine, smart_router, query_analyzer, llm_reranker, bm25_scorer
   indexing/      # build_qdrant_index, build_intent_examples_index, build_docs_index
-llm/             # client.py, provider_base.py, providers.py, client_stub.py
+llm/             # client.py, provider_base.py, providers.py, fallback_classifier.py
 predictor_ml/    # MLRiskPredictor (XGBoost), production_assets/, mappings/
 data_sources/    # csv_source, postgresql_source, factory (CSV/PostgreSQL abstraction)
 configs/         # config.py, config.json, config_loader.py
@@ -104,13 +106,14 @@ tests/           # pytest.ini in tests/. Dir: unit/, integration/, e2e/, legacy/
 
 1. `VALID_INTENTS` in `router.py` + `INTENT_REGISTRY` in `intent_metadata.py`
 2. Tool in `tools/` → registra in `tool_nodes.py`
-3. Se slot richiesti → `REQUIRED_SLOTS` in `router.py`
+3. Se slot richiesti → `REQUIRED_SLOTS` in `router.py` + `SLOT_PROMPTS` in `orchestrator/constants.py`
 4. Domande esempio in `help_tool()` (`tool_nodes.py`)
 5. Se risposta diretta → `DIRECT_RESPONSE_INTENTS` in `response_node.py`
 6. Follow-up in `followup_suggestions.py`
 7. Esempi nel prompt V2 (`CLASSIFICATION_SYSTEM_PROMPT`) e/o `build_intent_examples_index.py`
-8. Rebuild indice: `python tools/indexing/build_intent_examples_index.py`
-9. **Sync DB**: aggiornare tabella `intents` in PostgreSQL
+8. Pattern fallback in `llm/fallback_classifier.py` (per funzionamento senza LLM)
+9. Rebuild indice: `python tools/indexing/build_intent_examples_index.py`
+10. **Sync DB**: aggiornare tabella `intents` in PostgreSQL
 
 ### Working with Data
 
@@ -124,7 +127,7 @@ Intent `info_procedure`. Cache RAG (TTL 30min, max 200). Parent-child chunking (
 
 ## Schema-Aware Query Data (`query_builder_tools.py`)
 
-Intent `query_data`: interrogazioni ad-hoc su 7 tabelle. `SchemaCatalog` (singleton, DB-first) inietta metadati nel prompt. `QueryDescriptor` (Pydantic) + `SafeQueryExecutor` su DataFrame pandas.
+Intent `query_data`: interrogazioni ad-hoc su 6 tabelle. `SchemaCatalog` (singleton, DB-first) inietta metadati nel prompt. `QueryDescriptor` (Pydantic) + `SafeQueryExecutor` su DataFrame pandas.
 
 **Sicurezza**: whitelist tabelle (7), operazioni (7: count, sum, mean, filter, group_count, top_n, distinct), operatori filtro (7), blacklist PII, limite 100 righe.
 
@@ -187,9 +190,10 @@ Questo file e' la **fonte di verita' unica** per i dettagli architetturali del b
 
 Aggiorna questo file quando tocchi:
 - `VALID_INTENTS` o `REQUIRED_SLOTS` → sezione Intent Classification + sync DB
+- `SLOT_PROMPTS` → `orchestrator/constants.py` (fonte unica, importato da graph.py e dialogue_manager.py)
 - `TOOL_REGISTRY` o `INTENT_TO_TOOL` → sezione Common Patterns
 - Flusso del grafo (`_build_graph`) → sezione Orchestration Flow
 - `ConversationState` → sezione State
 - Nuovo endpoint API → tabella Endpoint API
-- Nuovo intent → followup_suggestions + rebuild indice few-shot
+- Nuovo intent → followup_suggestions + rebuild indice few-shot + `llm/fallback_classifier.py`
 - Nuovo requisito → `SDD/traceability.md` e `SDD/requirements/`

@@ -1,8 +1,10 @@
 import json
-import re
+import logging
 from typing import Optional, Generator
 import sys
 import os
+
+logger = logging.getLogger(__name__)
 
 import requests
 
@@ -75,12 +77,12 @@ class LLMClient:
                 else:
                     model_info = {"description": f"Model: {model}"}
 
-                print(f"✅ LLM Client initialized with backend: {backend_name}")
-                print(f"   🔌 URL: {self.base_url}")
-                print(f"   🤖 Model: {model}")
-                print(f"   📝 {model_info.get('description', '')}")
+                logger.info(f"LLM Client initialized with backend: {backend_name}")
+                logger.info(f"   URL: {self.base_url}")
+                logger.info(f"   Model: {model}")
+                logger.info(f"   {model_info.get('description', '')}")
             except Exception as e:
-                print(f"⚠️ Warning: {self.backend_type} not available ({e}), falling back to stub")
+                logger.warning(f"{self.backend_type} not available ({e}), falling back to stub")
                 self.use_real_llm = False
                 self._provider = None
 
@@ -173,251 +175,30 @@ class LLMClient:
                 timeout=timeout
             )
         except requests.exceptions.Timeout:
-            print(f"❌ LLM query timeout after {self.timeout}s")
+            logger.error(f"LLM query timeout after {self.timeout}s")
             fallback_prompt = '\n'.join(m.get('content', '') for m in effective_messages) if effective_messages else (prompt or '')
             return self._fallback_stub(fallback_prompt)
         except Exception as e:
-            print(f"❌ LLM query error: {e}")
-            print(f"Falling back to stub for this request")
+            logger.error(f"LLM query error: {e}, falling back to stub")
             fallback_prompt = '\n'.join(m.get('content', '') for m in effective_messages) if effective_messages else (prompt or '')
             return self._fallback_stub(fallback_prompt)
 
     def _fallback_stub(self, prompt: str) -> str:
-        """
-        Fallback stub implementation (same as original client.py).
-        Used when Ollama is not available.
-        """
-        # Handle None or empty prompt
+        """Fallback stub: delega a fallback_classifier."""
+        from .fallback_classifier import classify, generate_response
+
         if not prompt:
             return "Errore: nessun prompt fornito allo stub LLM"
 
         prompt_lower = prompt.lower()
 
         if "classifica il messaggio" in prompt_lower or "intent" in prompt_lower:
-            return self._mock_classification(prompt)
+            return classify(prompt)
 
         if "genera una risposta" in prompt_lower or "spiega i risultati" in prompt_lower:
-            return self._mock_response_generation(prompt)
+            return generate_response(prompt)
 
         return "Questa è una risposta stub dal LLM. Implementare il client reale."
-
-    def _mock_classification(self, prompt: str) -> str:
-        """Mock intent classification basato su pattern nel prompt"""
-
-        # Handle None prompt
-        if not prompt:
-            return json.dumps({"intent": "fallback", "slots": {}, "needs_clarification": True})
-
-        prompt_lower = prompt.lower()
-
-        # Try both prompt formats: old (**messaggio utente:**) and new (MESSAGGIO:)
-        user_message_match = re.search(r'\*\*messaggio utente:\*\*\s*["\']([^"\']+)["\']', prompt_lower, re.IGNORECASE)
-        if not user_message_match:
-            user_message_match = re.search(r'messaggio:\s*["\']([^"\']+)["\']', prompt_lower, re.IGNORECASE)
-        if user_message_match:
-            user_message = user_message_match.group(1).strip()
-        else:
-            user_message = prompt_lower
-
-        if re.match(r'^\s*(ciao|salve|buongiorno|buonasera|buonanotte|buondì|buon\s*pomeriggio|'
-                    r'hello|hey|hi|ehilà|ehi|eccomi|ben\s*trovato|ben\s*tornato|come\s*(stai|va))\s*[!.?]?\s*$', user_message):
-            return json.dumps({
-                "intent": "greet",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["aiuto", "help", "che domande", "cosa sai", "cosa posso", "come posso", "come puoi", "cosa puoi"]):
-            return json.dumps({
-                "intent": "ask_help",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if re.match(r'^\s*(arrivederci|addio|bye|ciao\s*ciao|tanti\s*saluti|'
-                    r'alla\s*prossima|ci\s*vediamo|a\s*domani|stammi?\s*bene)\s*[!.?]?\s*$', user_message):
-            return json.dumps({
-                "intent": "goodbye",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        # Confirm/Decline details (two-phase flow)
-        if re.match(r'^\s*(s[ìi]|yes|ok|va bene|mostra|dettagli|tutti)\s*[!.?]?\s*$', user_message):
-            return json.dumps({
-                "intent": "confirm_show_details",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if re.match(r'^\s*(no|non|niente|basta|va bene cos[ìi])\s*[!.?]?\s*$', user_message):
-            return json.dumps({
-                "intent": "decline_show_details",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        piano_match = re.search(r'\b([A-F]\d{1,2}(?:_[A-Z0-9]+)?)\b', user_message, re.IGNORECASE)
-        piano_code = piano_match.group(1).upper() if piano_match else None
-
-        # Check ritardo con piano specifico → check_if_plan_delayed
-        if piano_code and any(word in user_message for word in ["ritardo", "ritardi", "in ritardo", "è in ritardo", "scadut"]):
-            return json.dumps({
-                "intent": "check_if_plan_delayed",
-                "slots": {"piano_code": piano_code},
-                "needs_clarification": False
-            })
-
-        if piano_code:
-            if any(word in user_message for word in ["descrizione", "descrivi", "cos'è", "cosa è", "di cosa tratta", "cosa tratta"]):
-                return json.dumps({
-                    "intent": "ask_piano_description",
-                    "slots": {"piano_code": piano_code},
-                    "needs_clarification": False
-                })
-
-            if any(word in user_message for word in ["stabilimenti", "dove", "applicazione", "applica"]):
-                return json.dumps({
-                    "intent": "ask_piano_stabilimenti",
-                    "slots": {"piano_code": piano_code},
-                    "needs_clarification": False
-                })
-
-            return json.dumps({
-                "intent": "ask_piano_stabilimenti",
-                "slots": {"piano_code": piano_code},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["priorità", "per primo", "prima", "urgenti", "controllare subito"]):
-            return json.dumps({
-                "intent": "ask_priority_establishment",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        # Top attività rischiose (PRIMA di rischio generico)
-        if any(word in user_message for word in ["attività rischiose", "attività più rischiose", "top attività", "classifica attività", "linee di attività", "linea di attività"]):
-            return json.dumps({
-                "intent": "ask_top_risk_activities",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["rischio", "non conformità", "nc", "pericolosi", "alto rischio"]):
-            return json.dumps({
-                "intent": "ask_risk_based_priority",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["mai controllati", "non controllati", "suggerisci controll", "da controllare"]):
-            return json.dumps({
-                "intent": "ask_suggest_controls",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["ritardo", "ritardi", "programmati", "in ritardo"]):
-            return json.dumps({
-                "intent": "ask_delayed_plans",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["vicino", "dintorni", "pressi", "entro km", "vicinanze"]):
-            return json.dumps({
-                "intent": "ask_nearby_priority",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["storico", "storia dei controlli", "storia controlli"]):
-            return json.dumps({
-                "intent": "ask_establishment_history",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["procedura", "come si fa", "come si esegue", "passi per", "istruzioni per"]):
-            return json.dumps({
-                "intent": "info_procedure",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["statistiche", "frequenza piani", "quanti piani"]):
-            return json.dumps({
-                "intent": "ask_piano_statistics",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        # Analisi NC per categoria
-        if ("nc" in user_message or "non conformità" in user_message) and any(word in user_message for word in ["categoria", "haccp", "igiene", "struttur", "analizza"]):
-            return json.dumps({
-                "intent": "analyze_nc_by_category",
-                "slots": {},
-                "needs_clarification": False
-            })
-
-        if any(word in user_message for word in ["cerca", "ricerca", "trova piani", "piani che", "quali piani", "quali sono i piani", "piani di", "piani per", "piani sul", "piani riguardanti", "piani relativi"]):
-            topic_words = []
-
-            keywords = [
-                "bovini", "bovino", "vacche", "vitelli", "bufalini", "bufale", "bufala",
-                "suini", "suino", "maiali", "porci", "scrofe", "scrofa", "verri", "verro", "suinetti",
-                "ovini", "ovino", "pecore", "agnelli", "arieti",
-                "caprini", "caprino", "capre", "capretti",
-                "avicoli", "avicolo", "polli", "pollame", "galline", "tacchini", "oche", "anatre",
-                "equini", "equino", "cavalli", "asini", "muli",
-                "latte", "lattiero", "caseario", "latticini",
-                "carne", "macellazione", "macello", "carni",
-                "mangimi", "mangime", "alimentazione",
-                "allevamenti", "allevamento", "zootecniche", "zootecnia", "zootecnico",
-                "benessere", "biosicurezza",
-                "salmonella", "residui", "farmaco", "farmaci",
-                "api", "apicoltura", "miele",
-                "acquacoltura", "ittico", "pesca", "pesci",
-                "cani", "gatti", "randagismo", "canile",
-                "selvaggina", "selvatici", "cinghiali",
-            ]
-
-            for word in keywords:
-                if word in user_message:
-                    topic_words.append(word)
-
-            slots = {"topic": " ".join(topic_words)} if topic_words else {}
-            return json.dumps({
-                "intent": "search_piani_by_topic",
-                "slots": slots,
-                "needs_clarification": False
-            })
-
-        return json.dumps({
-            "intent": "fallback",
-            "slots": {},
-            "needs_clarification": True
-        })
-
-    def _mock_response_generation(self, prompt: str) -> str:
-        """Mock response generation - estrae formatted_response dal prompt o genera risposta generica"""
-
-        # Handle None prompt
-        if not prompt:
-            return "Ciao! Come posso aiutarti con i piani di monitoraggio veterinario?"
-
-        formatted_match = re.search(r'\*\*RISULTATI OTTENUTI:\*\*\s*\{[^}]*["\']formatted_response["\']:\s*["\']([^"\']+)["\']', prompt, re.DOTALL)
-        if formatted_match:
-            formatted_text = formatted_match.group(1)
-            return formatted_text[:2000]
-
-        data_section = re.search(r'\*\*RISULTATI OTTENUTI:\*\*\s*(.+?)(?:\*\*|$)', prompt, re.DOTALL)
-        if data_section:
-            data_text = data_section.group(1).strip()[:500]
-            return f"Ecco i risultati della tua richiesta:\n\n{data_text}\n\nPosso aiutarti con ulteriori dettagli?"
-
-        return "Ciao! Come posso aiutarti con i piani di monitoraggio veterinario?"
 
     def query_stream(self, prompt: str = None, temperature: float = None, max_tokens: int = None,
                      messages: list = None, json_mode: bool = False, timeout: float = None):
@@ -460,10 +241,10 @@ class LLMClient:
                 timeout=timeout
             )
         except requests.exceptions.Timeout:
-            print(f"❌ LLM streaming timeout after {timeout or self.timeout}s")
+            logger.error(f"LLM streaming timeout after {timeout or self.timeout}s")
             return
         except Exception as e:
-            print(f"❌ LLM streaming error: {e}")
+            logger.error(f"LLM streaming error: {e}")
             return
 
     def ping(self) -> bool:

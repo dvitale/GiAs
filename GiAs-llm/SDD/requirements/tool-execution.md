@@ -7,11 +7,11 @@
 ## Requisiti Funzionali
 
 ### TE-001 TOOL_REGISTRY
-- **Pattern EARS**: Il sistema DEVE registrare 19 tool nel TOOL_REGISTRY: greet_tool, goodbye_tool, help_tool, piano_description_tool, piano_stabilimenti_tool, piano_statistics_tool, search_piani_tool, priority_establishment_tool, risk_predictor_tool, suggest_controls_tool, nearby_priority_tool, delayed_plans_tool, check_plan_delayed_tool, establishment_history_tool, top_risk_activities_tool, analyze_nc_tool, info_procedure_tool, query_data_tool, confirm_details_tool, decline_details_tool.
+- **Pattern EARS**: Il sistema DEVE registrare 19 tool nel TOOL_REGISTRY: greet_tool, goodbye_tool, help_tool, piano_description_tool, piano_stabilimenti_tool, piano_statistics_tool, search_piani_tool, priority_establishment_tool, risk_predictor_tool, suggest_controls_tool, nearby_priority_tool, delayed_plans_tool, check_plan_delayed_tool, establishment_history_tool, top_risk_activities_tool, info_procedure_tool, query_data_tool, confirm_details_tool, decline_details_tool.
 - **Status**: IMPLEMENTATO
 
 ### TE-002 INTENT_TO_TOOL mapping
-- **Pattern EARS**: Il sistema DEVE mappare ogni intent a un tool specifico tramite INTENT_TO_TOOL: greet->greet_tool, goodbye->goodbye_tool, ask_help->help_tool, ask_piano_description->piano_description_tool, ask_piano_stabilimenti->piano_stabilimenti_tool, ask_piano_statistics->piano_statistics_tool, search_piani_by_topic->search_piani_tool, ask_priority_establishment->priority_establishment_tool, ask_risk_based_priority->risk_predictor_tool, ask_suggest_controls->suggest_controls_tool, ask_nearby_priority->nearby_priority_tool, ask_delayed_plans->delayed_plans_tool, check_if_plan_delayed->check_plan_delayed_tool, ask_establishment_history->establishment_history_tool, ask_top_risk_activities->top_risk_activities_tool, analyze_nc_by_category->analyze_nc_tool, info_procedure->info_procedure_tool, query_data->query_data_tool, confirm_show_details->confirm_details_tool, decline_show_details->decline_details_tool.
+- **Pattern EARS**: Il sistema DEVE mappare ogni intent a un tool specifico tramite INTENT_TO_TOOL: greet->greet_tool, goodbye->goodbye_tool, ask_help->help_tool, ask_piano_description->piano_description_tool, ask_piano_stabilimenti->piano_stabilimenti_tool, ask_piano_statistics->piano_statistics_tool, search_piani_by_topic->search_piani_tool, ask_priority_establishment->priority_establishment_tool, ask_risk_based_priority->risk_predictor_tool, ask_suggest_controls->suggest_controls_tool, ask_nearby_priority->nearby_priority_tool, ask_delayed_plans->delayed_plans_tool, check_if_plan_delayed->check_plan_delayed_tool, ask_establishment_history->establishment_history_tool, ask_top_risk_activities->top_risk_activities_tool, info_procedure->info_procedure_tool, query_data->query_data_tool, confirm_show_details->confirm_details_tool, decline_show_details->decline_details_tool.
 - **Status**: IMPLEMENTATO
 
 ### TE-003 Tool conversazionali (greet, goodbye, help)
@@ -79,12 +79,12 @@
 - **Status**: IMPLEMENTATO
 
 ### TE-025 top_risk_activities_tool
-- **Pattern EARS**: QUANDO l'intent e' ask_top_risk_activities, il sistema DEVE estrarre le top N (default 10) linee di attivita' con risk score piu' elevato dal dataset OCSE tramite RiskAnalyzer.calculate_risk_scores, con soglie calibrate (P90=6.6, P75=3.0, P50=0.66).
+- **Pattern EARS**: QUANDO l'intent e' ask_top_risk_activities, il sistema DEVE estrarre le top N (default 10) linee di attivita' con risk score piu' elevato da cu_eseguiti_nc tramite RiskAnalyzer.calculate_risk_scores, con soglie calibrate (P90=6.6, P75=3.0, P50=0.66).
 - **Status**: IMPLEMENTATO
 
 ### TE-026 analyze_nc_tool
 - **Pattern EARS**: QUANDO l'intent e' analyze_nc_by_category, il sistema DEVE analizzare NC per la categoria specificata (default "HACCP"), validando la categoria contro VALID_NC_CATEGORIES, mostrando totale controlli, NC gravi/non gravi, stabilimenti coinvolti, e top 3 stabilimenti critici.
-- **Status**: IMPLEMENTATO
+- **Status**: RIMOSSO (intent analyze_nc_by_category rimosso; le NC sono interrogabili tramite query_data su cu_eseguiti_nc)
 
 ### TE-027 info_procedure_tool - RAG
 - **Pattern EARS**: QUANDO l'intent e' info_procedure, il sistema DEVE usare get_procedure_info con la query dell'utente e il contesto conversazionale dalla sessione per cercare informazioni su procedure operative documentate.

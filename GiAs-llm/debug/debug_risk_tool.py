@@ -26,13 +26,12 @@ def test_risk_tool_debug():
         print("\n2. Test data availability...")
         from agents.data import (
             piani_df, controlli_df, osa_mai_controllati_df,
-            ocse_df, diff_prog_eseg_df, personale_df
+            diff_prog_eseg_df, personale_df
         )
 
         print(f"   - piani_df: {len(piani_df)} rows")
         print(f"   - controlli_df: {len(controlli_df)} rows")
         print(f"   - osa_mai_controllati_df: {len(osa_mai_controllati_df)} rows")
-        print(f"   - ocse_df: {len(ocse_df)} rows")
         print("✅ Data loading successful")
 
         # 3. Test DataRetriever

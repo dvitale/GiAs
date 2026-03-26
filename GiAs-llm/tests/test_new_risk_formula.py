@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from agents.data_agent import RiskAnalyzer
-    from agents.data import ocse_df
+    from agents.data import controlli_df
 except ImportError:
     print("❌ Errore import moduli")
     sys.exit(1)
@@ -78,12 +78,12 @@ def print_comparison():
     print("• < 1: RISCHIO MINIMO (controllo routine)")
 
 def test_real_data():
-    """Test con dati reali dal dataset OCSE"""
-    print(f"\n🗄️ TEST CON DATI REALI")
+    """Test con dati reali da controlli_df (cu_eseguiti_nc)"""
+    print(f"\n TEST CON DATI REALI")
     print("=" * 60)
 
-    if ocse_df.empty:
-        print("❌ Dataset OCSE vuoto")
+    if controlli_df.empty:
+        print("Dataset controlli vuoto")
         return
 
     try:

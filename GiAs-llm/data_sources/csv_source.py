@@ -21,7 +21,6 @@ class CSVDataSource(DataSource):
         self.data_dir = os.path.join(self.base_dir, config.get("directory", "dataset"))
         self.files = config.get("files", {})
         self.personale_sep = config.get("personale_separator", "|")
-        self.ocse_sep = config.get("ocse_separator", ",")
 
     def _load_csv(self, key: str, **kwargs) -> pd.DataFrame:
         """
@@ -67,10 +66,6 @@ class CSVDataSource(DataSource):
     def load_osa_mai_controllati(self) -> pd.DataFrame:
         """Load OSA mai controllati data."""
         return self._load_csv("osa_mai_controllati")
-
-    def load_ocse(self) -> pd.DataFrame:
-        """Load OCSE data."""
-        return self._load_csv("ocse", sep=self.ocse_sep)
 
     def load_diff_prog_eseg(self) -> pd.DataFrame:
         """Load diff programmati/eseguiti data."""

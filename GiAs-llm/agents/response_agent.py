@@ -54,6 +54,16 @@ class ResponseFormatter:
         return "Piano"
 
     @staticmethod
+    def _safe_int(value) -> int:
+        """Converte valore NC a intero, gestendo NaN/vuoti/None."""
+        try:
+            if pd.notna(value) and value != '':
+                return int(value)
+        except Exception:
+            pass
+        return 0
+
+    @staticmethod
     def format_piano_description(
         piano_id: str,
         unique_descriptions: Dict[str, Any],
@@ -826,14 +836,8 @@ class ResponseFormatter:
                 nc_g = getattr(row, 'numero_nc_gravi', 0)
                 nc_ng = getattr(row, 'numero_nc_non_gravi', 0)
 
-                try:
-                    nc_g_val = int(nc_g) if pd.notna(nc_g) and nc_g != '' else 0
-                except:
-                    nc_g_val = 0
-                try:
-                    nc_ng_val = int(nc_ng) if pd.notna(nc_ng) and nc_ng != '' else 0
-                except:
-                    nc_ng_val = 0
+                nc_g_val = ResponseFormatter._safe_int(nc_g)
+                nc_ng_val = ResponseFormatter._safe_int(nc_ng)
 
                 total_nc_gravi += nc_g_val
                 total_nc_non_gravi += nc_ng_val
@@ -863,21 +867,15 @@ class ResponseFormatter:
             if pd.notna(data_controllo):
                 try:
                     data_controllo = pd.to_datetime(data_controllo).strftime('%d/%m/%Y')
-                except:
+                except Exception:
                     pass
 
             piano = getattr(row, 'descrizione_piano', 'N.D.')
             nc_gravi = getattr(row, 'numero_nc_gravi', 0)
             nc_non_gravi = getattr(row, 'numero_nc_non_gravi', 0)
 
-            try:
-                nc_gravi = int(nc_gravi) if pd.notna(nc_gravi) else 0
-            except:
-                nc_gravi = 0
-            try:
-                nc_non_gravi = int(nc_non_gravi) if pd.notna(nc_non_gravi) else 0
-            except:
-                nc_non_gravi = 0
+            nc_gravi = ResponseFormatter._safe_int(nc_gravi)
+            nc_non_gravi = ResponseFormatter._safe_int(nc_non_gravi)
 
             esito = "⚠️ NC" if (nc_gravi > 0 or nc_non_gravi > 0) else "✅ OK"
             response += f"{idx}. {data_controllo} - {piano[:40]}... {esito}\n"
@@ -895,7 +893,7 @@ class ResponseFormatter:
     ) -> str:
         """
         Formatta storico controlli stabilimento.
-        Supporta sia controlli_df che ocse_df come fonte dati.
+        Supporta controlli_df (cu_eseguiti_nc) con NC inline.
         """
         if history_df.empty:
             search_criteria = []
@@ -919,8 +917,6 @@ class ResponseFormatter:
         stab_ric = first_row.get('numero_riconoscimento', numero_riconoscimento or 'N.D.')
         stab_piva = first_row.get('partita_iva', 'N.D.')
         stab_asl = first_row.get('descrizione_asl', 'N.D.')
-        data_source = first_row.get('_source', 'controlli_df')
-
         response = f"**📋 Storico Controlli Stabilimento**\n\n"
         response += f"**Ragione Sociale:** {stab_ragione}\n"
         if stab_reg and stab_reg != 'N.D.':
@@ -929,10 +925,7 @@ class ResponseFormatter:
             response += f"**Numero Riconoscimento:** {stab_ric}\n"
         if stab_piva and stab_piva != 'N.D.':
             response += f"**Partita IVA:** {stab_piva}\n"
-        response += f"**ASL:** {stab_asl}\n"
-        if data_source == 'ocse_df':
-            response += f"**Fonte dati:** Solo non conformità (NC)\n"
-        response += "\n"
+        response += f"**ASL:** {stab_asl}\n\n"
 
         response += f"**📊 Totale controlli trovati:** {len(history_df)}\n\n"
         response += "────────────────────────────────────\n\n"
@@ -945,7 +938,7 @@ class ResponseFormatter:
             if pd.notna(data_controllo):
                 try:
                     data_controllo = pd.to_datetime(data_controllo).strftime('%d/%m/%Y')
-                except:
+                except Exception:
                     pass
 
             piano = getattr(row, 'descrizione_piano', 'N.D.')
@@ -962,14 +955,8 @@ class ResponseFormatter:
             oggetto_nc = getattr(row, 'oggetto_non_conformita', '')
 
             # Converti NC a numeri gestendo NaN
-            try:
-                nc_gravi = int(nc_gravi) if pd.notna(nc_gravi) and nc_gravi != '' else 0
-            except:
-                nc_gravi = 0
-            try:
-                nc_non_gravi = int(nc_non_gravi) if pd.notna(nc_non_gravi) and nc_non_gravi != '' else 0
-            except:
-                nc_non_gravi = 0
+            nc_gravi = ResponseFormatter._safe_int(nc_gravi)
+            nc_non_gravi = ResponseFormatter._safe_int(nc_non_gravi)
 
             response += f"{idx}. **{data_controllo}** | Piano: {piano} | Tecnica: {tecnica}\n"
             response += f"   {macroarea} > {aggregazione} > {attivita}\n"
@@ -1015,14 +1002,8 @@ class ResponseFormatter:
                 nc_g = getattr(row, 'numero_nc_gravi', 0)
                 nc_ng = getattr(row, 'numero_nc_non_gravi', 0)
 
-                try:
-                    nc_g_val = int(nc_g) if pd.notna(nc_g) and nc_g != '' else 0
-                except:
-                    nc_g_val = 0
-                try:
-                    nc_ng_val = int(nc_ng) if pd.notna(nc_ng) and nc_ng != '' else 0
-                except:
-                    nc_ng_val = 0
+                nc_g_val = ResponseFormatter._safe_int(nc_g)
+                nc_ng_val = ResponseFormatter._safe_int(nc_ng)
 
                 total_nc_gravi += nc_g_val
                 total_nc_non_gravi += nc_ng_val
