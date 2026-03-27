@@ -403,6 +403,8 @@ class ResponseFormatter:
 
         display_df = osa_rischiosi.head(max_display) if max_display else osa_rischiosi
         for idx, row in enumerate(display_df.itertuples(index=False), 1):
+            ragione = getattr(row, 'ragione_sociale', None)
+            ragione = str(ragione).strip() if pd.notna(ragione) and str(ragione).strip() else None
             numero_id = getattr(row, 'num_riconoscimento', '') if pd.notna(getattr(row, 'num_riconoscimento', '')) else getattr(row, 'n_reg', '')
             if not numero_id or str(numero_id) == 'nan':
                 numero_id = getattr(row, 'codice_fiscale', '')
@@ -415,7 +417,11 @@ class ResponseFormatter:
             controlli = int(getattr(row, 'numero_controlli_totali', 0))
             aggregazione = getattr(row, 'aggregazione', '')
 
-            response += f"{idx}. **{getattr(row, 'macroarea', '')}** - {aggregazione} | {comune}\n"
+            if ragione:
+                response += f"{idx}. **{ragione}**\n"
+                response += f"   {getattr(row, 'macroarea', '')} - {aggregazione} | {comune}\n"
+            else:
+                response += f"{idx}. **{getattr(row, 'macroarea', '')}** - {aggregazione} | {comune}\n"
             response += f"   {indirizzo} | ID: {numero_id}\n"
             response += f"   Rischio: **{punteggio}/100** | NC: {nc_gravi} gravi, {nc_non_gravi} non gravi | Controlli: {controlli}\n"
 
@@ -474,12 +480,17 @@ class ResponseFormatter:
         response += f"**🚨 Top {limit} Stabilimenti da Controllare:**\n\n"
 
         for idx, row in enumerate(priority_df.head(limit).itertuples(index=False), 1):
+            ragione = getattr(row, 'ragione_sociale', None)
+            ragione = str(ragione).strip() if pd.notna(ragione) and str(ragione).strip() else None
             macroarea = getattr(row, 'macroarea', 'N/D')
             comune = str(getattr(row, 'comune', '')).upper() if pd.notna(getattr(row, 'comune', '')) else 'N/D'
             piano = getattr(row, 'piano', 'N/D')
             diff = int(getattr(row, 'diff', 0))
 
-            response += f"{idx}. **{macroarea}** - {comune}\n"
+            if ragione:
+                response += f"{idx}. **{ragione}** - {comune}\n"
+            else:
+                response += f"{idx}. **{macroarea}** - {comune}\n"
             response += f"   Piano: {piano} (ritardo: {diff})\n\n"
 
         response += "**Raccomandazione:** Dare priorità ai primi 5 stabilimenti.\n"
@@ -518,6 +529,8 @@ class ResponseFormatter:
 
         display_df = priority_df_display.head(max_display) if max_display else priority_df_display
         for idx, row in enumerate(display_df.itertuples(index=False)):
+            ragione = getattr(row, 'ragione_sociale', None)
+            ragione = str(ragione).strip() if pd.notna(ragione) and str(ragione).strip() else None
             num_id = getattr(row, 'num_riconoscimento', '')
             if pd.isna(num_id) or str(num_id) == 'nan':
                 num_id = 'N/D'
@@ -528,7 +541,11 @@ class ResponseFormatter:
             diff = int(getattr(row, 'diff', 0))
             attivita = getattr(row, 'attivita', '')[:80]
 
-            response += f"{idx + 1}. **{getattr(row, 'macroarea', '')}** | {comune} | {indirizzo}\n"
+            if ragione:
+                response += f"{idx + 1}. **{ragione}**\n"
+                response += f"   {getattr(row, 'macroarea', '')} | {comune} | {indirizzo}\n"
+            else:
+                response += f"{idx + 1}. **{getattr(row, 'macroarea', '')}** | {comune} | {indirizzo}\n"
             response += f"   ID: {num_id} | Piano in ritardo: {piano} ({diff} controlli)\n"
             response += f"   Attività: {attivita}...\n"
 

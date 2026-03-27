@@ -64,6 +64,8 @@ Prompt in `_build_response_prompt`: spiega risultati in italiano, motiva priorit
 
 **DataFrame** (in `agents/data_agent.py`): `piani_df`, `controlli_df` (da cu_eseguiti_nc, con NC inline), `osa_mai_controllati_df`, `diff_prog_eseg_df`, `personale_df`. Import: `from ..data import <df>`.
 
+**`osa_mai_controllati`**: sincronizzata da mdgm (`chatbot.osa_mai_controllati`) con `scripts/sync_osa_mai_controllati.py`. Include `ragione_sociale` — usata come identificativo primario nelle risposte di `ask_risk_based_priority`, `ask_priority_establishment` e relative sintesi two-phase. Whitelist in `data_sources/base.py` (`KEEP_COLUMNS`).
+
 **Qdrant**: 2 collection — `piani_monitoraggio` (730 vettori, 384 dim), `intent_examples` (~150 vettori, 384 dim). Singleton in `agents/qdrant_singleton.py`. Rebuild: `python tools/indexing/build_intent_examples_index.py`.
 
 ## Key Concepts

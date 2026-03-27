@@ -102,12 +102,15 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
 
         all_data = []
         for row in osa_rischiosi_full.itertuples(index=False):
+            ragione = getattr(row, 'ragione_sociale', None)
+            ragione = str(ragione).strip() if pd.notna(ragione) and str(ragione).strip() else None
             numero_id = row.num_riconoscimento if pd.notna(row.num_riconoscimento) else row.n_reg
             if not numero_id or str(numero_id) == 'nan':
                 numero_id = row.codice_fiscale
             comune = str(row.comune).upper() if pd.notna(row.comune) else 'N/D'
 
             all_data.append({
+                'ragione_sociale': ragione or 'N/D',
                 'macroarea': str(row.macroarea),
                 'aggregazione': str(row.aggregazione),
                 'comune': comune,

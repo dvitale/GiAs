@@ -28,6 +28,7 @@ KEEP_COLUMNS: Dict[str, List[str]] = {
         "oggetto_non_conformita", "comune",
     ],
     "osa_mai_controllati": [
+        "ragione_sociale",
         "asl", "macroarea", "aggregazione", "attivita", "comune",
         "indirizzo", "latitudine_stab", "longitudine_stab",
         "num_riconoscimento", "provincia_stab",
