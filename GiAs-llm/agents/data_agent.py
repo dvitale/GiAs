@@ -166,7 +166,7 @@ class DataRetriever:
     def search_piani_by_db(query: str, sezione: str = None, campionamento: bool = None) -> List[Dict[str, Any]]:
         """
         Cerca piani per keyword direttamente sul DataFrame piani_monitoraggio in memoria.
-        Equivalente a SQL ILIKE '%query%' su colonne descrizione e descrizione-2.
+        Equivalente a SQL ILIKE '%query%' su colonne descrizione e descrizione_2.
 
         Args:
             query: Termine di ricerca (es. "scrofe", "bovini", "latte")
@@ -179,7 +179,7 @@ class DataRetriever:
         if piani_df.empty:
             return []
 
-        desc2_col = 'descrizione-2' if 'descrizione-2' in piani_df.columns else 'descrizione_2'
+        desc2_col = 'descrizione_2'
 
         # Filtro per sezione (colonna sezione del DataFrame)
         if sezione:
@@ -207,7 +207,7 @@ class DataRetriever:
                 return []
             search_term = query.strip()
 
-            # Cerca in descrizione e descrizione-2 (case-insensitive)
+            # Cerca in descrizione e descrizione_2 (case-insensitive)
             mask_desc = piani_df['descrizione'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
             mask_desc2 = piani_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
 
@@ -432,7 +432,7 @@ class DataRetriever:
             # Precompute desc_full once and store in cache
             piani_raw['desc_full'] = (
                 piani_raw['descrizione'].fillna('').astype(str) + " " +
-                piani_raw.get('descrizione-2', pd.Series([''] * len(piani_raw))).fillna('').astype(str)
+                piani_raw.get('descrizione_2', pd.Series([''] * len(piani_raw))).fillna('').astype(str)
             ).str.strip()
             DataRetriever._piani_cache = piani_raw
             print(f"[DataRetriever] Cached piani data with precomputed desc_full: {len(DataRetriever._piani_cache)} rows")
@@ -474,7 +474,7 @@ class DataRetriever:
                     'alias': row_data.get('alias', ''),
                     'alias_indicatore': row_data.get('alias_indicatore', ''),
                     'descrizione': row_data.get('descrizione', ''),
-                    'descrizione-2': row_data.get('descrizione-2', ''),
+                    'descrizione_2': row_data.get('descrizione_2', ''),
                     'similarity': max_similarity
                 })
 
@@ -972,7 +972,7 @@ class BusinessLogic:
         - alias: nome/codice del piano (es. "A1", "B2")
         - alias_indicatore: nome/codice del sottopiano
         - descrizione: descrizione del piano
-        - descrizione-2 (o descrizione_2): descrizione del sotto-piano
+        - descrizione_2: descrizione del sotto-piano
         - campionamento: True = prelievo campioni, False = attività di controllo
         - sezione: sezione del piano (es. "A", "B", "C")
 
@@ -981,14 +981,12 @@ class BusinessLogic:
         """
         unique_descriptions = {}
 
-        # Usa iterrows per accesso a colonne con caratteri speciali (es. "descrizione-2")
         for _, row in piano_rows.iterrows():
             sezione = row.get("sezione", "")
             alias = row.get("alias", "")
             alias_ind = row.get("alias_indicatore", "")
             desc1 = row.get("descrizione", "")
-            # Colonna con trattino: accesso via dizionario
-            desc2 = row.get("descrizione-2", "")
+            desc2 = row.get("descrizione_2", "")
             # Campo campionamento: True = prelievo campioni, False/None = attività di controllo
             # La colonna nel CSV si chiama 'rendicontazione_per_campione', fallback a 'campionamento' (PostgreSQL)
             camp_raw = row.get("rendicontazione_per_campione", row.get("campionamento", None))

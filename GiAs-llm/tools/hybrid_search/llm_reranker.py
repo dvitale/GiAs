@@ -175,8 +175,8 @@ Concentrati sui {top_k} piani più rilevanti."""
             desc_parts = []
             if candidate.get('descrizione'):
                 desc_parts.append(str(candidate['descrizione']))
-            if candidate.get('descrizione_2') or candidate.get('descrizione-2'):
-                desc_parts.append(str(candidate.get('descrizione_2') or candidate.get('descrizione-2')))
+            if candidate.get('descrizione_2'):
+                desc_parts.append(str(candidate.get('descrizione_2')))
 
             full_desc = " ".join(desc_parts).strip()
 

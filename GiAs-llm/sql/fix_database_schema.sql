@@ -17,7 +17,7 @@ CREATE TABLE piani_monitoraggio (
     alias VARCHAR(10),
     descrizione TEXT,
     alias_indicatore VARCHAR(20),
-    "descrizione-2" TEXT,  -- Quoted column name for hyphen
+    descrizione_2 TEXT,
     campionamento BOOLEAN
 );
 

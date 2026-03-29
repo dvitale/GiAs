@@ -21,16 +21,23 @@ COLLECTION_NAME = "piani_monitoraggio"
 
 
 def load_piani_data():
-    """Carica dati piani da CSV"""
+    """Carica dati piani da CSV o PostgreSQL (fallback)"""
     piani_file = os.path.join(DATASET_DIR, "piani_monitoraggio.csv")
 
-    if not os.path.exists(piani_file):
-        raise FileNotFoundError(f"File piani non trovato: {piani_file}")
+    if os.path.exists(piani_file):
+        piani_df = pd.read_csv(piani_file)
+        print(f"Caricati {len(piani_df)} piani da CSV")
+        return piani_df
 
-    piani_df = pd.read_csv(piani_file)
-    print(f"✅ Caricati {len(piani_df)} piani da CSV")
-
-    return piani_df
+    # Fallback: carica da PostgreSQL
+    try:
+        from data_sources.factory import get_data_source
+        data_source = get_data_source()
+        piani_df = data_source.get_piani()
+        print(f"Caricati {len(piani_df)} piani da PostgreSQL")
+        return piani_df
+    except Exception as e:
+        raise FileNotFoundError(f"File piani non trovato: {piani_file} e fallback DB fallito: {e}")
 
 
 def initialize_qdrant():
@@ -86,8 +93,8 @@ def index_piani(client, model, piani_df):
         if pd.notna(row.get("descrizione")):
             desc_parts.append(str(row["descrizione"]))
 
-        if pd.notna(row.get("descrizione-2")):
-            desc_parts.append(str(row["descrizione-2"]))
+        if pd.notna(row.get("descrizione_2")):
+            desc_parts.append(str(row["descrizione_2"]))
 
         full_text = " ".join(desc_parts).strip()
 
@@ -104,7 +111,7 @@ def index_piani(client, model, piani_df):
                 "alias_indicatore": row.get("alias_indicatore", "") or "",
                 "sezione": row.get("sezione", "") or "",
                 "descrizione": row.get("descrizione", "") or "",
-                "descrizione_2": row.get("descrizione-2", "") or "",
+                "descrizione_2": row.get("descrizione_2", "") or "",
                 "full_text": full_text
             }
         )

@@ -53,7 +53,7 @@ INSERT INTO schema_metadata VALUES (
     {"name":"NORMA","type":"varchar","description_it":"Normativa di riferimento (Reg. CE 852, 853, etc.)","filterable":true},
     {"name":"MACROAREA","type":"varchar","description_it":"Macroarea di attività (es. Produzione alimenti, Allevamenti)","filterable":true},
     {"name":"AGGREGAZIONE","type":"varchar","description_it":"Aggregazione di attività (sottocategoria della macroarea)","filterable":true},
-    {"name":"LINEA DI ATTIVITA","type":"varchar","description_it":"Linea di attività specifica","filterable":true},
+    {"name":"linea_di_attivita","type":"varchar","description_it":"Linea di attività specifica","filterable":true},
     {"name":"registrati","type":"integer","description_it":"Numero stabilimenti registrati","filterable":false},
     {"name":"riconosciuti","type":"integer","description_it":"Numero stabilimenti riconosciuti","filterable":false}
   ]'::jsonb,

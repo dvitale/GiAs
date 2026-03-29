@@ -1,14 +1,18 @@
+%% Schema application-visible: colonne filtrate da KEEP_COLUMNS (data_sources/base.py)
+%% PK riflettono lo schema DB reale. cu_eseguiti_nc e' una MATERIALIZED VIEW.
 erDiagram
     masterlist {
+        int id PK
         string norma
         string macroarea
         string aggregazione
-        string linea_di_attivita
-        int registrati
-        int riconosciuti
+        string LINEA_DI_ATTIVITA "DB: quoted LINEA DI ATTIVITA"
+        string registrati "DB type: character"
+        string riconosciuti "DB type: character"
     }
     piani_monitoraggio {
-        string sezione PK
+        int id PK
+        string sezione
         string alias
         string alias_indicatore
         string descrizione
@@ -17,7 +21,8 @@ erDiagram
         boolean is_attivita
     }
     personale {
-        string user_id PK
+        int id PK
+        string user_id "chiave logica, dedup"
         string descrizione_asl
         string descrizione_uoc
         string descrizione_uos
@@ -26,10 +31,9 @@ erDiagram
         string namefirst
         string namelast
     }
-    cu_eseguiti_nc {
-        string id_controllo PK
-        date data_inizio_controllo
-        string tecnica_controllo
+    cu_eseguiti_nc["cu_eseguiti_nc (MATERIALIZED VIEW)"] {
+        string id_controllo "identificativo logico"
+        timestamp data_inizio_controllo
         string alias_piano_attivita FK
         string descrizione_piano
         string alias_indicatore FK
@@ -40,13 +44,16 @@ erDiagram
         string sezione
         string descrizione_asl FK
         string descrizione_uoc FK
+        string descrizione_uos
         string num_registrazione
         string norma
         string num_riconoscimento
-        float latitudine_stab
-        float longitudine_stab
+        string latitudine_stab "DB type: text"
+        string longitudine_stab "DB type: text"
         string ragione_sociale
         string partita_iva
+        string codice_fiscale
+        string nominativo_rappresentante
         string tipo_non_conformita
         int numero_nc_gravi
         int numero_nc_non_gravi
@@ -54,24 +61,26 @@ erDiagram
         string comune
     }
     osa_mai_controllati {
-        string partita_iva PK
+        string ragione_sociale "identificativo primario UI"
         string asl
         string macroarea FK
         string aggregazione FK
         string attivita FK
         string comune
         string indirizzo
-        float latitudine_stab
-        float longitudine_stab
+        string latitudine_stab "DB type: text"
+        string longitudine_stab "DB type: text"
         string num_riconoscimento
-        string n_reg
         string provincia_stab
+        string partita_iva
+        string codice_fiscale
         string codice_fiscale_rappresentante
         string nominativo_rappresentante
-        date data_inizio_attivita
     }
     cu_diff_programmati_eseguiti {
+        int id PK
         string indicatore FK
+        string descrizione_indicatore
         int anno
         string descrizione_asl FK
         string descrizione_uoc FK
@@ -80,9 +89,9 @@ erDiagram
         int eseguiti
     }
 
-    masterlist ||--o{ cu_eseguiti_nc : "macroarea, aggregazione, attivita"
+    masterlist ||--o{ cu_eseguiti_nc : "macroarea=macroarea_cu, aggregazione=aggregazione_cu, LINEA DI ATTIVITA=attivita_cu"
     masterlist ||--o{ osa_mai_controllati : "macroarea, aggregazione, attivita"
-    piani_monitoraggio ||--o{ cu_eseguiti_nc : "alias_indicatore"
+    piani_monitoraggio ||--o{ cu_eseguiti_nc : "alias, alias_indicatore"
     piani_monitoraggio ||--o{ cu_diff_programmati_eseguiti : "alias_indicatore = indicatore"
     personale ||--o{ cu_eseguiti_nc : "descrizione_asl, descrizione_uoc"
     personale ||--o{ cu_diff_programmati_eseguiti : "descrizione_asl, descrizione_uoc"

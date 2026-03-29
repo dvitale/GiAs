@@ -100,7 +100,7 @@ class ResponseFormatter:
                 response += f"**Sezione {sezione}**\n"
 
             # Indicatori (terzo livello) - carica prima per determinare etichetta piano
-            sottopiani = info.get('sottopiani') or info.get('descrizione-2', [])
+            sottopiani = info.get('sottopiani') or info.get('descrizione_2', [])
             if is_attivita_query:
                 response += f"**Attività:** {display_id}\n"
                 response += f"**Piano di riferimento:** {alias}\n"
@@ -224,7 +224,7 @@ class ResponseFormatter:
     ) -> str:
         """
         Formatta risultati ricerca piani con tutti i dettagli:
-        Sezione, alias, descrizione, alias_indicatore, descrizione-2, campionamento.
+        Sezione, alias, descrizione, alias_indicatore, descrizione_2, campionamento.
         """
         response = f"**Piani trovati per: '{search_term}'**\n\n"
         response += f"**Trovati {len(matches)} risultati rilevanti:**\n\n"
