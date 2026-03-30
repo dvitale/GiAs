@@ -54,8 +54,8 @@ def get_priority_establishment(asl: str, uoc: str, piano_code: Optional[str] = N
         delayed_piani = BusinessLogic.calculate_delayed_plans(diff_filtered, piano_id=piano_code)
 
         # Filtra solo piani (escludi attività con prefisso "ATT ") quando non specificato un piano
-        if not piano_code and 'indicatore' in delayed_piani.columns:
-            delayed_piani = delayed_piani[~delayed_piani['indicatore'].str.upper().str.startswith('ATT ')].copy()
+        if not piano_code and 'alias_indicatore' in delayed_piani.columns:
+            delayed_piani = delayed_piani[~delayed_piani['alias_indicatore'].str.upper().str.startswith('ATT ')].copy()
 
         if delayed_piani.empty:
             if piano_code:
@@ -151,7 +151,7 @@ def _get_piano_data_from_df(diff_df: pd.DataFrame, piano_code: str) -> Dict[str,
     diff_df['ritardo'] = diff_df['programmati'] - diff_df['eseguiti']
 
     # Aggrega per piano
-    piano_summary = diff_df.groupby('indicatore').agg({
+    piano_summary = diff_df.groupby('alias_indicatore').agg({
         'ritardo': 'sum',
         'programmati': 'sum',
         'eseguiti': 'sum'
@@ -160,14 +160,14 @@ def _get_piano_data_from_df(diff_df: pd.DataFrame, piano_code: str) -> Dict[str,
     # Match esatto o sottopiani
     piano_code_upper = piano_code.upper()
     piano_match = piano_summary[
-        (piano_summary['indicatore'] == piano_code_upper) |
-        (piano_summary['indicatore'].str.startswith(piano_code_upper + '_'))
+        (piano_summary['alias_indicatore'] == piano_code_upper) |
+        (piano_summary['alias_indicatore'].str.startswith(piano_code_upper + '_'))
     ]
 
     if piano_match.empty:
         return {'programmati': 0, 'eseguiti': 0, 'ritardo': 0, 'sottopiani': None}
 
-    matched_plans = piano_match['indicatore'].tolist()
+    matched_plans = piano_match['alias_indicatore'].tolist()
     return {
         'programmati': int(piano_match['programmati'].sum()),
         'eseguiti': int(piano_match['eseguiti'].sum()),
@@ -220,8 +220,8 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
         # Filtra per tipo: "piano" (senza prefisso ATT), "attivita" (con prefisso ATT), "tutti"
         # Gli indicatori con "ATT " sono attività, quelli senza sono piani
         effective_tipo = (tipo or "piano").lower()
-        if not piano_code and 'indicatore' in delayed_df.columns and effective_tipo != "tutti":
-            is_att = delayed_df['indicatore'].str.upper().str.startswith('ATT ')
+        if not piano_code and 'alias_indicatore' in delayed_df.columns and effective_tipo != "tutti":
+            is_att = delayed_df['alias_indicatore'].str.upper().str.startswith('ATT ') | delayed_df['alias_indicatore'].str.upper().str.startswith('ATT_')
             if effective_tipo == "attivita":
                 delayed_df = delayed_df[is_att].copy()
             else:  # "piano"
@@ -261,7 +261,7 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
 
         # Se richiesto un piano specifico, verifica solo quello
         if piano_code:
-            piano_summary = delayed_df.groupby('indicatore').agg({
+            piano_summary = delayed_df.groupby('alias_indicatore').agg({
                 'ritardo': 'sum',
                 'programmati': 'sum',
                 'eseguiti': 'sum',
@@ -271,8 +271,8 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
             # Match esatto o sottopiani (es. AO24 matcha AO24_A, AO24_B)
             piano_code_upper = piano_code.upper()
             piano_match = piano_summary[
-                (piano_summary['indicatore'] == piano_code_upper) |
-                (piano_summary['indicatore'].str.startswith(piano_code_upper + '_'))
+                (piano_summary['alias_indicatore'] == piano_code_upper) |
+                (piano_summary['alias_indicatore'].str.startswith(piano_code_upper + '_'))
             ]
 
             if piano_match.empty:
@@ -304,7 +304,7 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
             eseguiti = int(piano_match['eseguiti'].sum())
 
             # Se trovati sottopiani, includi il dettaglio
-            matched_plans = piano_match['indicatore'].tolist()
+            matched_plans = piano_match['alias_indicatore'].tolist()
             sottopiani_list = matched_plans if len(matched_plans) >= 1 else None
 
             response = ResponseFormatter.format_check_plan_delayed(
@@ -331,7 +331,7 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
             }
 
         # Lista completa piani in ritardo
-        piano_summary = delayed_df.groupby('indicatore').agg({
+        piano_summary = delayed_df.groupby('alias_indicatore').agg({
             'ritardo': 'sum',
             'programmati': 'sum',
             'eseguiti': 'sum',
@@ -345,8 +345,8 @@ def get_delayed_plans(asl: str, uoc: Optional[str] = None, piano_code: Optional[
 
         top_delayed = piano_summary.head(10)
 
-        worst_plan_id = piano_summary.iloc[0]['indicatore']  # Fix: use 'indicatore' not 'piano'
-        worst_plan_details = delayed_df[delayed_df['indicatore'] == worst_plan_id].head(5)
+        worst_plan_id = piano_summary.iloc[0]['alias_indicatore']  # Fix: use 'alias_indicatore' not 'piano'
+        worst_plan_details = delayed_df[delayed_df['alias_indicatore'] == worst_plan_id].head(5)
 
         response, detail_response = ResponseFormatter.format_delayed_plans(
             user_asl=asl,

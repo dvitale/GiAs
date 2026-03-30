@@ -123,6 +123,8 @@ COLUMN_ALIASES = {
         "nc_non_gravi": "numero_nc_non_gravi",
         "tipo_nc": "tipo_non_conformita",
         "oggetto_nc": "oggetto_non_conformita",
+        "campionamento": "campionamento",
+        "tipo_piano": "tipo_piano_attivita",
     },
     "masterlist": {
         "norma": "NORMA",

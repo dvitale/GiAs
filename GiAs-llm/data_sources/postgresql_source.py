@@ -133,8 +133,10 @@ class PostgreSQLDataSource(DataSource):
         """
         df = self._load_table("piani")
         if not df.empty:
-            # Deduplicate keeping first occurrence
-            df = df.drop_duplicates(subset=['sezione', 'alias', 'alias_indicatore'], keep='first')
+            df = df.drop_duplicates(
+                subset=['sezione', 'alias_piano_attivita', 'alias_indicatore'],
+                keep='first'
+            )
             print(f"[PostgreSQLDataSource] Deduplicated piani: {len(df)} unique records")
         return df
 

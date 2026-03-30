@@ -169,14 +169,14 @@ Concentrati sui {top_k} piani più rilevanti."""
         # Build candidates context (optimized for token efficiency)
         candidates_lines = []
         for i, candidate in enumerate(candidates, 1):
-            alias = candidate.get('alias', f'Plan_{i}')
+            alias = candidate.get('alias_piano_attivita', candidate.get('alias', f'Plan_{i}'))
 
             # Combine descriptions efficiently
             desc_parts = []
-            if candidate.get('descrizione'):
-                desc_parts.append(str(candidate['descrizione']))
-            if candidate.get('descrizione_2'):
-                desc_parts.append(str(candidate.get('descrizione_2')))
+            if candidate.get('descrizione_piano', candidate.get('descrizione')):
+                desc_parts.append(str(candidate.get('descrizione_piano', candidate.get('descrizione'))))
+            if candidate.get('descrizione_indicatore', candidate.get('descrizione_2')):
+                desc_parts.append(str(candidate.get('descrizione_indicatore', candidate.get('descrizione_2'))))
 
             full_desc = " ".join(desc_parts).strip()
 
@@ -379,15 +379,17 @@ Rispondi con JSON: {{"reranked_plans": [{{"alias": "A1", "relevance_score": 0.9}
         if not reranking_data.get("reranked_plans"):
             return candidates[:top_k]
 
-        # Create mapping alias -> candidate
-        candidates_map = {c.get('alias', ''): c for c in candidates}
+        # Create mapping alias -> candidate (supporta sia vecchi che nuovi nomi)
+        def _get_alias(c):
+            return c.get('alias_piano_attivita', c.get('alias', ''))
+        candidates_map = {_get_alias(c): c for c in candidates}
 
         # Build reranked list following LLM order
         reranked_results = []
         used_aliases = set()
 
         for plan_info in reranking_data["reranked_plans"]:
-            alias = plan_info.get("alias", "")
+            alias = plan_info.get("alias_piano_attivita", plan_info.get("alias", ""))
 
             if alias in candidates_map and alias not in used_aliases:
                 # Get original candidate and enhance with LLM insights
@@ -409,7 +411,7 @@ Rispondi con JSON: {{"reranked_plans": [{{"alias": "A1", "relevance_score": 0.9}
         if len(reranked_results) < top_k:
             remaining_candidates = [
                 c for c in candidates
-                if c.get('alias', '') not in used_aliases
+                if _get_alias(c) not in used_aliases
             ]
 
             for candidate in remaining_candidates[:top_k - len(reranked_results)]:

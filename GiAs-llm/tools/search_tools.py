@@ -40,7 +40,7 @@ def search_piani_by_topic(query: str, similarity_threshold: float = 0.4, sezione
     """
     Cerca piani di controllo per argomento sul database in memoria.
 
-    Esegue ricerca testuale (ILIKE) sulle colonne descrizione e descrizione_2
+    Esegue ricerca testuale (ILIKE) sulle colonne descrizione_piano e descrizione_indicatore
     del DataFrame piani_monitoraggio gia' caricato in RAM al startup.
 
     Args:

@@ -25,13 +25,14 @@ INSERT INTO schema_metadata VALUES (
   'Piani di controllo veterinario organizzati per sezione PRISCAV. Ogni piano ha un alias (codice) e indicatori specifici.',
   '[
     {"name":"sezione","type":"varchar","description_it":"Sezione PRISCAV (A-G)","filterable":true,"sample_values":["SEZIONE A","SEZIONE B","SEZIONE C"]},
-    {"name":"alias","type":"varchar","description_it":"Codice piano (A1, B2, C3, D1)","filterable":true,"sample_values":["A1","A22","B2","C3"]},
+    {"name":"alias_piano_attivita","type":"varchar","description_it":"Codice piano (A1, B2, C3, D1)","filterable":true,"sample_values":["A1","A22","B2","C3"]},
     {"name":"alias_indicatore","type":"varchar","description_it":"Codice indicatore specifico del piano","filterable":true,"sample_values":["A1_A","A22_B","B2_A"]},
-    {"name":"descrizione","type":"text","description_it":"Descrizione del piano di controllo","filterable":false},
-    {"name":"anno","type":"integer","description_it":"Anno del piano","filterable":true},
-    {"name":"tipo_attivita","type":"varchar","description_it":"Tipo di attivita (PROGRAMMATA, EXTRA, etc.)","filterable":true}
+    {"name":"descrizione_piano","type":"text","description_it":"Descrizione del piano di controllo","filterable":false},
+    {"name":"descrizione_indicatore","type":"text","description_it":"Descrizione del sotto-piano/indicatore","filterable":false},
+    {"name":"campionamento","type":"boolean","description_it":"True = prelievo campioni, False = controllo ufficiale","filterable":true},
+    {"name":"tipo_piano_attivita","type":"varchar","description_it":"Tipo: piano o attivita","filterable":true,"sample_values":["piano","attivita"]}
   ]'::jsonb,
-  '[{"target_table":"cu_eseguiti","source_col":"alias","target_col":"descrizione_indicatore","description":"Prefisso piano nei controlli eseguiti"}]'::jsonb,
+  '[{"target_table":"cu_eseguiti","source_col":"alias_indicatore","target_col":"alias_indicatore","description":"Indicatore nei controlli eseguiti"}]'::jsonb,
   '{"sezione":["SEZIONE A=Sicurezza Alimentare","SEZIONE B=Sanità Animale","SEZIONE C=Igiene Allevamenti","SEZIONE D=Alimentazione Animale","SEZIONE E=Farmacosorveglianza","SEZIONE F=Benessere Animale","SEZIONE G=Sottoprodotti"]}'::jsonb,
   '{}', 730, TRUE, NOW()
 ) ON CONFLICT (table_key) DO UPDATE SET
@@ -78,6 +79,8 @@ INSERT INTO schema_metadata VALUES (
     {"name":"descrizione_piano","type":"varchar","description_it":"Descrizione del piano di controllo (senza sigla)","filterable":true},
     {"name":"alias_indicatore","type":"varchar","description_it":"Sigla indicatore (es. A11_A, ATT AO5_A)","filterable":true},
     {"name":"descrizione_indicatore","type":"varchar","description_it":"Descrizione indicatore piano (senza sigla)","filterable":true},
+    {"name":"campionamento","type":"boolean","description_it":"True = prelievo campioni, False = controllo ufficiale","filterable":true},
+    {"name":"tipo_piano_attivita","type":"varchar","description_it":"Tipo: piano o attivita","filterable":true},
     {"name":"macroarea_cu","type":"varchar","description_it":"Macroarea del controllo","filterable":true},
     {"name":"aggregazione_cu","type":"varchar","description_it":"Aggregazione del controllo","filterable":true},
     {"name":"attivita_cu","type":"varchar","description_it":"Linea di attività controllata","filterable":true},
@@ -152,12 +155,12 @@ INSERT INTO schema_metadata VALUES (
     {"name":"descrizione_asl","type":"varchar","description_it":"Nome ASL","filterable":true},
     {"name":"descrizione_uoc","type":"varchar","description_it":"Unità Operativa Complessa","filterable":true},
     {"name":"descrizione_uos","type":"varchar","description_it":"Unità Operativa Semplice","filterable":true},
-    {"name":"indicatore","type":"varchar","description_it":"Codice indicatore piano (es. A1_A)","filterable":true},
+    {"name":"alias_indicatore","type":"varchar","description_it":"Codice indicatore piano (es. A1_A)","filterable":true},
     {"name":"programmati","type":"integer","description_it":"Numero controlli programmati","filterable":false},
     {"name":"eseguiti","type":"integer","description_it":"Numero controlli eseguiti","filterable":false},
     {"name":"anno","type":"integer","description_it":"Anno di riferimento","filterable":true}
   ]'::jsonb,
-  '[{"target_table":"piani_monitoraggio","source_col":"indicatore","target_col":"alias_indicatore","description":"Piano monitoraggio di riferimento"}]'::jsonb,
+  '[{"target_table":"piani_monitoraggio","source_col":"alias_indicatore","target_col":"alias_indicatore","description":"Piano monitoraggio di riferimento"}]'::jsonb,
   '{}'::jsonb,
   '{}', 10000, TRUE, NOW()
 ) ON CONFLICT (table_key) DO UPDATE SET

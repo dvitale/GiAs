@@ -90,16 +90,16 @@ def index_piani(client, model, piani_df):
         if pd.notna(row.get("sezione")):
             desc_parts.append(f"SEZIONE {row['sezione']}")
 
-        if pd.notna(row.get("descrizione")):
-            desc_parts.append(str(row["descrizione"]))
+        if pd.notna(row.get("descrizione_piano")):
+            desc_parts.append(str(row["descrizione_piano"]))
 
-        if pd.notna(row.get("descrizione_2")):
-            desc_parts.append(str(row["descrizione_2"]))
+        if pd.notna(row.get("descrizione_indicatore")):
+            desc_parts.append(str(row["descrizione_indicatore"]))
 
         full_text = " ".join(desc_parts).strip()
 
         if not full_text:
-            full_text = f"Piano {row['alias']}"
+            full_text = f"Piano {row['alias_piano_attivita']}"
 
         embedding = model.encode(full_text, show_progress_bar=False)
 
@@ -107,11 +107,11 @@ def index_piani(client, model, piani_df):
             id=idx,
             vector=embedding.tolist(),
             payload={
-                "alias": row["alias"],
+                "alias_piano_attivita": row["alias_piano_attivita"],
                 "alias_indicatore": row.get("alias_indicatore", "") or "",
                 "sezione": row.get("sezione", "") or "",
-                "descrizione": row.get("descrizione", "") or "",
-                "descrizione_2": row.get("descrizione_2", "") or "",
+                "descrizione_piano": row.get("descrizione_piano", "") or "",
+                "descrizione_indicatore": row.get("descrizione_indicatore", "") or "",
                 "full_text": full_text
             }
         )
@@ -151,8 +151,8 @@ def test_search(client, model):
         print(f"\n📝 Query: '{query}'")
         for i, hit in enumerate(results, 1):
             score = hit.score
-            alias = hit.payload['alias']
-            desc = hit.payload['descrizione'][:80]
+            alias = hit.payload.get('alias_piano_attivita', hit.payload.get('alias', ''))
+            desc = hit.payload.get('descrizione_piano', hit.payload.get('descrizione', ''))[:80]
             print(f"  {i}. {alias} (score: {score:.3f}) - {desc}...")
 
 

@@ -88,7 +88,7 @@ class ResponseFormatter:
 
         for desc_main, info in unique_descriptions.items():
             sezione = info.get('sezione', '')
-            alias = info.get('alias', piano_id)
+            alias = info.get('alias_piano_attivita', piano_id)
             campionamento = info.get('campionamento')
 
             # Descrizione sezione - estrae lettera da "SEZIONE A" o usa direttamente "A"
@@ -100,7 +100,7 @@ class ResponseFormatter:
                 response += f"**Sezione {sezione}**\n"
 
             # Indicatori (terzo livello) - carica prima per determinare etichetta piano
-            sottopiani = info.get('sottopiani') or info.get('descrizione_2', [])
+            sottopiani = info.get('sottopiani') or info.get('descrizione_indicatore', [])
             if is_attivita_query:
                 response += f"**Attività:** {display_id}\n"
                 response += f"**Piano di riferimento:** {alias}\n"
@@ -224,7 +224,7 @@ class ResponseFormatter:
     ) -> str:
         """
         Formatta risultati ricerca piani con tutti i dettagli:
-        Sezione, alias, descrizione, alias_indicatore, descrizione_2, campionamento.
+        Sezione, alias_piano_attivita, descrizione_piano, alias_indicatore, descrizione_indicatore, campionamento.
         """
         response = f"**Piani trovati per: '{search_term}'**\n\n"
         response += f"**Trovati {len(matches)} risultati rilevanti:**\n\n"
@@ -232,10 +232,10 @@ class ResponseFormatter:
         display_matches = matches[:max_display] if max_display else matches
         for idx, piano_info in enumerate(display_matches, 1):
             sezione = piano_info.get('sezione', '')
-            alias = piano_info.get('alias', '')
+            alias = piano_info.get('alias_piano_attivita', '')
             alias_ind = piano_info.get('alias_indicatore', '')
-            desc = piano_info.get('descrizione', '') or ''
-            desc2 = piano_info.get('descrizione_2', '') or ''
+            desc = piano_info.get('descrizione_piano', '') or ''
+            desc2 = piano_info.get('descrizione_indicatore', '') or ''
             campionamento = piano_info.get('campionamento')
 
             # Campionamento: Si/No/N.D.
@@ -293,7 +293,7 @@ class ResponseFormatter:
             camp_label = "Si" if campionamento is True else ("No" if campionamento is False else "N.D.")
 
             piano_label = ResponseFormatter._label_for_piano(alias_ind)
-            response += f"{idx}. **{piano_info['sezione']}** - {piano_label} **{piano_info['alias']}**"
+            response += f"{idx}. **{piano_info['sezione']}** - {piano_label} **{piano_info.get('alias_piano_attivita', '')}**"
             if alias_ind:
                 response += f" - Indicatore {alias_ind}"
             response += f" - Camp.: {camp_label}"
@@ -590,7 +590,7 @@ class ResponseFormatter:
         response += f"**🚨 Top {limit} Piani Più Critici:**\n\n"
 
         for idx, row in enumerate(delayed_df.head(limit).itertuples(index=False), 1):
-            piano_id = getattr(row, 'indicatore', 'N/D')
+            piano_id = getattr(row, 'alias_indicatore', 'N/D')
             ritardo = int(getattr(row, 'ritardo', 0))
             programmati = int(getattr(row, 'programmati', 0))
             eseguiti = int(getattr(row, 'eseguiti', 0))
@@ -640,7 +640,7 @@ class ResponseFormatter:
         response += "\n─────────────────────────────────────\n"
 
         for idx, row in enumerate(top_delayed.itertuples(index=False)):
-            piano_id = getattr(row, 'indicatore', '')  # Fix: use 'indicatore' not 'piano'
+            piano_id = getattr(row, 'alias_indicatore', '')
             ritardo = int(getattr(row, 'ritardo', ''))
             programmati = int(getattr(row, 'programmati', ''))
             eseguiti = int(getattr(row, 'eseguiti', ''))
@@ -1395,7 +1395,7 @@ class SuggestionGenerator:
         """
         suggestions = []
         for piano_info in matches[:3]:
-            alias = piano_info['alias']
+            alias = piano_info.get('alias_piano_attivita', piano_info.get('alias', ''))
             suggestions.append({
                 "text": f"Descrivi il piano {alias}",
                 "query": f"di cosa tratta il piano {alias}"

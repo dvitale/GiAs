@@ -1,5 +1,6 @@
-%% Schema application-visible: colonne filtrate da KEEP_COLUMNS (data_sources/base.py)
-%% PK riflettono lo schema DB reale. cu_eseguiti_nc e' una MATERIALIZED VIEW.
+%% Schema canonico applicativo: nomi colonna come presenti nel DB e visti dal codice Python
+%% Nessun rename applicativo: le tabelle in public hanno gia' i nomi canonici
+%% Le tabelle originali sono archiviate nello schema "old"
 erDiagram
     masterlist {
         int id PK
@@ -12,13 +13,13 @@ erDiagram
     }
     piani_monitoraggio {
         int id PK
-        string sezione
-        string alias
-        string alias_indicatore
-        string descrizione
-        string descrizione_2
-        boolean campionamento
-        boolean is_attivita
+        string sezione "SEZIONE A..G"
+        string alias_piano_attivita "A1, B2, C3"
+        string descrizione_piano
+        string alias_indicatore "A1_A, ATT AO5_A"
+        string descrizione_indicatore
+        boolean campionamento "True = prelievo"
+        string tipo_piano_attivita "piano | attivita"
     }
     personale {
         int id PK
@@ -31,29 +32,29 @@ erDiagram
         string namefirst
         string namelast
     }
-    cu_eseguiti_nc["cu_eseguiti_nc (MATERIALIZED VIEW)"] {
+    cu_eseguiti_nc {
         string id_controllo "identificativo logico"
         timestamp data_inizio_controllo
         string alias_piano_attivita FK
         string descrizione_piano
         string alias_indicatore FK
         string descrizione_indicatore
+        string sezione
+        boolean campionamento "arricchito da piani"
+        string tipo_piano_attivita "arricchito da piani"
         string macroarea_cu FK
         string aggregazione_cu FK
         string attivita_cu FK
-        string sezione
         string descrizione_asl FK
         string descrizione_uoc FK
         string descrizione_uos
         string num_registrazione
         string norma
         string num_riconoscimento
-        string latitudine_stab "DB type: text"
-        string longitudine_stab "DB type: text"
-        string ragione_sociale
-        string partita_iva
-        string codice_fiscale
-        string nominativo_rappresentante
+        string latitudine_stab
+        string longitudine_stab
+        string ragione_sociale "PII"
+        string partita_iva "PII"
         string tipo_non_conformita
         int numero_nc_gravi
         int numero_nc_non_gravi
@@ -68,18 +69,18 @@ erDiagram
         string attivita FK
         string comune
         string indirizzo
-        string latitudine_stab "DB type: text"
-        string longitudine_stab "DB type: text"
+        string latitudine_stab
+        string longitudine_stab
         string num_riconoscimento
         string provincia_stab
-        string partita_iva
-        string codice_fiscale
-        string codice_fiscale_rappresentante
-        string nominativo_rappresentante
+        string partita_iva "PII"
+        string codice_fiscale "PII"
+        string codice_fiscale_rappresentante "PII"
+        string nominativo_rappresentante "PII"
     }
     cu_diff_programmati_eseguiti {
         int id PK
-        string indicatore FK
+        string alias_indicatore FK
         string descrizione_indicatore
         int anno
         string descrizione_asl FK
@@ -87,11 +88,22 @@ erDiagram
         string descrizione_uos
         int programmati
         int eseguiti
+        string sezione "arricchito da piani"
+        string alias_piano_attivita "arricchito da piani"
+        string descrizione_piano "arricchito da piani"
+        string tipo_piano_attivita "arricchito da piani"
+        boolean campionamento "arricchito da piani"
+    }
+    indicatori_non_catalogati {
+        string alias_indicatore PK
+        string descrizione_indicatore
+        string fonte "cu_eseguiti_x | cu_diff"
+        timestamp data_rilevamento
     }
 
-    masterlist ||--o{ cu_eseguiti_nc : "macroarea=macroarea_cu, aggregazione=aggregazione_cu, LINEA DI ATTIVITA=attivita_cu"
+    masterlist ||--o{ cu_eseguiti_nc : "macroarea=macroarea_cu, aggregazione=aggregazione_cu"
     masterlist ||--o{ osa_mai_controllati : "macroarea, aggregazione, attivita"
-    piani_monitoraggio ||--o{ cu_eseguiti_nc : "alias, alias_indicatore"
-    piani_monitoraggio ||--o{ cu_diff_programmati_eseguiti : "alias_indicatore = indicatore"
+    piani_monitoraggio ||--o{ cu_eseguiti_nc : "alias_indicatore"
+    piani_monitoraggio ||--o{ cu_diff_programmati_eseguiti : "alias_indicatore"
     personale ||--o{ cu_eseguiti_nc : "descrizione_asl, descrizione_uoc"
     personale ||--o{ cu_diff_programmati_eseguiti : "descrizione_asl, descrizione_uoc"

@@ -10,7 +10,7 @@
 
 ### 3-Layer Separation
 
-1. **Data Layer** (`agents/data_agent.py`): `DataRetriever` (CSV access), `BusinessLogic` (aggregazioni), `RiskAnalyzer` (risk scoring). No text generation, solo DataFrames/dicts.
+1. **Data Layer** (`agents/data_agent.py`): `DataRetriever` (DB/CSV access), `BusinessLogic` (aggregazioni), `RiskAnalyzer` (risk scoring). No text generation, solo DataFrames/dicts.
 2. **Response Layer** (`agents/response_agent.py`): `ResponseFormatter` (data → testo italiano), `SuggestionGenerator`. Template-based, no domain logic.
 3. **Tool Layer** (`tools/`): Funzioni `@tool` con parametri espliciti, return serializable dict con `formatted_response` key. Include `hybrid_search/` per ricerca avanzata.
 
@@ -63,6 +63,8 @@ Prompt in `_build_response_prompt`: spiega risultati in italiano, motiva priorit
 ## Data Dependencies
 
 **DataFrame** (in `agents/data_agent.py`): `piani_df`, `controlli_df` (da cu_eseguiti_nc, con NC inline), `osa_mai_controllati_df`, `diff_prog_eseg_df`, `personale_df`. Import: `from ..data import <df>`.
+
+**Schema normalizzato**: le tabelle DB in `public` usano nomi colonna canonici (es. `alias_piano_attivita`, `descrizione_piano`, `descrizione_indicatore`, `alias_indicatore`, `tipo_piano_attivita`, `campionamento`). Le tabelle originali sono archiviate nello schema `old`. Nessun rename applicativo in Python. Schema documentato in `docs/dataset_min.md` e `docs/dataset_min.mmd`. Script di creazione: `sql/create_normalized_views.sql`.
 
 **`osa_mai_controllati`**: sincronizzata da mdgm (`chatbot.osa_mai_controllati`) con `scripts/sync_osa_mai_controllati.py`. Include `ragione_sociale` — usata come identificativo primario nelle risposte di `ask_risk_based_priority`, `ask_priority_establishment` e relative sintesi two-phase. Whitelist in `data_sources/base.py` (`KEEP_COLUMNS`).
 

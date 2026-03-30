@@ -378,11 +378,12 @@ Massimo 10 piani più rilevanti."""
             # Transform to match expected structure
             matches = []
             for plan in selected_plans:
+                alias = plan.get("alias_piano_attivita", plan.get("alias", ""))
                 matches.append({
-                    "alias": plan.get("alias", ""),
+                    "alias_piano_attivita": alias,
                     "similarity": plan.get("relevance", 0.7),
                     "llm_rationale": plan.get("rationale", ""),
-                    "descrizione": f"Piano {plan.get('alias', '')} - {plan.get('rationale', '')}"
+                    "descrizione_piano": f"Piano {alias} - {plan.get('rationale', '')}"
                 })
 
             formatted_response = f"LLM search per '{query}': {parsed.get('reasoning', '')}"

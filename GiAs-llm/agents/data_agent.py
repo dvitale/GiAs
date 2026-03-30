@@ -61,7 +61,7 @@ class DataRetriever:
 
         pid = piano_id.upper().strip()
         piano_rows = piani_df[
-            (piani_df["alias"].str.upper() == pid) |
+            (piani_df["alias_piano_attivita"].str.upper() == pid) |
             (piani_df["alias_indicatore"].str.upper() == pid)
         ]
 
@@ -166,20 +166,20 @@ class DataRetriever:
     def search_piani_by_db(query: str, sezione: str = None, campionamento: bool = None) -> List[Dict[str, Any]]:
         """
         Cerca piani per keyword direttamente sul DataFrame piani_monitoraggio in memoria.
-        Equivalente a SQL ILIKE '%query%' su colonne descrizione e descrizione_2.
+        Equivalente a SQL ILIKE '%query%' su colonne descrizione_piano e descrizione_indicatore.
 
         Args:
             query: Termine di ricerca (es. "scrofe", "bovini", "latte")
             sezione: Lettera sezione opzionale (es. "A", "B") per filtrare per colonna sezione
-            campionamento: Filtro booleano opzionale per rendicontazione_per_campione (True/False)
+            campionamento: Filtro booleano opzionale per campionamento (True/False)
 
         Returns:
-            Lista di dict con chiavi: sezione, alias, alias_indicatore, descrizione, descrizione_2, campionamento
+            Lista di dict con chiavi: sezione, alias_piano_attivita, alias_indicatore, descrizione_piano, descrizione_indicatore, campionamento
         """
         if piani_df.empty:
             return []
 
-        desc2_col = 'descrizione_2'
+        desc2_col = 'descrizione_indicatore'
 
         # Filtro per sezione (colonna sezione del DataFrame)
         if sezione:
@@ -196,7 +196,7 @@ class DataRetriever:
             else:
                 # Filtro per sezione + keyword nelle descrizioni
                 search_term = query.strip()
-                mask_desc = filtered_df['descrizione'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+                mask_desc = filtered_df['descrizione_piano'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
                 mask_desc2 = filtered_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
                 matched = filtered_df[mask_desc | mask_desc2]
                 # Se keyword non trova nulla nella sezione, mostra tutti i piani della sezione
@@ -207,8 +207,8 @@ class DataRetriever:
                 return []
             search_term = query.strip()
 
-            # Cerca in descrizione e descrizione_2 (case-insensitive)
-            mask_desc = piani_df['descrizione'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+            # Cerca in descrizione_piano e descrizione_indicatore (case-insensitive)
+            mask_desc = piani_df['descrizione_piano'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
             mask_desc2 = piani_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
 
             matched = piani_df[mask_desc | mask_desc2]
@@ -222,29 +222,27 @@ class DataRetriever:
         if matched.empty:
             return []
 
-        # Deduplica per (alias, alias_indicatore) per mostrare tutti i sottopiani
+        # Deduplica per (alias_piano_attivita, alias_indicatore) per mostrare tutti i sottopiani
         seen_keys = set()
         results = []
         for _, row in matched.iterrows():
-            alias = row.get('alias', '')
+            alias = row.get('alias_piano_attivita', '')
             alias_ind = row.get('alias_indicatore', '')
             dedup_key = (alias, alias_ind)
             if dedup_key in seen_keys:
                 continue
             seen_keys.add(dedup_key)
-            # Campo campionamento: True/False/None
-            # La colonna nel CSV si chiama 'rendicontazione_per_campione', fallback a 'campionamento' (PostgreSQL)
-            camp_raw = row.get('rendicontazione_per_campione', row.get('campionamento', None))
+            camp_raw = row.get('campionamento', None)
             if pd.notna(camp_raw):
                 campionamento = bool(camp_raw)
             else:
                 campionamento = None
             results.append({
                 'sezione': row.get('sezione', ''),
-                'alias': alias,
+                'alias_piano_attivita': alias,
                 'alias_indicatore': alias_ind,
-                'descrizione': row.get('descrizione', ''),
-                'descrizione_2': row.get(desc2_col, ''),
+                'descrizione_piano': row.get('descrizione_piano', ''),
+                'descrizione_indicatore': row.get(desc2_col, ''),
                 'campionamento': campionamento,
             })
 
@@ -344,12 +342,13 @@ class DataRetriever:
 
             matches = []
             for hit in search_results:
+                p = hit.payload
                 matches.append({
-                    'alias': hit.payload['alias'],
-                    'alias_indicatore': hit.payload.get('alias_indicatore', ''),
-                    'sezione': hit.payload.get('sezione', ''),
-                    'descrizione': hit.payload.get('descrizione', ''),
-                    'descrizione_2': hit.payload.get('descrizione_2', ''),
+                    'alias_piano_attivita': p.get('alias_piano_attivita', p.get('alias', '')),
+                    'alias_indicatore': p.get('alias_indicatore', ''),
+                    'sezione': p.get('sezione', ''),
+                    'descrizione_piano': p.get('descrizione_piano', p.get('descrizione', '')),
+                    'descrizione_indicatore': p.get('descrizione_indicatore', p.get('descrizione_2', '')),
                     'similarity': hit.score,
                     'rank': len(matches) + 1
                 })
@@ -431,8 +430,8 @@ class DataRetriever:
             piani_raw = data_source.get_piani()
             # Precompute desc_full once and store in cache
             piani_raw['desc_full'] = (
-                piani_raw['descrizione'].fillna('').astype(str) + " " +
-                piani_raw.get('descrizione_2', pd.Series([''] * len(piani_raw))).fillna('').astype(str)
+                piani_raw['descrizione_piano'].fillna('').astype(str) + " " +
+                piani_raw.get('descrizione_indicatore', pd.Series([''] * len(piani_raw))).fillna('').astype(str)
             ).str.strip()
             DataRetriever._piani_cache = piani_raw
             print(f"[DataRetriever] Cached piani data with precomputed desc_full: {len(DataRetriever._piani_cache)} rows")
@@ -471,10 +470,10 @@ class DataRetriever:
                 row_data = valid_piani.loc[row_idx]
                 matches.append({
                     'sezione': row_data.get('sezione', ''),
-                    'alias': row_data.get('alias', ''),
+                    'alias_piano_attivita': row_data.get('alias_piano_attivita', ''),
                     'alias_indicatore': row_data.get('alias_indicatore', ''),
-                    'descrizione': row_data.get('descrizione', ''),
-                    'descrizione_2': row_data.get('descrizione_2', ''),
+                    'descrizione_piano': row_data.get('descrizione_piano', ''),
+                    'descrizione_indicatore': row_data.get('descrizione_indicatore', ''),
                     'similarity': max_similarity
                 })
 
@@ -934,7 +933,7 @@ class BusinessLogic:
         delayed = diff_df[diff_df['ritardo'] > 0].copy()
 
         if piano_id:
-            delayed = delayed[delayed['indicatore'].str.upper() == piano_id.upper()]
+            delayed = delayed[delayed['alias_indicatore'].str.upper() == piano_id.upper()]
 
         return delayed.sort_values('ritardo', ascending=False)
 
@@ -968,34 +967,32 @@ class BusinessLogic:
         """
         Estrae descrizioni uniche da righe piano.
 
-        Interpretazione campi tabella piani_monitoraggio:
-        - alias: nome/codice del piano (es. "A1", "B2")
+        Interpretazione campi tabella piani_monitoraggio (nomi canonici):
+        - alias_piano_attivita: nome/codice del piano (es. "A1", "B2")
         - alias_indicatore: nome/codice del sottopiano
-        - descrizione: descrizione del piano
-        - descrizione_2: descrizione del sotto-piano
-        - campionamento: True = prelievo campioni, False = attività di controllo
+        - descrizione_piano: descrizione del piano
+        - descrizione_indicatore: descrizione del sotto-piano
+        - campionamento: True = prelievo campioni, False = attivita' di controllo
         - sezione: sezione del piano (es. "A", "B", "C")
 
         Returns:
-            Dict con struttura {descrizione_main: {sezione, alias, campionamento, sottopiani: [...]}}
+            Dict con struttura {descrizione_main: {sezione, alias_piano_attivita, campionamento, sottopiani: [...]}}
         """
         unique_descriptions = {}
 
         for _, row in piano_rows.iterrows():
             sezione = row.get("sezione", "")
-            alias = row.get("alias", "")
+            alias = row.get("alias_piano_attivita", "")
             alias_ind = row.get("alias_indicatore", "")
-            desc1 = row.get("descrizione", "")
-            desc2 = row.get("descrizione_2", "")
-            # Campo campionamento: True = prelievo campioni, False/None = attività di controllo
-            # La colonna nel CSV si chiama 'rendicontazione_per_campione', fallback a 'campionamento' (PostgreSQL)
-            camp_raw = row.get("rendicontazione_per_campione", row.get("campionamento", None))
+            desc1 = row.get("descrizione_piano", "")
+            desc2 = row.get("descrizione_indicatore", "")
+            camp_raw = row.get("campionamento", None)
             campionamento = bool(camp_raw) if pd.notna(camp_raw) else None
 
             if pd.notna(desc1) and desc1 not in unique_descriptions:
                 unique_descriptions[desc1] = {
                     'sezione': sezione,
-                    'alias': alias,
+                    'alias_piano_attivita': alias,
                     'campionamento': campionamento,
                     'sottopiani': []
                 }
@@ -1048,9 +1045,9 @@ class BusinessLogic:
 
         count = 0
         for row in piano_rows.itertuples(index=False):
-            if pd.notna(getattr(row, "descrizione", None)):
+            if pd.notna(getattr(row, "descrizione_piano", None)):
                 count += 1
-            if pd.notna(getattr(row, "descrizione_2", None)):
+            if pd.notna(getattr(row, "descrizione_indicatore", None)):
                 count += 1
         return count
 
@@ -1142,12 +1139,15 @@ class RiskAnalyzer:
         if controlli_df.empty:
             return pd.DataFrame()
 
-        df = controlli_df.copy()
-        df['numero_nc_gravi'] = pd.to_numeric(df['numero_nc_gravi'], errors='coerce').fillna(0)
-        df['numero_nc_non_gravi'] = pd.to_numeric(df['numero_nc_non_gravi'], errors='coerce').fillna(0)
+        # Converte le colonne NC una sola volta senza copiare l'intero DataFrame (398K+ righe)
+        nc_gravi = pd.to_numeric(controlli_df['numero_nc_gravi'], errors='coerce').fillna(0)
+        nc_non_gravi = pd.to_numeric(controlli_df['numero_nc_non_gravi'], errors='coerce').fillna(0)
 
         # Aggrega per attivita - nunique per conteggio controlli (1:N per NC)
-        rischio_per_attivita = df.groupby([
+        rischio_per_attivita = controlli_df.assign(
+            numero_nc_gravi=nc_gravi,
+            numero_nc_non_gravi=nc_non_gravi
+        ).groupby([
             'macroarea_cu', 'aggregazione_cu', 'attivita_cu'
         ]).agg({
             'numero_nc_gravi': 'sum',

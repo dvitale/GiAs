@@ -19,6 +19,7 @@ KEEP_COLUMNS: Dict[str, List[str]] = {
         "descrizione_piano", "descrizione_asl", "descrizione_uoc",
         "descrizione_uos", "sezione", "num_riconoscimento", "norma",
         "alias_piano_attivita", "alias_indicatore",
+        "campionamento", "tipo_piano_attivita",
         "latitudine_stab", "longitudine_stab",
         # PII — mantenute per blacklist check
         "num_registrazione", "ragione_sociale", "partita_iva",
@@ -31,7 +32,8 @@ KEEP_COLUMNS: Dict[str, List[str]] = {
         "ragione_sociale",
         "asl", "macroarea", "aggregazione", "attivita", "comune",
         "indirizzo", "latitudine_stab", "longitudine_stab",
-        "num_riconoscimento", "provincia_stab",
+        "num_riconoscimento", "n_reg", "provincia_stab",
+        "data_inizio_attivita", "codice_norma",
         # PII — mantenute per blacklist check
         "partita_iva", "codice_fiscale", "codice_fiscale_rappresentante",
         "nominativo_rappresentante",
