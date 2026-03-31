@@ -305,7 +305,11 @@ def get_nearby_priority(
         except (ValueError, TypeError):
             risk_score = 0
 
+        ragione = getattr(row, 'ragione_sociale', '')
+        ragione = str(ragione).strip() if pd.notna(ragione) else ''
+
         nearby_list.append({
+            'ragione_sociale': ragione,
             'macroarea': str(getattr(row, 'macroarea', '')),
             'aggregazione': str(getattr(row, 'aggregazione', '')),
             'attivita': str(getattr(row, 'attivita', '')),

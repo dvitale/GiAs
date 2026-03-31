@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 try:
     from langchain_core.tools import tool
 except ImportError:
-    def tool(name):
+    def tool(_name):
         def decorator(func):
             return func
         return decorator

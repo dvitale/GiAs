@@ -60,21 +60,36 @@ class TestMinimalHeuristics:
         assert result is not None
         assert result["intent"] == "decline_show_details"
 
-    def test_risk_disambiguation_mai_controllati(self, router):
-        """Disambiguazione rischio: mai controllati."""
-        for msg in ["1", "mai controllati", "non controllati"]:
+    def test_risk_disambiguation_mai_controllati_text(self, router):
+        """Disambiguazione rischio: pattern testuali matchano sempre."""
+        for msg in ["mai controllati", "non controllati"]:
             result = router._try_heuristics(msg, has_detail_context=False)
             assert result is not None, f"'{msg}' non riconosciuto come disambiguazione rischio"
             assert result["intent"] == "ask_risk_based_priority"
             assert result["slots"]["tipo_analisi_rischio"] == "mai_controllati"
 
-    def test_risk_disambiguation_con_sanzioni(self, router):
-        """Disambiguazione rischio: con sanzioni."""
-        for msg in ["2", "con sanzioni", "più sanzionati"]:
+    def test_risk_disambiguation_con_sanzioni_text(self, router):
+        """Disambiguazione rischio: pattern testuali matchano sempre."""
+        for msg in ["con sanzioni", "più sanzionati"]:
             result = router._try_heuristics(msg, has_detail_context=False)
             assert result is not None, f"'{msg}' non riconosciuto come disambiguazione rischio"
             assert result["intent"] == "ask_risk_based_priority"
             assert result["slots"]["tipo_analisi_rischio"] == "con_sanzioni"
+
+    def test_risk_disambiguation_numeric_requires_context(self, router):
+        """Pattern numerici '1'/'2' richiedono contesto disambiguazione rischio."""
+        # Senza contesto → None (evita conflitto con disambiguazione intent DM)
+        assert router._try_heuristics("1", has_detail_context=False) is None
+        assert router._try_heuristics("2", has_detail_context=False) is None
+
+        # Con contesto rischio pendente → match
+        risk_ds = {"confirmed_intent": "ask_risk_based_priority", "slots": {}}
+        result = router._try_heuristics("1", has_detail_context=False, dialogue_state=risk_ds)
+        assert result is not None
+        assert result["slots"]["tipo_analisi_rischio"] == "mai_controllati"
+        result = router._try_heuristics("2", has_detail_context=False, dialogue_state=risk_ds)
+        assert result is not None
+        assert result["slots"]["tipo_analisi_rischio"] == "con_sanzioni"
 
 
 class TestGreetNotInHeuristics:

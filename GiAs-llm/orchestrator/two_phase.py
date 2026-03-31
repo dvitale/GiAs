@@ -21,9 +21,9 @@ def _get_two_phase_thresholds() -> dict:
             "ask_nearby_priority": 10,
         }
 
-TWO_PHASE_THRESHOLDS = None
+TWO_PHASE_THRESHOLDS = _get_two_phase_thresholds()
 
-TWO_PHASE_SUFFIX = "\n\n---\n**Vuoi vedere tutti i dettagli?** (rispondi *sì* o *no*)"
+TWO_PHASE_SUFFIX = "\n\n>>> Vuoi vedere tutti i dettagli? Rispondi **sì** o **no**."
 
 
 def apply_two_phase_check(

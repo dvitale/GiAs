@@ -4,7 +4,7 @@ import pandas as pd
 try:
     from langchain_core.tools import tool
 except ImportError:
-    def tool(name):
+    def tool(_name):
         def decorator(func):
             return func
         return decorator
@@ -146,8 +146,8 @@ def _get_piano_data_from_df(diff_df: pd.DataFrame, piano_code: str) -> Dict[str,
         return {'programmati': 0, 'eseguiti': 0, 'ritardo': 0, 'sottopiani': None}
 
     # Calcola ritardo per tutti i piani (non solo quelli in ritardo)
-    diff_df['programmati'] = pd.to_numeric(diff_df['programmati'], errors='coerce').fillna(0)
-    diff_df['eseguiti'] = pd.to_numeric(diff_df['eseguiti'], errors='coerce').fillna(0)
+    diff_df['programmati'] = pd.to_numeric(diff_df['programmati'], errors='coerce').fillna(0).astype(int)
+    diff_df['eseguiti'] = pd.to_numeric(diff_df['eseguiti'], errors='coerce').fillna(0).astype(int)
     diff_df['ritardo'] = diff_df['programmati'] - diff_df['eseguiti']
 
     # Aggrega per piano

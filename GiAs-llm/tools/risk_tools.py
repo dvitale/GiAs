@@ -4,7 +4,7 @@ import pandas as pd
 try:
     from langchain_core.tools import tool
 except ImportError:
-    def tool(name):
+    def tool(_name):
         def decorator(func):
             return func
         return decorator
@@ -100,8 +100,10 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
             risk_scores_df=rischio_per_attivita
         )
 
+        # Conteggio totale per two-phase summary, ma itera solo top 20 per dettagli
+        total_risky_count = len(osa_rischiosi_full)
         all_data = []
-        for row in osa_rischiosi_full.itertuples(index=False):
+        for row in osa_rischiosi_full.head(20).itertuples(index=False):
             ragione = getattr(row, 'ragione_sociale', None)
             ragione = str(ragione).strip() if pd.notna(ragione) and str(ragione).strip() else None
             numero_id = row.num_riconoscimento if pd.notna(row.num_riconoscimento) else row.n_reg
@@ -129,7 +131,7 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
             user_asl=asl,
             piano_id=piano_code,
             osa_total_count=len(osa_filtered),
-            osa_risky_count=len(all_data),
+            osa_risky_count=total_risky_count,
             activities_count=len(rischio_per_attivita),
             osa_rischiosi=osa_rischiosi_display,
             has_results=has_results
@@ -139,7 +141,7 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
             "asl": asl,
             "piano_code": piano_code,
             "total_never_controlled": len(osa_filtered),
-            "total_risky": len(all_data),
+            "total_risky": total_risky_count,
             "activities_at_risk": len(rischio_per_attivita),
             "risky_establishments": all_data,
             "formatted_response": response

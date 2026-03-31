@@ -96,8 +96,7 @@ CREATE TABLE osa_mai_controllati (
     data_fine_attivita DATE,
     macroarea TEXT,
     aggregazione TEXT,
-    attivita TEXT,
-    info_complete_attivita TEXT
+    attivita TEXT
 );
 
 -- 5. ocse_isp_semp_2025 table (based on actual isp CSV structure)

@@ -340,6 +340,19 @@ OUTPUT:"""
     )
 
     # Tipo analisi rischio: disambiguazione tra mai controllati e con sanzioni
+    # Pattern TESTUALI: matchano sempre (sono espliciti)
+    RE_RISK_TYPE_MAI_CONTROLLATI_TEXT = re.compile(
+        r'^\s*(?:mai\s*controllat[io]|non\s*controllat[io])\s*$',
+        re.IGNORECASE
+    )
+    RE_RISK_TYPE_CON_SANZIONI_TEXT = re.compile(
+        r'^\s*(?:con\s*(?:pi[uù]\s*)?sanzion[ie]|con\s*(?:pi[uù]\s*)?nc|pi[uù]\s*sanzionat[io])\s*$',
+        re.IGNORECASE
+    )
+    # Pattern NUMERICI: matchano solo con contesto rischio pendente (evita conflitto con disambiguazione intent)
+    RE_RISK_TYPE_NUMERIC_1 = re.compile(r'^\s*1\s*$')
+    RE_RISK_TYPE_NUMERIC_2 = re.compile(r'^\s*2\s*$')
+    # Pattern combinato per _extract_slots (include tutto)
     RE_RISK_TYPE_MAI_CONTROLLATI = re.compile(
         r'^\s*(?:1|mai\s*controllat[io]|non\s*controllat[io])\s*$',
         re.IGNORECASE
@@ -792,7 +805,7 @@ OUTPUT:"""
         # =====================================================================
         # LAYER 2: Heuristics (bypass LLM per casi ovvi)
         # =====================================================================
-        heuristic_result = self._try_heuristics(message, has_detail_context)
+        heuristic_result = self._try_heuristics(message, has_detail_context, dialogue_state)
         if heuristic_result:
             # Pre-parse slots anche per heuristics
             slots = self._extract_slots(message)
@@ -988,7 +1001,7 @@ OUTPUT:"""
             context += f"\nCONTESTO RISPOSTA PRECEDENTE: {session_last_response_context}"
         return context
 
-    def _try_heuristics(self, message: str, has_detail_context: bool) -> Optional[Dict[str, Any]]:
+    def _try_heuristics(self, message: str, has_detail_context: bool, dialogue_state: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
         """
         Heuristiche minimali: solo conferme/rifiuti e risposte a menu.
 
@@ -1009,11 +1022,28 @@ OUTPUT:"""
             if self.DECLINE_SHORT_PATTERNS.match(message):
                 return {"intent": "decline_show_details", "slots": {}, "needs_clarification": False, "confidence": 0.99}
 
-        # Risposte disambiguazione rischio (brevi: "1", "2", "mai controllati", "con sanzioni")
-        if self.RE_RISK_TYPE_MAI_CONTROLLATI.match(message):
+        # Risposte disambiguazione rischio
+        # Pattern TESTUALI: matchano sempre (sono inequivocabili)
+        if self.RE_RISK_TYPE_MAI_CONTROLLATI_TEXT.match(message):
             return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "mai_controllati"}, "needs_clarification": False, "confidence": 0.99}
-        if self.RE_RISK_TYPE_CON_SANZIONI.match(message):
+        if self.RE_RISK_TYPE_CON_SANZIONI_TEXT.match(message):
             return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "con_sanzioni"}, "needs_clarification": False, "confidence": 0.99}
+
+        # Pattern NUMERICI ("1"/"2"): solo se contesto di disambiguazione rischio pendente
+        # Evita conflitto con disambiguazione intent generica gestita dal DM
+        _has_risk_disambiguation = False
+        if dialogue_state:
+            _last = dialogue_state.get("confirmed_intent") or dialogue_state.get("last_tool_intent")
+            _last_slots = dialogue_state.get("slots") or {}
+            _has_risk_disambiguation = (
+                _last == "ask_risk_based_priority"
+                and not _last_slots.get("tipo_analisi_rischio")
+            )
+        if _has_risk_disambiguation:
+            if self.RE_RISK_TYPE_NUMERIC_1.match(message):
+                return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "mai_controllati"}, "needs_clarification": False, "confidence": 0.99}
+            if self.RE_RISK_TYPE_NUMERIC_2.match(message):
+                return {"intent": "ask_risk_based_priority", "slots": {"tipo_analisi_rischio": "con_sanzioni"}, "needs_clarification": False, "confidence": 0.99}
 
         # Tutto il resto → LLM
         return None

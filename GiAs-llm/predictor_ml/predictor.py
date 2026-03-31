@@ -8,11 +8,14 @@ alla logica rule-based esistente.
 import os
 import json
 import re
+import logging
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import warnings
+
+logger = logging.getLogger(__name__)
 
 # Sopprime warnings XGBoost per un output più pulito
 warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
@@ -57,6 +60,9 @@ class RiskPredictor:
 
         # Carica taxonomy mappings da file esterno
         self.taxonomy_map = self._load_taxonomy_mappings(current_dir)
+
+        # Cache per normalizzazioni categoriche (evita ricalcoli su righe duplicate)
+        self._norm_cache: Dict[tuple, str] = {}
 
         # Carica modello se disponibile
         self._load_model()
@@ -137,12 +143,15 @@ class RiskPredictor:
             return self._fallback_prediction(asl, piano_code, limit, min_score)
 
         try:
+            import time as _time
+
             # 1. Carica dati stabilimenti mai controllati
             from agents.data import osa_mai_controllati_df
 
             # Normalizza ASL per filtro (None = tutte le ASL)
             asl_normalized = self._normalize_asl_for_filter(asl)
 
+            t0 = _time.time()
             if asl_normalized:
                 # Filtro per ASL specifica
                 osa_filtered = osa_mai_controllati_df[
@@ -151,6 +160,7 @@ class RiskPredictor:
             else:
                 # Nessun filtro ASL (equivalente a WHERE asl LIKE '%')
                 osa_filtered = osa_mai_controllati_df.copy()
+            logger.info(f"[MLPredictor] ASL filter '{asl_normalized}': {len(osa_filtered)} rows in {_time.time()-t0:.2f}s")
 
             if osa_filtered.empty:
                 return {
@@ -170,7 +180,6 @@ class RiskPredictor:
             if piano_code:
                 osa_filtered, activities_analyzed = self._filter_by_piano(osa_filtered, piano_code)
                 if osa_filtered.empty:
-                    # Conta totale per ASL filtrata o tutte
                     if asl_normalized:
                         total_count = len(osa_mai_controllati_df[
                             osa_mai_controllati_df['asl'].str.upper() == asl_normalized.upper()
@@ -190,15 +199,20 @@ class RiskPredictor:
                     }
 
             # 3. Prepara features per ML
+            t1 = _time.time()
             features_df = self._prepare_features(osa_filtered)
+            logger.info(f"[MLPredictor] Features: {len(features_df)} rows in {_time.time()-t1:.2f}s")
 
             if features_df.empty:
                 return self._fallback_prediction(asl, piano_code, limit, min_score)
 
             # 4. Predizione ML
+            t2 = _time.time()
             risk_predictions = self._predict_ml(features_df)
+            logger.info(f"[MLPredictor] XGBoost predict: {_time.time()-t2:.2f}s")
 
             # 5. Filtra e ordina risultati
+            t3 = _time.time()
             results_df = self._process_predictions(
                 osa_filtered, features_df, risk_predictions, min_score, limit
             )
@@ -206,16 +220,16 @@ class RiskPredictor:
             # 6. Genera spiegazioni se richiesto
             explanations = []
             if explain and not results_df.empty:
-                # Usa indici sicuri per le spiegazioni
                 result_indices = results_df.index.tolist()
                 safe_indices = [i for i in result_indices if i < len(features_df) and i < len(risk_predictions)]
                 if safe_indices:
                     explanations = self._generate_explanations(
                         features_df.iloc[safe_indices], risk_predictions[safe_indices]
                     )
+            logger.info(f"[MLPredictor] Process+explain: {_time.time()-t3:.2f}s")
 
             # 7. Formatta output conforme al contratto
-            # Conta totale per ASL filtrata o tutte
+            t4 = _time.time()
             if asl_normalized:
                 total_never_controlled = len(osa_mai_controllati_df[
                     osa_mai_controllati_df['asl'].str.upper() == asl_normalized.upper()
@@ -223,7 +237,7 @@ class RiskPredictor:
             else:
                 total_never_controlled = len(osa_mai_controllati_df)
 
-            return self._format_ml_output(
+            result = self._format_ml_output(
                 asl=asl,
                 piano_code=piano_code,
                 total_never_controlled=total_never_controlled,
@@ -232,6 +246,8 @@ class RiskPredictor:
                 activities_analyzed=max(activities_analyzed, 1),
                 explanations=explanations
             )
+            logger.info(f"[MLPredictor] Format: {_time.time()-t4:.2f}s | Total: {_time.time()-t0:.2f}s")
+            return result
 
         except Exception as e:
             print(f"[ERROR] Errore predizione ML: {e}")
@@ -251,27 +267,29 @@ class RiskPredictor:
         if not asl or asl.strip().upper() in ('', '*', 'ALL', 'TUTTE', 'TUTTI'):
             return None  # Nessun filtro, tutte le ASL
 
+        asl_clean = asl.strip().upper()
+
         # Usa mappings esterni se disponibili
         if self.taxonomy_map and 'asl' in self.taxonomy_map:
             asl_config = self.taxonomy_map['asl']
             exact_mappings = asl_config.get('exact_mappings', {})
-            normalized = exact_mappings.get(asl.strip().upper())
-            # Se non trovato, ritorna None (tutte le ASL) invece di default arbitrario
-            return normalized
+            normalized = exact_mappings.get(asl_clean)
+            # Se non trovato nel mapping, passa il valore originale come filtro
+            # (il confronto usa .upper() su entrambi i lati, quindi funziona)
+            return normalized or asl_clean
 
-        # Fallback mappings legacy
+        # Fallback mappings legacy (abbreviazioni → nome completo nel DB)
         asl_mapping = {
-            'AVELLINO': 'Avellino', 'AV': 'Avellino',
-            'NAPOLI': 'Napoli 1 Centro', 'NA': 'Napoli 1 Centro',
-            'NA1': 'Napoli 1 Centro', 'NAPOLI 1': 'Napoli 1 Centro',
-            'NAPOLI 2': 'Napoli 2 Nord', 'NA2': 'Napoli 2 Nord',
-            'NAPOLI 3': 'Napoli 3 Sud', 'NA3': 'Napoli 3 Sud',
-            'SALERNO': 'Salerno', 'SA': 'Salerno', 'SA1': 'Salerno',
-            'CASERTA': 'Caserta', 'CE': 'Caserta',
-            'BENEVENTO': 'Benevento', 'BN': 'Benevento'
+            'AV': 'AVELLINO',
+            'NA': 'NAPOLI 1 CENTRO', 'NA1': 'NAPOLI 1 CENTRO', 'NAPOLI': 'NAPOLI 1 CENTRO', 'NAPOLI 1': 'NAPOLI 1 CENTRO',
+            'NA2': 'NAPOLI 2 NORD', 'NAPOLI 2': 'NAPOLI 2 NORD',
+            'NA3': 'NAPOLI 3 SUD', 'NAPOLI 3': 'NAPOLI 3 SUD',
+            'SA': 'SALERNO', 'SA1': 'SALERNO',
+            'CE': 'CASERTA',
+            'BN': 'BENEVENTO'
         }
-        # Ritorna None se non riconosciuto (nessun filtro = tutte le ASL)
-        return asl_mapping.get(asl.strip().upper())
+        # Se non mappato, passa il valore originale (evita scan su tutti i 172K+ record)
+        return asl_mapping.get(asl_clean, asl_clean)
 
     def _normalize_asl_for_ml(self, asl: str) -> str:
         """
@@ -347,72 +365,85 @@ class RiskPredictor:
             return osa_df, 1
 
     def _prepare_features(self, osa_df: pd.DataFrame) -> pd.DataFrame:
-        """Prepara features per il modello V4."""
-        features_list = []
+        """Prepara features per il modello V4.
+        Usa operazioni vectorizzate dove possibile e cache per normalizzazioni.
+        """
+        import time as _time
+        t0 = _time.time()
 
-        for idx, row in osa_df.iterrows():
-            try:
-                # Calcola years_never_controlled
-                if pd.notna(row['data_inizio_attivita']):
-                    start_date = pd.to_datetime(row['data_inizio_attivita'])
-                    years_never = (datetime.now() - start_date).days / 365.25
-                else:
-                    years_never = 3.0  # Default per dati mancanti
+        # 1. Calcola years_never_controlled vectorizzato
+        dates = pd.to_datetime(osa_df['data_inizio_attivita'], errors='coerce')
+        now = pd.Timestamp.now()
+        years_never = ((now - dates).dt.days / 365.25).fillna(3.0)
 
-                # Normalizza campi categorici con field-specific mapping
-                macroarea_norm = self._normalize_category(str(row['macroarea']), 'macroarea')
-                aggregazione_norm = self._normalize_category(str(row['aggregazione']), 'aggregazione')
-                # Applica strip() + upper() a linea_attivita
-                linea_attivita_raw = str(row['attivita']).strip() if pd.notna(row['attivita']) else 'NON SPECIFICATA'
-                linea_attivita = linea_attivita_raw.strip().upper()
+        # 2. Pre-computa normalizzazioni su valori UNICI (cache miss solo per unique values)
+        unique_macroaree = osa_df['macroarea'].dropna().unique()
+        unique_aggregazioni = osa_df['aggregazione'].dropna().unique()
+        for v in unique_macroaree:
+            self._normalize_category(str(v), 'macroarea')
+        for v in unique_aggregazioni:
+            self._normalize_category(str(v), 'aggregazione')
 
-                # Assegna norma: legge campo esistente se presente, altrimenti fallback euristica
-                norma = self._assign_norma(row, linea_attivita, aggregazione_norm)
+        # 3. Applica normalizzazioni via map (usa la cache pre-riscaldata)
+        macroarea_norm = osa_df['macroarea'].apply(
+            lambda x: self._normalize_category(str(x), 'macroarea') if pd.notna(x) else 'NON CLASSIFICATO'
+        )
+        aggregazione_norm = osa_df['aggregazione'].apply(
+            lambda x: self._normalize_category(str(x), 'aggregazione') if pd.notna(x) else 'NON CLASSIFICATO'
+        )
+        linea_attivita = osa_df['attivita'].apply(
+            lambda x: str(x).strip().upper() if pd.notna(x) else 'NON SPECIFICATA'
+        )
 
-                features_list.append({
-                    'macroarea_norm': macroarea_norm,
-                    'aggregazione_norm': aggregazione_norm,
-                    'asl': self._normalize_asl_for_ml(str(row['asl'])),
-                    'linea_attivita': linea_attivita,
-                    'norma': norma,
-                    'years_never_controlled': float(years_never)
-                })
+        # 4. Normalizza ASL (unico valore per filtro, cache immediata)
+        asl_norm = osa_df['asl'].apply(lambda x: self._normalize_asl_for_ml(str(x)))
 
-            except Exception as e:
-                print(f"[WARNING] Errore preparazione feature per riga {idx}: {e}")
-                continue
+        # 5. Assegna norma (richiede accesso a row per campo 'codice_norma')
+        norma = osa_df.apply(
+            lambda row: self._assign_norma(row,
+                str(row['attivita']).strip().upper() if pd.notna(row['attivita']) else 'NON SPECIFICATA',
+                self._normalize_category(str(row['aggregazione']), 'aggregazione') if pd.notna(row['aggregazione']) else 'NON CLASSIFICATO'
+            ), axis=1
+        )
 
-        if not features_list:
-            return pd.DataFrame()
-
-        features_df = pd.DataFrame(features_list)
+        features_df = pd.DataFrame({
+            'macroarea_norm': macroarea_norm,
+            'aggregazione_norm': aggregazione_norm,
+            'years_never_controlled': years_never.values,
+            'asl': asl_norm,
+            'linea_attivita': linea_attivita,
+            'norma': norma,
+        })
 
         # Casting esplicito a category (richiesto da XGBoost)
         cat_cols = ['macroarea_norm', 'aggregazione_norm', 'asl', 'linea_attivita', 'norma']
         for col in cat_cols:
             features_df[col] = features_df[col].astype('category')
 
+        t1 = _time.time()
+        print(f"[MLPredictor] Features preparate per {len(features_df)} righe in {t1-t0:.2f}s")
+
         return features_df
 
     def _normalize_category(self, category: str, field_type: str = 'macroarea') -> str:
         """
         Normalizza categorie per coerenza con training data V4.
-
-        Usa mappings esterni da taxonomy_map.json se disponibili,
-        altrimenti fallback a mappings hardcoded legacy.
-
-        Args:
-            category: Categoria da normalizzare
-            field_type: Tipo di campo (macroarea, aggregazione, linea_attivita)
-
-        Returns:
-            Categoria normalizzata per training data V4
+        Risultati cachati per evitare ricalcoli su valori ripetuti (~98% cache hit).
         """
         if pd.isna(category) or category == 'nan' or not category:
             return 'NON CLASSIFICATO'
 
-        category_clean = str(category).strip().upper()
+        cache_key = (category, field_type)
+        cached = self._norm_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
+        result = self._normalize_category_uncached(str(category).strip().upper(), field_type)
+        self._norm_cache[cache_key] = result
+        return result
+
+    def _normalize_category_uncached(self, category_clean: str, field_type: str) -> str:
+        """Logica di normalizzazione senza cache."""
         # Prova prima con mappings esterni
         if self.taxonomy_map and field_type in self.taxonomy_map:
             field_config = self.taxonomy_map[field_type]
@@ -498,6 +529,10 @@ class RiskPredictor:
         # 1. Prova a leggere campo norma esistente
         norma_config = self.taxonomy_map.get('norma', {}) if self.taxonomy_map else {}
         source_field = norma_config.get('source_field', 'norma')
+
+        # Fallback a 'codice_norma' se 'norma' non presente (OSA usa nome colonna diverso)
+        if source_field not in row.index and 'codice_norma' in row.index:
+            source_field = 'codice_norma'
 
         if source_field in row.index:
             norma_value = row[source_field]
@@ -874,15 +909,15 @@ class RiskPredictor:
             }
 
 
+_predictor_singleton: Optional[RiskPredictor] = None
+
+
 def load_predictor(model_path: Optional[str] = None, config: Optional[Dict] = None) -> RiskPredictor:
     """
-    Factory function per caricare RiskPredictor.
-
-    Args:
-        model_path: Path opzionale al modello
-        config: Configurazione opzionale
-
-    Returns:
-        RiskPredictor inizializzato
+    Factory singleton per RiskPredictor.
+    Carica modello XGBoost e taxonomy una sola volta.
     """
-    return RiskPredictor(model_path=model_path, config=config)
+    global _predictor_singleton
+    if _predictor_singleton is None:
+        _predictor_singleton = RiskPredictor(model_path=model_path, config=config)
+    return _predictor_singleton

@@ -189,6 +189,16 @@ async def lifespan(app: FastAPI):
             # Init IntentMetadataService (lazy, carica da DB alla prima chiamata)
             _get_intent_metadata_service()
 
+            # Pre-calcola risk scores per evitare cold-start sulla prima query utente
+            try:
+                from agents.data_agent import RiskAnalyzer
+                risk_start = time.time()
+                risk_df = RiskAnalyzer.calculate_risk_scores()
+                risk_time = time.time() - risk_start
+                logger.info(f"[Startup] ✓ Risk scores pre-computed: {len(risk_df)} activities in {risk_time:.2f}s")
+            except Exception as e:
+                logger.warning(f"[Startup] Risk scores pre-computation failed (will compute on first request): {e}")
+
             logger.info("[Startup] ✓ Server ready to handle requests")
 
         except Exception as e:

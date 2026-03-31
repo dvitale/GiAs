@@ -527,6 +527,7 @@ class ChatBot {
 
     identifyLineType(line) {
         if (/^\|.+\|$/.test(line)) return 'table-row';
+        if (/^&gt;&gt;&gt;\s+/.test(line)) return 'action-prompt';
         if (/^\d+\.\s+/.test(line)) return 'list-item';
         if (/^[•-]\s+/.test(line)) return 'bullet-item';
         if (/^###\s+/.test(line)) return 'markdown-header';
@@ -571,6 +572,10 @@ class ChatBot {
 
             case 'field':
                 return `<div class="field-group">${this.formatField(block.content)}</div>`;
+
+            case 'action-prompt':
+                const promptText = block.content.replace(/^&gt;&gt;&gt;\s+/, '');
+                return `<div class="action-prompt">${this.convertMarkdown(promptText)}</div>`;
 
             case 'bullet-item':
                 const bulletContent = block.content.replace(/^[•-]\s+/, '');

@@ -563,7 +563,7 @@ class ResponseFormatter:
     @staticmethod
     def format_delayed_plans_summary(
         delayed_plans: List[Dict[str, Any]],
-        uoc_details: List[Dict[str, Any]],
+        uoc_details: List[Dict[str, Any]],  # noqa: kept for API compat
         total_delayed: int,
         limit: int = 5
     ) -> str:
@@ -686,7 +686,7 @@ class ResponseFormatter:
     def format_check_plan_delayed(
         piano_code: str,
         is_delayed: bool,
-        asl: str,
+        asl: str,  # noqa: kept for API compat
         uoc: str,
         ritardo: int = 0,
         programmati: int = 0,
@@ -790,19 +790,33 @@ class ResponseFormatter:
         response += f"**Mostrando i primi {limit}:**\n"
 
         for num, row in enumerate(sample_df.itertuples(index=False), 1):
-            comune = str(getattr(row, 'comune', 'N/D')).upper()
-            indirizzo = str(getattr(row, 'indirizzo', 'N/D'))
-            info_complete = str(getattr(row, 'info_complete_attivita', 'N/D'))
-            num_ric_val = getattr(row, 'num_riconoscimento', None)
-            n_reg_val = getattr(row, 'n_reg', None)
-            num_ric = num_ric_val if pd.notna(num_ric_val) else n_reg_val
-            if not num_ric or str(num_ric) == 'nan':
-                num_ric = 'N/D'
-            else:
-                num_ric = str(num_ric)
+            def _val(attr):
+                v = str(getattr(row, attr, ''))
+                return '' if v in ('N.D.', 'N/D', 'nan', 'None', '') else v
 
-            response += f"**{num}. {comune}** | {indirizzo} | ID: {num_ric}\n"
-            response += f"   Attività: {info_complete[:100]}{'...' if len(info_complete) > 100 else ''}\n"
+            ragione = _val('ragione_sociale')
+            comune = _val('comune').upper()
+            indirizzo = _val('indirizzo')
+            attivita = _val('attivita')
+            num_ric = _val('num_riconoscimento') or _val('n_reg')
+
+            # Intestazione: ragione_sociale o comune
+            header = ragione or comune or 'Stabilimento'
+            # Dettagli sotto l'intestazione (solo campi valorizzati)
+            details = []
+            if comune and comune != header.upper():
+                details.append(comune)
+            if indirizzo:
+                details.append(indirizzo)
+            if num_ric:
+                details.append(f"ID: {num_ric}")
+
+            response += f"**{num}. {header}**"
+            if details:
+                response += f" | {' | '.join(details)}"
+            response += "\n"
+            if attivita:
+                response += f"   Attività: {attivita[:100]}{'...' if len(attivita) > 100 else ''}\n"
 
         if filtered_count > limit:
             response += f"\n**Nota:** Altri {filtered_count - limit:,} stabilimenti disponibili"
@@ -977,7 +991,6 @@ class ResponseFormatter:
             nc_gravi = getattr(row, 'numero_nc_gravi', 0)
             nc_non_gravi = getattr(row, 'numero_nc_non_gravi', 0)
             tipo_nc = getattr(row, 'tipo_non_conformita', '')
-            oggetto_nc = getattr(row, 'oggetto_non_conformita', '')
 
             # Converti NC a numeri gestendo NaN
             nc_gravi = ResponseFormatter._safe_int(nc_gravi)
@@ -1222,6 +1235,8 @@ class ResponseFormatter:
 
         for idx, row in enumerate(nearby_df.itertuples(index=False), 1):
             distanza = getattr(row, 'distanza_km', 0)
+            ragione = getattr(row, 'ragione_sociale', None)
+            ragione = str(ragione).strip() if pd.notna(ragione) and str(ragione).strip() else None
             macroarea = getattr(row, 'macroarea', 'N/D')
             aggregazione = getattr(row, 'aggregazione', 'N/D')
             comune = str(getattr(row, 'comune', '')).upper() if pd.notna(getattr(row, 'comune', '')) else 'N/D'
@@ -1236,7 +1251,10 @@ class ResponseFormatter:
             except (ValueError, TypeError):
                 risk_score = 0
 
-            response += f"{idx}. **{macroarea}** - {aggregazione}\n"
+            if ragione:
+                response += f"{idx}. **{ragione}** — {aggregazione}\n"
+            else:
+                response += f"{idx}. **{macroarea}** — {aggregazione}\n"
             response += f"   {indirizzo}, {comune} ({distanza:.1f} km)\n"
             response += f"   N. Registrazione: {num_ric}"
 
@@ -1326,6 +1344,8 @@ class ResponseFormatter:
 
         for idx, row in enumerate(nearby_df.head(limit).itertuples(index=False), 1):
             distanza = getattr(row, 'distanza_km', 0)
+            ragione = getattr(row, 'ragione_sociale', None)
+            ragione = str(ragione).strip() if pd.notna(ragione) and str(ragione).strip() else None
             macroarea = getattr(row, 'macroarea', 'N/D')
             comune = str(getattr(row, 'comune', '')).upper() if pd.notna(getattr(row, 'comune', '')) else 'N/D'
 
@@ -1336,8 +1356,9 @@ class ResponseFormatter:
                 risk_score = 0
 
             risk_indicator = f" | Risk: {risk_score}/100" if risk_score > 0 else ""
+            label = ragione if ragione else macroarea
 
-            response += f"{idx}. **{macroarea}** - {comune} ({distanza:.1f} km){risk_indicator}\n"
+            response += f"{idx}. **{label}** — {comune} ({distanza:.1f} km){risk_indicator}\n"
 
         if total_found > limit:
             response += f"\n... e altri {total_found - limit} stabilimenti.\n"

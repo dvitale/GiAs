@@ -251,7 +251,7 @@ fi
 echo ""
 echo "🚀 Avvio API server su porta 5005..."
 
-python3 "$PROJECT_ROOT/app/api.py" > "$API_LOG" 2>&1 &
+PYTHONUNBUFFERED=1 python3 "$PROJECT_ROOT/app/api.py" > "$API_LOG" 2>&1 &
 API_PID=$!
 
 echo $API_PID > "$PID_FILE"
