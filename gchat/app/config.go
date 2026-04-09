@@ -3,11 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
-	"net/http"
 	"os"
-	"time"
 )
 
 type Config struct {
@@ -20,8 +18,9 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port string `json:"port"`
-	Host string `json:"host"`
+	Port          string `json:"port"`
+	Host          string `json:"host"`
+	SessionSecret string `json:"session_secret"`
 }
 
 type LLMServerConfig struct {
@@ -81,7 +80,7 @@ func LoadConfig() *Config {
 		return getDefaultConfig()
 	}
 
-	data, err := ioutil.ReadFile(configPath)
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		log.Printf("Error reading config file: %v, using defaults", err)
 		return getDefaultConfig()
@@ -97,16 +96,12 @@ func LoadConfig() *Config {
 }
 
 func GetCurrentYearFromServer(llmServerURL string) (int, error) {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
 	// Prova prima l'endpoint /config
-	resp, err := client.Get(llmServerURL + "/config")
+	resp, err := shortHTTPClient.Get(llmServerURL + "/config")
 	if err == nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == 200 {
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			if err == nil {
 				var configResp ServerConfigResponse
 				if json.Unmarshal(body, &configResp) == nil {
@@ -118,11 +113,11 @@ func GetCurrentYearFromServer(llmServerURL string) (int, error) {
 	}
 
 	// Fallback: prova endpoint /status
-	resp, err = client.Get(llmServerURL + "/status")
+	resp, err = shortHTTPClient.Get(llmServerURL + "/status")
 	if err == nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == 200 {
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			if err == nil {
 				var statusResp ServerStatusResponse
 				if json.Unmarshal(body, &statusResp) == nil && statusResp.CurrentYear > 0 {
@@ -205,8 +200,7 @@ func GetBackendStatus() *ServerStatusResponse {
 		llmServerURL = "http://localhost:5005"
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(llmServerURL + "/status")
+	resp, err := shortHTTPClient.Get(llmServerURL + "/status")
 	if err != nil {
 		log.Printf("BACKEND_STATUS_ERROR: %v", err)
 		return &ServerStatusResponse{
@@ -225,7 +219,7 @@ func GetBackendStatus() *ServerStatusResponse {
 		}
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return &ServerStatusResponse{
 			Status:    "error",

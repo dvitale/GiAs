@@ -61,8 +61,7 @@ func GetPersonaleByUserID(userID int) (*PersonaleRecord, error) {
 
 	// Chiamata HTTP al backend
 	url := fmt.Sprintf("%s/api/personale/%d", backendURL, userID)
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := shortHTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("errore chiamata backend personale: %v", err)
 	}

@@ -23,9 +23,11 @@ class ChatBot {
         this.appContainer = document.getElementById('appContainer');
         this.typingIndicator = document.getElementById('typingIndicator');
         this.themeToggle = document.getElementById('themeToggle');
+        this.buddyModeToggle = document.getElementById('buddyModeToggle');
 
         // State
         this.isInChatMode = false;
+        this.buddyMode = false;
         this.isRecording = false;
         this.mediaRecorder = null;
         this.audioChunks = [];
@@ -41,6 +43,7 @@ class ChatBot {
         // Initialize
         this.initializeEventListeners();
         this.initializeTheme();
+        this.initializeBuddyMode();
         this.initLogoDebugLink();
 
         // Check required metadata before enabling chat
@@ -131,6 +134,37 @@ class ChatBot {
         document.body.classList.toggle('dark-theme');
         const isDark = document.body.classList.contains('dark-theme');
         localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+
+    initializeBuddyMode() {
+        this.buddyMode = localStorage.getItem('buddy-mode') === 'on';
+        this._updateBuddyToggleUI();
+        if (this.buddyModeToggle) {
+            this.buddyModeToggle.addEventListener('click', () => this.toggleBuddyMode());
+        }
+    }
+
+    toggleBuddyMode() {
+        this.buddyMode = !this.buddyMode;
+        localStorage.setItem('buddy-mode', this.buddyMode ? 'on' : 'off');
+        this._updateBuddyToggleUI();
+    }
+
+    _updateBuddyToggleUI() {
+        if (!this.buddyModeToggle) return;
+        const iconOff = this.buddyModeToggle.querySelector('.buddy-icon-off');
+        const iconOn = this.buddyModeToggle.querySelector('.buddy-icon-on');
+        if (this.buddyMode) {
+            this.buddyModeToggle.classList.add('active');
+            this.buddyModeToggle.title = 'Tono amichevole attivo';
+            if (iconOff) iconOff.style.display = 'none';
+            if (iconOn) iconOn.style.display = '';
+        } else {
+            this.buddyModeToggle.classList.remove('active');
+            this.buddyModeToggle.title = 'Tono amichevole';
+            if (iconOff) iconOff.style.display = '';
+            if (iconOn) iconOn.style.display = 'none';
+        }
     }
 
     async resetSession() {
@@ -285,13 +319,16 @@ class ChatBot {
         return 'Non riesco a connettermi al server. Verifica la tua connessione e riprova.';
     }
 
-    async sendToServerWithRetry(message, maxRetries = 3) {
+    async sendToServerWithRetry(message) {
+        // Schedule di ritentativi: dopo il primo fallimento attende 2s, poi 5s, poi 15s.
+        const retryDelays = [2000, 5000, 15000];
+        const maxAttempts = retryDelays.length + 1;
         let lastError;
 
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 if (attempt > 1) {
-                    this.updateTypingIndicator(`Tentativo ${attempt}/${maxRetries}...`);
+                    this.updateTypingIndicator(`Tentativo ${attempt}/${maxAttempts}...`);
                 }
 
                 const response = await this.sendToServer(message);
@@ -312,9 +349,10 @@ class ChatBot {
                     throw error;
                 }
 
-                if (attempt < maxRetries) {
-                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-                    this.updateTypingIndicator(`Riconnessione in corso...`);
+                if (attempt < maxAttempts) {
+                    const delay = retryDelays[attempt - 1];
+                    const seconds = Math.round(delay / 1000);
+                    this.updateTypingIndicator(`Riconnessione tra ${seconds}s...`);
                     await this.sleep(delay);
                 }
             }
@@ -352,6 +390,11 @@ class ChatBot {
             payload.latitude = gps.latitude;
             payload.longitude = gps.longitude;
             payload.gps_accuracy_m = gps.accuracy;
+        }
+
+        // Buddy mode
+        if (this.buddyMode) {
+            payload.buddy_mode = true;
         }
 
         const controller = new AbortController();
@@ -1157,6 +1200,11 @@ ${cleanAnswer}
             payload.latitude = gps.latitude;
             payload.longitude = gps.longitude;
             payload.gps_accuracy_m = gps.accuracy;
+        }
+
+        // Buddy mode
+        if (this.buddyMode) {
+            payload.buddy_mode = true;
         }
 
         const response = await fetch(window.basePath + '/chat/stream', {

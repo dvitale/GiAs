@@ -91,8 +91,12 @@ func main() {
 	r := gin.Default()
 
 	// Session store setup (cookie-based)
-	// IMPORTANTE: in produzione usare una chiave segreta da variabile d'ambiente
-	store := cookie.NewStore([]byte("gias-secret-key-32-bytes-long!!!"))
+	sessionSecret := config.Server.SessionSecret
+	if sessionSecret == "" {
+		sessionSecret = "gias-default-dev-key-change-me!!" // fallback solo per sviluppo
+		log.Printf("WARN: session_secret non configurato in config.json, uso chiave di default")
+	}
+	store := cookie.NewStore([]byte(sessionSecret))
 	store.Options(sessions.Options{
 		Path:     "/gias/webchat",
 		MaxAge:   SessionTTL, // 5 minuti
@@ -101,9 +105,11 @@ func main() {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	// Apply session middleware
+	// Apply middleware chain
 	r.Use(sessions.Sessions("gias_session", store))
 	r.Use(SessionMiddleware())
+	r.Use(EnsureCSRFToken())
+	r.Use(ValidateCSRF())
 
 	// Add template functions
 	r.SetFuncMap(template.FuncMap{
@@ -170,6 +176,7 @@ func main() {
 			"streamingEnabled":     config.UI.EnableStreaming,
 			"pwaInstallMessage":    config.UI.PWAInstallMessage,
 			"pwaInstallTimeout":    config.UI.PWAInstallTimeoutSecs,
+			"csrfToken":            c.GetString("csrf_token"),
 			"queryParams": gin.H{
 				"asl_id":         aslID,
 				"asl_name":       aslName,
@@ -194,8 +201,8 @@ func main() {
 	api.POST("/session/reset", func(c *gin.Context) {
 		ProxySessionReset(c, config.LLMServer.URL, config.LLMServer.Timeout)
 	})
-	api.POST("/chat", HandleChat)
-	api.POST("/chat/stream", HandleChatStream)
+	api.POST("/chat", RateLimitMiddleware(), HandleChat)
+	api.POST("/chat/stream", RateLimitMiddleware(), HandleChatStream)
 	api.GET("/api/predefined-questions", HandlePredefinedQuestions)
 	api.POST("/api/transcribe", TranscribeHandler)
 

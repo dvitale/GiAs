@@ -19,6 +19,7 @@ class LangGraphDebugChatBot {
         this.intentDisplay = document.getElementById('intentDisplay');
         this.entitiesDisplay = document.getElementById('entitiesDisplay');
         this.agentsDisplay = document.getElementById('agentsDisplay');
+        this.toolOutputDisplay = document.getElementById('toolOutputDisplay');
         this.stateDisplay = document.getElementById('stateDisplay');
 
         // Sender ID stabile per sessione (necessario per two-phase e memoria conversazionale)
@@ -142,6 +143,7 @@ class LangGraphDebugChatBot {
         this.updateIntentDisplay(response);
         this.updateEntitiesDisplay(response);
         this.updateAgentsDisplay(response);
+        this.updateToolOutputDisplay(response);
         this.updateStateDisplay(response);
     }
 
@@ -320,6 +322,41 @@ class LangGraphDebugChatBot {
         } else {
             this.agentsDisplay.innerHTML = '<div class="empty-state">Nessun agent eseguito</div>';
         }
+    }
+
+    updateToolOutputDisplay(response) {
+        const el = this.toolOutputDisplay;
+        if (!el) return;
+        const to = response.tool_output;
+        if (!to || Object.keys(to).length === 0) {
+            el.innerHTML = '<div class="empty-state">Nessuna query eseguita</div>';
+            return;
+        }
+        const labelMap = {
+            type: 'Tool', piano_code: 'Codice', entity_type: 'Tipo entità',
+            piano_description: 'Descrizione', total_controls: 'Controlli',
+            unique_establishments: 'Tipologie', user_asl: 'ASL', total_found: 'Trovati',
+            predictor_type: 'Predittore', delayed_plans_count: 'Piani ritardo',
+            total_plans_delayed: 'Piani in ritardo', total_delay: 'Ritardo totale',
+            search_term: 'Ricerca', error: 'Errore', asl: 'ASL', uoc: 'UOC',
+            osa_total_count: 'OSA totali', osa_risky_count: 'OSA rischio',
+            is_delayed: 'In ritardo', ritardo: 'Ritardo', programmati: 'Programmati',
+            eseguiti: 'Eseguiti', total_matched: 'Risultati',
+            activities_count: 'Attività critiche', query_descriptor: 'Query'
+        };
+        let html = '';
+        // Pseudo-query SQL in evidenza
+        if (to.pseudo_query) {
+            html += `<div style="background: var(--bg-secondary, #1e293b); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-family: monospace; font-size: 0.82em; color: #93c5fd; white-space: pre-wrap; word-break: break-all; border-left: 3px solid #3b82f6;">${to.pseudo_query}</div>`;
+        }
+        const rows = Object.entries(to)
+            .filter(([k, v]) => v !== null && v !== undefined && v !== '' && k !== 'pseudo_query')
+            .map(([k, v]) => {
+                const label = labelMap[k] || k.replace(/_/g, ' ');
+                const displayVal = typeof v === 'boolean' ? (v ? 'Sì' : 'No') : v;
+                return `<div class="entity-item"><span class="entity-name">${label}:</span> <span class="entity-value">${displayVal}</span></div>`;
+            }).join('');
+        el.innerHTML = (html + rows) || '<div class="empty-state">Nessun dettaglio</div>';
     }
 
     updateStateDisplay(response) {

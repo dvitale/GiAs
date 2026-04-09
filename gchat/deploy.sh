@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "=== Web2Rasa Deployment Script ==="
+echo "=== gchat Deployment Script ==="
 
 # Build the application
 echo "Step 1: Building application..."

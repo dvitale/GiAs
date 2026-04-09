@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	gocontext "context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -45,6 +46,7 @@ type ChatRequest struct {
 	Latitude      float64 `json:"latitude,omitempty"` // REQ: [PG-11] GPS device
 	Longitude     float64 `json:"longitude,omitempty"`
 	GPSAccuracyM  float64 `json:"gps_accuracy_m,omitempty"`
+	BuddyMode     bool    `json:"buddy_mode,omitempty"`
 }
 
 type ChatResponse struct {
@@ -173,6 +175,7 @@ type NativeUserMetadata struct {
 	Latitude      float64 `json:"latitude,omitempty"`      // REQ: [PG-12] GPS device
 	Longitude     float64 `json:"longitude,omitempty"`
 	GPSAccuracyM  float64 `json:"gps_accuracy_m,omitempty"`
+	BuddyMode     bool    `json:"buddy_mode,omitempty"`
 }
 
 type NativeChatMessage struct {
@@ -208,6 +211,7 @@ type ChatResultV1 struct {
 	Suggestions        []SuggestionV1               `json:"suggestions"`
 	FallbackIntents    []FallbackIntentSuggestionV1 `json:"fallback_intents"`
 	Execution          *ExecutionInfoV1             `json:"execution,omitempty"`
+	ToolOutput         map[string]interface{}        `json:"tool_output,omitempty"`
 	NeedsClarification bool                         `json:"needs_clarification"`
 	HasMoreDetails     bool                         `json:"has_more_details"`
 	Error              string                       `json:"error,omitempty"`
@@ -262,6 +266,9 @@ func SendToLLMV1(message, sender, llmServerURL string, timeout int, context map[
 	if v, ok := context["gps_accuracy_m"].(float64); ok {
 		meta.GPSAccuracyM = v
 	}
+	if v, ok := context["buddy_mode"].(bool); ok {
+		meta.BuddyMode = v
+	}
 
 	chatMsg := NativeChatMessage{
 		Sender:   sender,
@@ -276,12 +283,8 @@ func SendToLLMV1(message, sender, llmServerURL string, timeout int, context map[
 
 	log.Printf("LLM_V1_SEND: JSON payload=%s", string(jsonData))
 
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
 	start := time.Now()
-	resp, err := client.Post(fullURL, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := backendHTTPClient.Post(fullURL, "application/json", bytes.NewBuffer(jsonData))
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -310,8 +313,9 @@ func SendToLLMV1(message, sender, llmServerURL string, timeout int, context map[
 	return &chatResp, nil
 }
 
-// SendToLLMStreamV1 sends a message via V1 streaming endpoint and parses SSE events
-func SendToLLMStreamV1(message, sender, llmServerURL string, timeout int, context map[string]interface{}, eventChan chan<- SSEEvent) error {
+// SendToLLMStreamV1 sends a message via V1 streaming endpoint and parses SSE events.
+// ctx consente la cancellazione anticipata quando il client si disconnette.
+func SendToLLMStreamV1(ctx gocontext.Context, message, sender, llmServerURL string, timeout int, context map[string]interface{}, eventChan chan<- SSEEvent) error {
 	fullURL := llmServerURL + "/api/v1/chat/stream"
 	log.Printf("LLM_V1_STREAM_REQUEST: sender=%s, message=%s, url=%s, timeout=%ds", sender, message, fullURL, timeout)
 
@@ -347,6 +351,9 @@ func SendToLLMStreamV1(message, sender, llmServerURL string, timeout int, contex
 	if v, ok := context["gps_accuracy_m"].(float64); ok {
 		meta.GPSAccuracyM = v
 	}
+	if v, ok := context["buddy_mode"].(bool); ok {
+		meta.BuddyMode = v
+	}
 
 	chatMsg := NativeChatMessage{
 		Sender:   sender,
@@ -359,11 +366,7 @@ func SendToLLMStreamV1(message, sender, llmServerURL string, timeout int, contex
 		return fmt.Errorf("error marshaling v1 stream message: %v", err)
 	}
 
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
-	req, err := http.NewRequest("POST", fullURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("error creating v1 stream request: %v", err)
 	}
@@ -372,7 +375,7 @@ func SendToLLMStreamV1(message, sender, llmServerURL string, timeout int, contex
 	req.Header.Set("Cache-Control", "no-cache")
 
 	start := time.Now()
-	resp, err := client.Do(req)
+	resp, err := backendHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("error sending v1 stream request: %v", err)
 	}
@@ -489,11 +492,7 @@ func CheckLLMServerHealth(llmServerURL string, timeout int) error {
 	// Need to perform actual health check
 	log.Printf("LLM_HEALTH_CHECK: Performing actual check - url=%s", llmServerURL)
 
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
-	resp, err := client.Get(llmServerURL)
+	resp, err := shortHTTPClient.Get(llmServerURL)
 	if err != nil {
 		log.Printf("LLM_HEALTH_ERROR: Cannot connect to LLM server - url=%s, error=%v", llmServerURL, err)
 
@@ -530,43 +529,44 @@ func CheckLLMServerHealth(llmServerURL string, timeout int) error {
 	return nil
 }
 
-func HandleChat(c *gin.Context) {
+// prepareChatRequest valida la richiesta, risolve UOC/UOS e costruisce il context map.
+// Ritorna la request, config, context e logPrefix. Se errore, scrive la risposta HTTP e ritorna ok=false.
+func prepareChatRequest(c *gin.Context, logPrefix string) (req ChatRequest, config *Config, llmContext map[string]interface{}, ok bool) {
 	clientIP := c.ClientIP()
 	sessionID := c.GetHeader("X-Session-ID")
-	log.Printf("CHAT_REQUEST: client_ip=%s, session_id=%s", clientIP, sessionID)
+	log.Printf("%s_REQUEST: client_ip=%s, session_id=%s", logPrefix, clientIP, sessionID)
 
-	var req ChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("CHAT_ERROR: Invalid JSON format - client_ip=%s, error=%v", clientIP, err)
+		log.Printf("%s_ERROR: Invalid JSON format - client_ip=%s, error=%v", logPrefix, clientIP, err)
 		c.JSON(http.StatusBadRequest, ChatResponse{
 			Status: "error",
 			Error:  "Invalid request format",
 		})
-		return
+		return req, nil, nil, false
 	}
 
-	config := LoadConfig()
+	config = LoadConfig()
 
 	// Require user_id + asl metadata
 	hasASL := req.ASL != "" || req.ASLID != ""
 	if req.UserID == "" || !hasASL {
-		log.Printf("CHAT_DENIED: missing required metadata - client_ip=%s, user_id=%s, asl=%s, asl_id=%s",
-			clientIP, req.UserID, req.ASL, req.ASLID)
+		log.Printf("%s_DENIED: missing required metadata - client_ip=%s, user_id=%s, asl=%s, asl_id=%s",
+			logPrefix, clientIP, req.UserID, req.ASL, req.ASLID)
 		c.JSON(http.StatusForbidden, ChatResponse{
 			Status: "error",
 			Error:  "Accesso consentito solo da Gisa",
 		})
-		return
+		return req, nil, nil, false
 	}
 
 	if req.Sender == "" {
 		req.Sender = "user"
 	}
 
-	log.Printf("CHAT_PROCESSING: client_ip=%s, sender=%s, message_length=%d, asl=%s, asl_id=%s, user_id=%s",
-		clientIP, req.Sender, len(req.Message), req.ASL, req.ASLID, req.UserID)
+	log.Printf("%s_PROCESSING: client_ip=%s, sender=%s, message_length=%d, asl=%s, asl_id=%s, user_id=%s",
+		logPrefix, clientIP, req.Sender, len(req.Message), req.ASL, req.ASLID, req.UserID)
 
-	// Se UOC non fornito nel request, prova a recuperarlo da personale via user_id
+	// Risolvi UOC/UOS da personale via user_id
 	uoc := req.UOC
 	uos := req.UOS
 	if req.UserID != "" {
@@ -574,68 +574,81 @@ func HandleChat(c *gin.Context) {
 			if personale, err := GetPersonaleByUserID(userID); err == nil {
 				if uoc == "" {
 					uoc = personale.DescrizioneAreaStrutturaComplessa
-					// Fallback: se UOC è "NULL" o vuoto, estrai dal campo Descrizione
 					if uoc == "" || uoc == "NULL" {
 						parts := strings.Split(personale.Descrizione, "->")
 						if len(parts) >= 2 {
 							uoc = strings.TrimSpace(parts[1])
-							log.Printf("CHAT_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", req.UserID, uoc)
+							log.Printf("%s_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", logPrefix, req.UserID, uoc)
 						}
 					} else {
-						log.Printf("CHAT_UOC_LOADED: user_id=%s, uoc=%s", req.UserID, uoc)
+						log.Printf("%s_UOC_LOADED: user_id=%s, uoc=%s", logPrefix, req.UserID, uoc)
 					}
 				}
 				if uos == "" && personale.UOS != "" {
 					uos = personale.UOS
-					log.Printf("CHAT_UOS_LOADED: user_id=%s, uos=%s", req.UserID, uos)
+					log.Printf("%s_UOS_LOADED: user_id=%s, uos=%s", logPrefix, req.UserID, uos)
 				}
 			} else {
-				log.Printf("CHAT_UOC_ERROR: user_id=%s, error=%v", req.UserID, err)
+				log.Printf("%s_UOC_ERROR: user_id=%s, error=%v", logPrefix, req.UserID, err)
 			}
 		}
 	}
 
-	// Prepare context for LLM server - prioritize asl_name (ASL) over asl_id
-	context := make(map[string]interface{})
+	// Costruisci context per LLM server
+	llmContext = make(map[string]interface{})
 	if req.ASL != "" {
-		context["asl"] = req.ASL
+		llmContext["asl"] = req.ASL
 	} else if req.ASLID != "" {
-		context["asl_id"] = req.ASLID
+		llmContext["asl_id"] = req.ASLID
 	}
 	if req.UserID != "" {
-		context["user_id"] = req.UserID
+		llmContext["user_id"] = req.UserID
 	}
 	if req.CodiceFiscale != "" {
-		context["codice_fiscale"] = req.CodiceFiscale
+		llmContext["codice_fiscale"] = req.CodiceFiscale
 	}
 	if req.Username != "" {
-		context["username"] = req.Username
+		llmContext["username"] = req.Username
 	}
 	if uoc != "" {
-		context["uoc"] = uoc
+		llmContext["uoc"] = uoc
 	}
 	if uos != "" {
-		context["uos"] = uos
+		llmContext["uos"] = uos
 	}
 	// REQ: [PG-12] GPS coordinates (non loggate per GDPR - PG-14)
 	if req.Latitude != 0 && req.Longitude != 0 {
-		context["latitude"] = req.Latitude
-		context["longitude"] = req.Longitude
+		llmContext["latitude"] = req.Latitude
+		llmContext["longitude"] = req.Longitude
 		if req.GPSAccuracyM != 0 {
-			context["gps_accuracy_m"] = req.GPSAccuracyM
+			llmContext["gps_accuracy_m"] = req.GPSAccuracyM
 		}
 	}
+	// Buddy mode (tono amichevole)
+	if req.BuddyMode {
+		llmContext["buddy_mode"] = true
+	}
 
-	// Check LLM server health before sending message
+	// Health check
 	if err := CheckLLMServerHealth(config.LLMServer.URL, config.LLMServer.Timeout); err != nil {
-		log.Printf("CHAT_ERROR: LLM server health check failed - client_ip=%s, sender=%s, error=%v", clientIP, req.Sender, err)
+		log.Printf("%s_ERROR: LLM server health check failed - client_ip=%s, sender=%s, error=%v", logPrefix, clientIP, req.Sender, err)
 		c.JSON(http.StatusServiceUnavailable, ChatResponse{
 			Status: "error",
 			Error:  fmt.Sprintf("LLM server service unavailable: %v", err),
 		})
+		return req, nil, nil, false
+	}
+
+	return req, config, llmContext, true
+}
+
+func HandleChat(c *gin.Context) {
+	req, config, context, ok := prepareChatRequest(c, "CHAT")
+	if !ok {
 		return
 	}
 
+	clientIP := c.ClientIP()
 	start := time.Now()
 
 	v1Resp, err := SendToLLMV1(req.Message, req.Sender, config.LLMServer.URL, config.LLMServer.Timeout, context)
@@ -682,110 +695,12 @@ func HandleChat(c *gin.Context) {
 
 // HandleChatStream handles streaming chat requests with SSE
 func HandleChatStream(c *gin.Context) {
+	req, config, context, ok := prepareChatRequest(c, "CHAT_STREAM")
+	if !ok {
+		return
+	}
+
 	clientIP := c.ClientIP()
-	sessionID := c.GetHeader("X-Session-ID")
-	log.Printf("CHAT_STREAM_REQUEST: client_ip=%s, session_id=%s", clientIP, sessionID)
-
-	var req ChatRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("CHAT_STREAM_ERROR: Invalid JSON format - client_ip=%s, error=%v", clientIP, err)
-		c.JSON(http.StatusBadRequest, ChatResponse{
-			Status: "error",
-			Error:  "Invalid request format",
-		})
-		return
-	}
-
-	config := LoadConfig()
-
-	// Require user_id + asl metadata
-	hasASL := req.ASL != "" || req.ASLID != ""
-	if req.UserID == "" || !hasASL {
-		log.Printf("CHAT_STREAM_DENIED: missing required metadata - client_ip=%s, user_id=%s, asl=%s, asl_id=%s",
-			clientIP, req.UserID, req.ASL, req.ASLID)
-		c.JSON(http.StatusForbidden, ChatResponse{
-			Status: "error",
-			Error:  "Accesso consentito solo da Gisa",
-		})
-		return
-	}
-
-	if req.Sender == "" {
-		req.Sender = "user"
-	}
-
-	log.Printf("CHAT_STREAM_PROCESSING: client_ip=%s, sender=%s, message_length=%d, asl=%s, asl_id=%s, user_id=%s",
-		clientIP, req.Sender, len(req.Message), req.ASL, req.ASLID, req.UserID)
-
-	// Se UOC/UOS non forniti nel request, prova a recuperarli da personale via user_id
-	uoc := req.UOC
-	uos := req.UOS
-	if req.UserID != "" {
-		if userID, err := strconv.Atoi(req.UserID); err == nil {
-			if personale, err := GetPersonaleByUserID(userID); err == nil {
-				if uoc == "" {
-					uoc = personale.DescrizioneAreaStrutturaComplessa
-					// Fallback: se UOC è "NULL" o vuoto, estrai dal campo Descrizione
-					if uoc == "" || uoc == "NULL" {
-						parts := strings.Split(personale.Descrizione, "->")
-						if len(parts) >= 2 {
-							uoc = strings.TrimSpace(parts[1])
-							log.Printf("CHAT_STREAM_UOC_FALLBACK: user_id=%s, extracted from Descrizione, uoc=%s", req.UserID, uoc)
-						}
-					} else {
-						log.Printf("CHAT_STREAM_UOC_LOADED: user_id=%s, uoc=%s", req.UserID, uoc)
-					}
-				}
-				if uos == "" && personale.UOS != "" {
-					uos = personale.UOS
-					log.Printf("CHAT_STREAM_UOS_LOADED: user_id=%s, uos=%s", req.UserID, uos)
-				}
-			} else {
-				log.Printf("CHAT_STREAM_UOC_ERROR: user_id=%s, error=%v", req.UserID, err)
-			}
-		}
-	}
-
-	// Prepare context for LLM server
-	context := make(map[string]interface{})
-	if req.ASL != "" {
-		context["asl"] = req.ASL
-	} else if req.ASLID != "" {
-		context["asl_id"] = req.ASLID
-	}
-	if req.UserID != "" {
-		context["user_id"] = req.UserID
-	}
-	if req.CodiceFiscale != "" {
-		context["codice_fiscale"] = req.CodiceFiscale
-	}
-	if req.Username != "" {
-		context["username"] = req.Username
-	}
-	if uoc != "" {
-		context["uoc"] = uoc
-	}
-	if uos != "" {
-		context["uos"] = uos
-	}
-	// REQ: [PG-12] GPS coordinates (non loggate per GDPR - PG-14)
-	if req.Latitude != 0 && req.Longitude != 0 {
-		context["latitude"] = req.Latitude
-		context["longitude"] = req.Longitude
-		if req.GPSAccuracyM != 0 {
-			context["gps_accuracy_m"] = req.GPSAccuracyM
-		}
-	}
-
-	// Check LLM server health
-	if err := CheckLLMServerHealth(config.LLMServer.URL, config.LLMServer.Timeout); err != nil {
-		log.Printf("CHAT_STREAM_ERROR: LLM server health check failed - client_ip=%s, sender=%s, error=%v", clientIP, req.Sender, err)
-		c.JSON(http.StatusServiceUnavailable, ChatResponse{
-			Status: "error",
-			Error:  fmt.Sprintf("LLM server service unavailable: %v", err),
-		})
-		return
-	}
 
 	// Set SSE headers
 	c.Header("Content-Type", "text/event-stream")
@@ -796,10 +711,11 @@ func HandleChatStream(c *gin.Context) {
 	// Create event channel
 	eventChan := make(chan SSEEvent, 10)
 
-	// Start streaming in goroutine
+	// Start streaming in goroutine (context cancellation on client disconnect)
+	reqCtx := c.Request.Context()
 	go func() {
 		start := time.Now()
-		err := SendToLLMStreamV1(req.Message, req.Sender, config.LLMServer.URL, config.LLMServer.Timeout, context, eventChan)
+		err := SendToLLMStreamV1(reqCtx, req.Message, req.Sender, config.LLMServer.URL, config.LLMServer.Timeout, context, eventChan)
 		totalDuration := time.Since(start)
 
 		if err != nil {
@@ -887,11 +803,7 @@ func ProxyChatLogAPI(c *gin.Context, llmServerURL string, timeout int) {
 
 	log.Printf("CHATLOG_PROXY: %s -> %s", originalPath, backendURL)
 
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
-	resp, err := client.Get(backendURL)
+	resp, err := backendHTTPClient.Get(backendURL)
 	if err != nil {
 		log.Printf("CHATLOG_PROXY_ERROR: url=%s, error=%v", backendURL, err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Backend not available"})
@@ -927,23 +839,19 @@ func ProxyAdminAPI(c *gin.Context, llmServerURL string, timeout int) {
 
 	log.Printf("ADMIN_PROXY: %s %s -> %s", c.Request.Method, originalPath, backendURL)
 
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
 	var resp *http.Response
 	var err error
 
 	switch c.Request.Method {
 	case "GET":
-		resp, err = client.Get(backendURL)
+		resp, err = backendHTTPClient.Get(backendURL)
 	case "POST":
 		body, readErr := io.ReadAll(c.Request.Body)
 		if readErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
 			return
 		}
-		resp, err = client.Post(backendURL, "application/json", bytes.NewBuffer(body))
+		resp, err = backendHTTPClient.Post(backendURL, "application/json", bytes.NewBuffer(body))
 	case "PUT":
 		body, readErr := io.ReadAll(c.Request.Body)
 		if readErr != nil {
@@ -956,14 +864,14 @@ func ProxyAdminAPI(c *gin.Context, llmServerURL string, timeout int) {
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err = client.Do(req)
+		resp, err = backendHTTPClient.Do(req)
 	case "DELETE":
 		req, reqErr := http.NewRequest("DELETE", backendURL, nil)
 		if reqErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
 			return
 		}
-		resp, err = client.Do(req)
+		resp, err = backendHTTPClient.Do(req)
 	default:
 		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "Method not allowed"})
 		return
@@ -1006,11 +914,7 @@ func ProxySessionReset(c *gin.Context, llmServerURL string, timeout int) {
 	backendURL := llmServerURL + "/api/v1/session/reset"
 	log.Printf("SESSION_RESET_PROXY: -> %s", backendURL)
 
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
-	resp, err := client.Post(backendURL, "application/json", bytes.NewBuffer(body))
+	resp, err := backendHTTPClient.Post(backendURL, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		log.Printf("SESSION_RESET_PROXY_ERROR: url=%s, error=%v", backendURL, err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Backend not available"})
@@ -1071,6 +975,7 @@ type DebugChatResponse struct {
 	WorkflowState     string                   `json:"workflow_state,omitempty"`
 	TotalExecutionMs  float64                  `json:"total_execution_ms,omitempty"`
 	OriginalMessage   string                   `json:"original_message,omitempty"`
+	ToolOutput        map[string]interface{}   `json:"tool_output,omitempty"`
 }
 
 // ParseMessage calls LLM server /api/v1/parse endpoint to get NLU predictions
@@ -1099,6 +1004,9 @@ func ParseMessage(message, llmServerURL string, timeout int, context map[string]
 	}
 	if v, ok := context["uos"].(string); ok {
 		meta.UOS = v
+	}
+	if v, ok := context["buddy_mode"].(bool); ok {
+		meta.BuddyMode = v
 	}
 
 	payload := map[string]interface{}{
@@ -1131,11 +1039,7 @@ func ParseMessage(message, llmServerURL string, timeout int, context map[string]
 		logCurlCommand("PARSE", curlCmd, requestData, config.Log.DebugFile)
 	}
 
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
-	resp, err := client.Post(fullURL, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := backendHTTPClient.Post(fullURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error calling parse endpoint: %v", err)
 	}
@@ -1313,6 +1217,7 @@ func HandleDebugChat(c *gin.Context) {
 		WorkflowState:    "completed",
 		TotalExecutionMs: totalExecutionMs,
 		OriginalMessage:  req.Message,
+		ToolOutput:       v1Resp.Result.ToolOutput,
 	}
 
 	log.Printf("DEBUG_CHAT_SUCCESS: sender=%s, intent=%s, confidence=%.2f, slots=%d",

@@ -148,8 +148,7 @@ func callWhisper(audioPath, whisperURL, language string) (string, error) {
 
 	log.Printf("TRANSCRIBE_FASTER_WHISPER: POST %s", serverURL)
 
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := backendHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("faster-whisper server request failed: %w", err)
 	}

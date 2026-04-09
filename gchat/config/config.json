@@ -1,7 +1,8 @@
 {
   "server": {
     "port": "8080",
-    "host": "localhost"
+    "host": "localhost",
+    "session_secret": "gias-secret-key-32-bytes-long!!!"
   },
   "llm_server": {
     "url": "http://localhost:5005",
