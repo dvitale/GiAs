@@ -19,6 +19,87 @@ class ResponseFormatter:
     Template-based, nessuna logica di dominio.
     """
 
+    # --- Helper piano/attività ---
+
+    @staticmethod
+    def _entity_label(entity_type: str, with_article: bool = False) -> str:
+        """Restituisce l'etichetta corretta (piano/attività) in base a entity_type."""
+        if entity_type == "attivita":
+            return "l'attività" if with_article else "Attività"
+        return "il piano" if with_article else "Piano"
+
+    @staticmethod
+    def _format_uos_vs_regional_totals(
+        total_uos: int,
+        total_regional: Optional[int],  # kept for signature compat, non più mostrato
+        user_uos: Optional[str],
+    ) -> List[str]:
+        """
+        Formatta la riga "Totale controlli eseguiti" limitandosi allo scope
+        operativo dell'utente (UOS). Il totale regionale non viene più
+        mostrato perché rappresenta una popolazione diversa (tutta la regione,
+        non filtrata per UOS/ASL) e produceva confronti fuorvianti del tipo
+        "63 su 12.810" dove il denominatore non era comparabile col numeratore.
+
+        Caso A — UOS nota:
+            **Totale controlli eseguiti nella tua UOS (UOV IAPZ 1):** 63
+
+        Caso B — UOS non disponibile:
+            **Totale controlli eseguiti:** 63
+            _UOS operatore non disponibile: conteggio non scopato._
+
+        `total_regional` è mantenuto nella firma per compatibilità con i
+        chiamanti ma volutamente ignorato: conservato nei dict di output per
+        eventuale consumo programmatico (logging, debug, API), non per
+        visualizzazione utente.
+        """
+        lines: List[str] = []
+        total_str = f"{total_uos:,}".replace(",", ".")
+
+        if not user_uos:
+            lines.append(f"**Totale controlli eseguiti:** {total_str}")
+            lines.append(
+                "_UOS operatore non disponibile: conteggio non scopato "
+                "sulla tua unità operativa._"
+            )
+            return lines
+
+        lines.append(
+            f"**Totale controlli eseguiti nella tua UOS ({user_uos}):** {total_str}"
+        )
+        return lines
+
+    # --- Helper messaggi conversazionali (tono unificato) ---
+
+    @staticmethod
+    def format_no_data(entity: str, context: str = "", suggestion: str = "") -> str:
+        """Messaggio per risultati vuoti con tono conversazionale."""
+        msg = f"Non risultano {entity}"
+        if context:
+            msg += f" {context}"
+        msg += "."
+        if suggestion:
+            msg += f" {suggestion.lstrip()}"
+        return msg
+
+    @staticmethod
+    def format_missing_param(params: List[str], examples: Optional[List[str]] = None, any_of: bool = False) -> str:
+        """Messaggio per parametri mancanti con guida."""
+        if any_of:
+            header = "Mi serve almeno uno di questi dati:\n\n"
+        else:
+            header = "Per procedere, ho bisogno di:\n\n"
+        lines = [f"- {p}" for p in params]
+        msg = header + "\n".join(lines)
+        if examples:
+            msg += f"\n\nAd esempio: *{examples[0]}*"
+        return msg
+
+    @staticmethod
+    def format_tool_error(operation: str) -> str:
+        """Messaggio errore generico con tono non-tecnico."""
+        return f"Si e' verificato un problema durante {operation}. Riprova tra poco o riformula la domanda."
+
     # Mappa sezioni a descrizioni (basata su nomenclatura PRISCAV)
     SEZIONE_DESCRIZIONI = {
         'A': 'Sicurezza Alimentare',
@@ -67,10 +148,11 @@ class ResponseFormatter:
     def format_piano_description(
         piano_id: str,
         unique_descriptions: Dict[str, Any],
-        total_variants: int
+        total_variants: int,
+        entity_type: str = "piano"
     ) -> str:
         """
-        Formatta descrizione piano da dati strutturati.
+        Formatta descrizione piano/attività da dati strutturati.
 
         Interpretazione campi:
         - alias: nome del piano
@@ -80,11 +162,9 @@ class ResponseFormatter:
         - campionamento: True = prelievo campioni, False = attività di controllo
         - sezione: sezione del piano (importante per classificazione)
         """
-        # Se piano_id ha prefisso ATT, è una query attività (non piano)
-        is_attivita_query = piano_id.upper().startswith("ATT ")
-        display_id = piano_id.upper().replace("ATT ", "") if is_attivita_query else piano_id.upper()
-        entity_label = "Attività" if is_attivita_query else "Piano"
-        response = f"**📋 Descrizione {entity_label} {display_id}**\n\n"
+        is_attivita = entity_type == "attivita"
+        entity_label = ResponseFormatter._entity_label(entity_type)
+        response = f"**📋 Descrizione {entity_label} {piano_id.upper()}**\n\n"
 
         for desc_main, info in unique_descriptions.items():
             sezione = info.get('sezione', '')
@@ -101,8 +181,8 @@ class ResponseFormatter:
 
             # Indicatori (terzo livello) - carica prima per determinare etichetta piano
             sottopiani = info.get('sottopiani') or info.get('descrizione_indicatore', [])
-            if is_attivita_query:
-                response += f"**Attività:** {display_id}\n"
+            if is_attivita:
+                response += f"**Attività:** {piano_id.upper()}\n"
                 response += f"**Piano di riferimento:** {alias}\n"
             else:
                 piano_label = ResponseFormatter._label_for_piano(sottopiani)
@@ -146,35 +226,59 @@ class ResponseFormatter:
         piano_desc: str,
         top_stabilimenti: pd.DataFrame,
         total_controls: int,
-        unique_establishments: int
+        unique_establishments: int,
+        entity_type: str = "piano",
+        anno: Optional[int] = None,
+        user_uos: Optional[str] = None,
+        total_controls_all: Optional[int] = None,
     ) -> str:
         """
         Formatta analisi stabilimenti controllati con dati di non conformità.
         """
-        response = f"**Stabilimenti per il piano {piano_id.upper()}:**\n\n"
-        response += f"**Piano:** {piano_desc}\n\n"
-        response += "**Top 10 tipologie di stabilimenti controllati:**\n\n"
+        entity_label = ResponseFormatter._entity_label(entity_type)
+        header = f"### {entity_label} {piano_id.upper()} — {piano_desc}"
+        meta_bits = []
+        if anno:
+            meta_bits.append(f"📅 **{anno}**")
+        if user_uos:
+            meta_bits.append(f"🏥 UOS **{user_uos}**")
+        # NB: niente italic esterno — se contiene già bold, generava `***` in
+        # coda (ambiguo in CommonMark) che rompeva l'emphasis e collassava i
+        # paragrafi successivi nel rendering del frontend.
+        meta_line = " · ".join(meta_bits) if meta_bits else ""
 
-        for i, row in enumerate(top_stabilimenti.itertuples(index=False)):
-            response += f"{i+1}. **{getattr(row, 'macroarea_cu', 'N/A')}**\n"
-            response += f"   - **Aggregazione:** {getattr(row, 'aggregazione_cu', 'N/A')}\n"
-            response += f"   - **Attività:** {getattr(row, 'attivita_cu', 'N/A')}\n"
-            response += f"   - **Controlli eseguiti:** {getattr(row, 'count', 0)}\n"
+        total_lines = ResponseFormatter._format_uos_vs_regional_totals(
+            total_uos=total_controls,
+            total_regional=total_controls_all,
+            user_uos=user_uos,
+        )
+        types_line = f"**Tipologie di stabilimenti controllati:** {unique_establishments}"
 
-            # Aggiungi non conformità se disponibili
+        parts = [header]
+        if meta_line:
+            parts.append("")
+            parts.append(meta_line)
+        parts.append("")
+        parts.extend(total_lines)
+        parts.append("")
+        parts.append(types_line)
+        parts.append("")
+        parts.append("#### Top 10 tipologie di stabilimenti controllati")
+        parts.append("")
+
+        for i, row in enumerate(top_stabilimenti.itertuples(index=False), start=1):
+            parts.append(ResponseFormatter._format_tipologia_line(i, row))
+
             if hasattr(row, 'numero_nc_gravi') and hasattr(row, 'numero_nc_non_gravi'):
-                nc_gravi = int(getattr(row, 'numero_nc_gravi', 0))
-                nc_non_gravi = int(getattr(row, 'numero_nc_non_gravi', 0))
-                punteggio = int(getattr(row, 'punteggio_rischio', 0))
-
-                response += f"   - **Non conformità:** {nc_gravi} gravi, {nc_non_gravi} non gravi\n"
+                nc_gravi = int(getattr(row, 'numero_nc_gravi', 0) or 0)
+                nc_non_gravi = int(getattr(row, 'numero_nc_non_gravi', 0) or 0)
+                punteggio = int(getattr(row, 'punteggio_rischio', 0) or 0)
+                if nc_gravi or nc_non_gravi:
+                    parts.append(f"   - Non conformità: {nc_gravi} gravi, {nc_non_gravi} non gravi")
                 if punteggio > 0:
-                    response += f"   - **Punteggio rischio:** {punteggio}/100\n"
+                    parts.append(f"   - Punteggio rischio: {punteggio}/100")
 
-            response += "\n"
-
-        response += f"**Totale controlli eseguiti:** {total_controls}\n"
-        response += f"**Tipologie di stabilimenti coinvolte:** {unique_establishments}\n"
+        response = "\n".join(parts) + "\n"
 
         # Aggiungi legenda se ci sono non conformità
         if not top_stabilimenti.empty and 'numero_nc_gravi' in top_stabilimenti.columns:
@@ -193,28 +297,81 @@ class ResponseFormatter:
         top_stabilimenti: pd.DataFrame,
         total_controls: int,
         unique_establishments: int,
-        limit: int = 5
+        limit: int = 5,
+        entity_type: str = "piano",
+        anno: Optional[int] = None,
+        user_uos: Optional[str] = None,
+        total_controls_all: Optional[int] = None,
     ) -> str:
         """
         Formatta sintesi stabilimenti controllati (fase 1 del sistema 2-fasi).
         Mostra solo le prime N tipologie con nome e conteggio controlli.
         """
-        response = f"**📊 Sintesi Stabilimenti Piano {piano_id.upper()}**\n\n"
-        response += f"**Piano:** {piano_desc}\n"
-        response += f"**Totale controlli:** {total_controls:,}\n"
-        response += f"**Tipologie coinvolte:** {unique_establishments}\n\n"
+        entity_label = ResponseFormatter._entity_label(entity_type)
+        header = f"### 📊 {entity_label} {piano_id.upper()} — {piano_desc}"
 
-        response += f"**Top {min(limit, len(top_stabilimenti))} tipologie:**\n\n"
+        meta_bits = []
+        if anno:
+            meta_bits.append(f"📅 **{anno}**")
+        if user_uos:
+            meta_bits.append(f"🏥 UOS **{user_uos}**")
+        # Niente italic esterno: vedi format_stabilimenti_analysis per il razionale
+        # (collisione `***` in coda rompe l'emphasis nel frontend).
+        meta_line = " · ".join(meta_bits) if meta_bits else ""
 
-        for i, row in enumerate(top_stabilimenti.head(limit).itertuples(index=False)):
-            macroarea = getattr(row, 'macroarea_cu', 'N/A')
-            count = getattr(row, 'count', 0)
-            response += f"{i+1}. **{macroarea}** — {count} controlli\n"
+        # Vedi _format_uos_vs_regional_totals per la semantica delle due righe.
+        total_lines = ResponseFormatter._format_uos_vs_regional_totals(
+            total_uos=total_controls,
+            total_regional=total_controls_all,
+            user_uos=user_uos,
+        )
+        types_line = f"**Tipologie di stabilimenti controllati:** {unique_establishments}"
 
-        if unique_establishments > limit:
-            response += f"\n... e altre {unique_establishments - limit} tipologie.\n"
+        parts = [header]
+        if meta_line:
+            parts.append("")
+            parts.append(meta_line)
+        parts.append("")
+        parts.extend(total_lines)
+        parts.append("")
+        parts.append(types_line)
+        parts.append("")
+        parts.append(f"**Top {min(limit, len(top_stabilimenti))} tipologie:**")
+        parts.append("")
 
-        return response
+        total_rows = len(top_stabilimenti)
+        for i, row in enumerate(top_stabilimenti.head(limit).itertuples(index=False), start=1):
+            parts.append(ResponseFormatter._format_tipologia_line(i, row))
+
+        if total_rows > limit:
+            parts.append("")
+            parts.append(f"… e altre {total_rows - limit} tipologie.")
+
+        return "\n".join(parts) + "\n"
+
+    @staticmethod
+    def _format_tipologia_line(idx: int, row) -> str:
+        """Riga compatta per una tipologia di stabilimento aggregata.
+
+        L'aggregazione in BusinessLogic.aggregate_stabilimenti_by_piano usa
+        (macroarea_cu, aggregazione_cu, attivita_cu): includiamo tutti e 3
+        nel titolo quando distinti per evitare righe che sembrano duplicate.
+        """
+        macroarea = str(getattr(row, 'macroarea_cu', '') or '').strip()
+        aggregazione = str(getattr(row, 'aggregazione_cu', '') or '').strip()
+        attivita = str(getattr(row, 'attivita_cu', '') or '').strip()
+        count = getattr(row, 'count', 0)
+        bits = [b for b in (macroarea, aggregazione, attivita) if b and b.upper() != 'N/A']
+        # Deduplica preservando l'ordine
+        seen = set()
+        unique_bits = []
+        for b in bits:
+            bu = b.upper()
+            if bu not in seen:
+                seen.add(bu)
+                unique_bits.append(b)
+        title = " · ".join(unique_bits) if unique_bits else "N/D"
+        return f"{idx}. **{title}** — {count:,} controlli"
 
     @staticmethod
     def format_search_results(
@@ -224,7 +381,7 @@ class ResponseFormatter:
     ) -> str:
         """
         Formatta risultati ricerca piani con tutti i dettagli:
-        Sezione, alias_piano_attivita, descrizione_piano, alias_indicatore, descrizione_indicatore, campionamento.
+        Sezione, alias_piano_attivita, descrizione_piano_attivita, alias_indicatore, descrizione_indicatore, campionamento.
         """
         response = f"**Piani trovati per: '{search_term}'**\n\n"
         response += f"**Trovati {len(matches)} risultati rilevanti:**\n\n"
@@ -234,7 +391,7 @@ class ResponseFormatter:
             sezione = piano_info.get('sezione', '')
             alias = piano_info.get('alias_piano_attivita', '')
             alias_ind = piano_info.get('alias_indicatore', '')
-            desc = piano_info.get('descrizione_piano', '') or ''
+            desc = piano_info.get('descrizione_piano_attivita', '') or ''
             desc2 = piano_info.get('descrizione_indicatore', '') or ''
             campionamento = piano_info.get('campionamento')
 
@@ -322,7 +479,7 @@ class ResponseFormatter:
         activities_count = result.get('activities_count', 0)
         osa_rischiosi_data = result.get('osa_rischiosi', [])
 
-        response = f"**🎯 Sintesi Priorità Controlli Basate sul Rischio**\n"
+        response = f"**🎯 Priorita' Controlli — Analisi Rischio**\n"
         response += f"**ASL:** {user_asl}\n"
 
         if piano_id:
@@ -330,11 +487,11 @@ class ResponseFormatter:
 
         response += f"\n**📊 Riepilogo:**\n"
         response += f"• OSA mai controllati: {osa_total_count}\n"
-        response += f"• OSA in attività ad alto rischio: **{osa_risky_count}**\n"
-        response += f"• Attività critiche identificate: {activities_count}\n\n"
+        response += f"• Di questi, in attivita' ad alto rischio: **{osa_risky_count}**\n"
+        response += f"• Attivita' critiche identificate: {activities_count}\n\n"
 
         if not osa_rischiosi_data:
-            response += "✅ Nessuna criticità significativa identificata.\n"
+            response += "Non emergono criticita' significative. Buon segno!\n"
             return response
 
         # Converti in DataFrame se è una lista
@@ -412,9 +569,6 @@ class ResponseFormatter:
             comune = str(getattr(row, 'comune', '')).upper() if pd.notna(getattr(row, 'comune', '')) else 'N/D'
             indirizzo = getattr(row, 'indirizzo', '')
             punteggio = int(getattr(row, 'punteggio_rischio_totale', 0))
-            nc_gravi = int(getattr(row, 'tot_nc_gravi', 0))
-            nc_non_gravi = int(getattr(row, 'tot_nc_non_gravi', 0))
-            controlli = int(getattr(row, 'numero_controlli_totali', 0))
             aggregazione = getattr(row, 'aggregazione', '')
 
             if ragione:
@@ -423,14 +577,12 @@ class ResponseFormatter:
             else:
                 response += f"{idx}. **{getattr(row, 'macroarea', '')}** - {aggregazione} | {comune}\n"
             response += f"   {indirizzo} | ID: {numero_id}\n"
-            response += f"   Rischio: **{punteggio}/100** | NC: {nc_gravi} gravi, {nc_non_gravi} non gravi | Controlli: {controlli}\n"
+            response += f"   Rischio linea di attivita': **{punteggio}/100**\n"
 
         response += "**Legenda Punteggio Rischio:**\n"
-        response += "• Il punteggio è calcolato sulla linea di attività, non sul singolo stabilimento\n"
-        response += "• Formula: P(NC) × Impatto × 100\n"
-        response += "• P(NC) = (NC totali) / (controlli totali)\n"
-        response += "• Impatto = (NC gravi) / (controlli totali)\n"
-        response += "• Dati aggregati da controlli regionali 2016-2025 (Regione Campania)\n\n"
+        response += "• Il punteggio riflette la rischiosita' storica della **linea di attivita'** a livello regionale\n"
+        response += "• Formula: P(NC) × Impatto × 100 (dati aggregati regionali 2016-2025)\n"
+        response += "• Gli stabilimenti elencati non sono mai stati controllati\n\n"
 
         response += "**Raccomandazione:**\n"
         response += "Questi stabilimenti NON sono mai stati controllati ma appartengono "
@@ -457,7 +609,7 @@ class ResponseFormatter:
         total_found = result.get('total_found', 0)
         priority_data = result.get('priority_establishments', [])
 
-        response = f"**🎯 Sintesi Stabilimenti Prioritari**\n"
+        response = f"**🎯 Stabilimenti Prioritari**\n"
         response += f"**ASL:** {user_asl} | **Struttura:** {uoc_name}\n"
 
         if piano_id:
@@ -468,7 +620,7 @@ class ResponseFormatter:
         response += f"• Stabilimenti prioritari trovati: **{total_found}**\n\n"
 
         if not priority_data:
-            response += "✅ Nessuno stabilimento prioritario identificato.\n"
+            response += "Non emergono stabilimenti prioritari. La situazione e' sotto controllo.\n"
             return response
 
         # Converti in DataFrame se è una lista
@@ -570,11 +722,11 @@ class ResponseFormatter:
         """
         Formatta sintesi piani in ritardo (fase 1 del sistema 2-fasi).
         """
-        response = f"**📊 Sintesi Piani in Ritardo**\n\n"
+        response = f"**📊 Situazione Piani in Ritardo**\n\n"
         response += f"**Totale piani in ritardo:** {total_delayed}\n\n"
 
         if not delayed_plans:
-            response += "✅ Nessun piano in ritardo.\n"
+            response += "Nessun piano risulta in ritardo. La programmazione e' in linea.\n"
             return response
 
         # Converti in DataFrame se è una lista
@@ -583,9 +735,14 @@ class ResponseFormatter:
         else:
             delayed_df = delayed_plans
 
+        # Contesto proporzionale se disponibile
+        avanzamento_atteso = delayed_df['avanzamento_atteso_pct'].iloc[0] if 'avanzamento_atteso_pct' in delayed_df.columns and not delayed_df.empty else None
+        if avanzamento_atteso is not None and avanzamento_atteso < 100:
+            response += f"**Avanzamento atteso ad oggi:** {avanzamento_atteso:.0f}% dell'anno\n"
+
         # Calcola totale controlli mancanti
         total_mancanti = delayed_df['ritardo'].sum() if 'ritardo' in delayed_df.columns else 0
-        response += f"**Controlli mancanti totali:** {int(total_mancanti)}\n\n"
+        response += f"**Controlli mancanti rispetto all'atteso:** {int(total_mancanti)}\n\n"
 
         response += f"**🚨 Top {limit} Piani Più Critici:**\n\n"
 
@@ -594,12 +751,16 @@ class ResponseFormatter:
             ritardo = int(getattr(row, 'ritardo', 0))
             programmati = int(getattr(row, 'programmati', 0))
             eseguiti = int(getattr(row, 'eseguiti', 0))
+            attesi = int(getattr(row, 'attesi', programmati))
 
             percentuale = (eseguiti / programmati * 100) if programmati > 0 else 0
 
             label = "Attività" if ResponseFormatter._is_attivita(piano_id) else "Piano"
             response += f"{idx}. **{label} {piano_id}** - Ritardo: {ritardo}\n"
-            response += f"   Completamento: {percentuale:.0f}% ({eseguiti}/{programmati})\n\n"
+            if attesi < programmati:
+                response += f"   Attesi ad oggi: {attesi} | Eseguiti: {eseguiti}/{programmati}\n\n"
+            else:
+                response += f"   Completamento: {percentuale:.0f}% ({eseguiti}/{programmati})\n\n"
 
         response += "**Raccomandazione:** Prioritizzare i piani con maggior ritardo.\n"
 
@@ -630,13 +791,21 @@ class ResponseFormatter:
             title_label = "Piani e Attività"
         else:
             title_label = "Piani"
+        # Contesto proporzionale se disponibile
+        avanzamento_atteso = top_delayed['avanzamento_atteso_pct'].iloc[0] if 'avanzamento_atteso_pct' in top_delayed.columns and not top_delayed.empty else None
+        is_proportional = avanzamento_atteso is not None and avanzamento_atteso < 100
+
         response = f"**Analisi {title_label} in Ritardo**\n"
         response += f"**ASL:** {user_asl}\n"
         response += f"**Struttura:** {uoc_name}\n"
         if uos_name:
             response += f"**UOS:** {uos_name}\n"
         response += f"**{title_label} in ritardo:** {total_plans_delayed}\n"
-        response += f"**Controlli mancanti totali:** {total_delay}\n"
+        if is_proportional:
+            response += f"**Controlli in arretrato rispetto all'atteso:** {total_delay}\n"
+            response += f"**Avanzamento atteso ad oggi:** {avanzamento_atteso:.0f}% dell'anno\n"
+        else:
+            response += f"**Controlli mancanti totali:** {total_delay}\n"
         response += "\n─────────────────────────────────────\n"
 
         for idx, row in enumerate(top_delayed.itertuples(index=False)):
@@ -644,6 +813,7 @@ class ResponseFormatter:
             ritardo = int(getattr(row, 'ritardo', ''))
             programmati = int(getattr(row, 'programmati', ''))
             eseguiti = int(getattr(row, 'eseguiti', ''))
+            attesi = int(getattr(row, 'attesi', programmati))
             descrizione = getattr(row, 'descrizione_indicatore', '')[:80] + "..." if len(getattr(row, 'descrizione_indicatore', '')) > 80 else getattr(row, 'descrizione_indicatore', '')
 
             percentuale_eseguita = (eseguiti / programmati * 100) if programmati > 0 else 0
@@ -651,7 +821,10 @@ class ResponseFormatter:
             label = "Attività" if ResponseFormatter._is_attivita(piano_id) else "Piano"
             response += f"**{idx + 1}. {label} {piano_id}**\n"
             response += f"   {descrizione}\n"
-            response += f"   Programmati: {programmati} | Eseguiti: {eseguiti} | Ritardo: {ritardo}\n"
+            if is_proportional:
+                response += f"   Programmati: {programmati} | Attesi ad oggi: {attesi} | Eseguiti: {eseguiti} | Arretrato: {ritardo}\n"
+            else:
+                response += f"   Programmati: {programmati} | Eseguiti: {eseguiti} | Ritardo: {ritardo}\n"
             response += f"   Completamento: {percentuale_eseguita:.1f}%\n\n"
 
         if total_plans_delayed > 10:
@@ -691,19 +864,24 @@ class ResponseFormatter:
         ritardo: int = 0,
         programmati: int = 0,
         eseguiti: int = 0,
-        sottopiani: list = None
+        sottopiani: list = None,
+        attesi: int = 0,
+        avanzamento_atteso_pct: float = 100.0
     ) -> str:
         """
         Formatta risposta per verifica se un piano specifico è in ritardo.
         Mostra sempre i dettagli numerici per motivare la risposta.
         """
         percentuale_eseguita = (eseguiti / programmati * 100) if programmati > 0 else 100
+        is_proportional = avanzamento_atteso_pct < 100
 
         if not is_delayed:
             response = f"**No**, il piano {piano_code} non è in ritardo per la struttura {uoc}.\n\n"
             if programmati > 0:
                 response += f"**Dettagli:**\n"
                 response += f"• Controlli programmati: {programmati}\n"
+                if is_proportional:
+                    response += f"• Attesi ad oggi ({avanzamento_atteso_pct:.0f}% anno): {attesi}\n"
                 response += f"• Controlli eseguiti: {eseguiti}\n"
                 response += f"• Completamento: {percentuale_eseguita:.1f}%\n"
             else:
@@ -722,8 +900,10 @@ class ResponseFormatter:
         else:
             response += f"**Dettagli:**\n"
         response += f"• Controlli programmati: {programmati}\n"
+        if is_proportional:
+            response += f"• Attesi ad oggi ({avanzamento_atteso_pct:.0f}% anno): {attesi}\n"
         response += f"• Controlli eseguiti: {eseguiti}\n"
-        response += f"• Ritardo: {ritardo} controlli\n"
+        response += f"• Arretrato: {ritardo} controlli\n"
         response += f"• Completamento: {percentuale_eseguita:.1f}%\n"
 
         return response
