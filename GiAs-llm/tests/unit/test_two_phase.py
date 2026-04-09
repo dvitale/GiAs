@@ -76,10 +76,8 @@ class TestTwoPhaseTriggered:
         assert result["formatted_response"] == "Sommario breve." + TWO_PHASE_SUFFIX
 
     def test_two_phase_suffix_content(self):
-        """Il suffix deve contenere la domanda 'Vuoi vedere tutti i dettagli?'."""
-        assert "Vuoi vedere tutti i dettagli?" in TWO_PHASE_SUFFIX
-        assert "sì" in TWO_PHASE_SUFFIX
-        assert "no" in TWO_PHASE_SUFFIX
+        """Il suffix deve contenere la domanda di conferma dettagli."""
+        assert "Vuoi che ti mostri tutti i dettagli?" in TWO_PHASE_SUFFIX
 
     def test_other_result_keys_preserved(self):
         """Le chiavi extra del result non devono essere alterate."""

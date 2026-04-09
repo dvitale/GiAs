@@ -3,24 +3,47 @@
 -- hanno colonne canoniche e campi arricchiti da piani_monitoraggio.
 --
 -- Schema canonico:
---   sezione | alias_piano_attivita | descrizione_piano | alias_indicatore
---   descrizione_indicatore | tipo_piano_attivita | campionamento
+--   anno | sezione | alias_piano_attivita | descrizione_piano_attivita | alias_indicatore
+--   descrizione_indicatore | tipo_piano_attivita | campionamento | tipo_item_dpat
 
 -- Prerequisito: CREATE SCHEMA IF NOT EXISTS old;
--- Le tabelle originali devono essere gia' in old.
+-- Prerequisito: CREATE EXTENSION IF NOT EXISTS dblink;
 
--- 1. piani_monitoraggio — colonne rinominate
-CREATE TABLE piani_monitoraggio AS
+-- 1. piani_monitoraggio — MATERIALIZED VIEW via dblink da gisa.chatbot.dpat
+CREATE MATERIALIZED VIEW piani_monitoraggio AS
 SELECT
-    id,
+    anno,
     sezione,
-    alias AS alias_piano_attivita,
-    descrizione AS descrizione_piano,
+    alias_piano_attivita,
+    descrizione_piano_attivita,
     alias_indicatore,
-    descrizione_2 AS descrizione_indicatore,
+    descrizione_indicatore,
+    tipo_piano_attivita,
     campionamento,
-    CASE WHEN is_attivita THEN 'attivita' ELSE 'piano' END AS tipo_piano_attivita
-FROM old.piani_monitoraggio;
+    tipo_item_dpat
+FROM dblink(
+    'host=172.16.3.248 port=5432 dbname=gisa user=postgres password=postgres',
+    'SELECT anno, sezione, alias_piano_attivita, descrizione_piano_attivita,
+            alias_indicatore, descrizione_indicatore, tipo_piano_attivita,
+            campionamento, tipo_item_dpat
+     FROM chatbot.dpat'
+) AS t(
+    anno integer,
+    sezione text,
+    alias_piano_attivita text,
+    descrizione_piano_attivita text,
+    alias_indicatore text,
+    descrizione_indicatore text,
+    tipo_piano_attivita text,
+    campionamento boolean,
+    tipo_item_dpat varchar
+)
+WITH DATA;
+
+CREATE UNIQUE INDEX idx_piani_unique ON piani_monitoraggio (anno, sezione, alias_piano_attivita, alias_indicatore);
+CREATE INDEX idx_piani_anno ON piani_monitoraggio (anno);
+CREATE INDEX idx_piani_alias_piano ON piani_monitoraggio (alias_piano_attivita);
+CREATE INDEX idx_piani_alias_indicatore ON piani_monitoraggio (alias_indicatore);
 
 -- 2. cu_eseguiti_nc — arricchita con campionamento e tipo da piani
 CREATE TABLE cu_eseguiti_nc AS

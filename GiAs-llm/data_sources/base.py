@@ -3,6 +3,7 @@ Abstract base class for data sources.
 """
 
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
 import pandas as pd
 
@@ -81,28 +82,39 @@ class DataSource(ABC):
         """Load diff programmati/eseguiti data."""
         pass
 
-    @abstractmethod
     def load_personale(self) -> pd.DataFrame:
-        """Load personale data."""
-        pass
+        """Load personale data. Override in subclass that supports it."""
+        return pd.DataFrame()
 
     def load_all(self) -> Dict[str, pd.DataFrame]:
         """
-        Load all datasets.
-        Applica whitelist colonne ai dataset grandi (controlli, osa).
+        Load all datasets in parallelo.
+
+        Le query verso PostgreSQL rilasciano il GIL durante l'I/O di rete,
+        quindi i ThreadPoolExecutor parallelizzano realmente. Il pool
+        SQLAlchemy (pool_size=5, max_overflow=10) gestisce le 6 connessioni
+        concorrenti senza problemi.
+
+        Applica whitelist colonne come safety net (per sorgenti che non
+        fanno pruning a livello SQL, es. CSV).
 
         Returns:
             Dictionary with all dataframes
         """
-        datasets = {
-            "piani": self.load_piani(),
-            "attivita": self.load_attivita(),
-            "controlli": self.load_controlli(),
-            "osa_mai_controllati": self.load_osa_mai_controllati(),
-            "diff_prog_eseg": self.load_diff_prog_eseg(),
-            "personale": self.load_personale(),
+        loaders = {
+            "piani": self.load_piani,
+            "attivita": self.load_attivita,
+            "controlli": self.load_controlli,
+            "osa_mai_controllati": self.load_osa_mai_controllati,
+            "diff_prog_eseg": self.load_diff_prog_eseg,
+            "personale": self.load_personale,
         }
-        # Filtra colonne inutilizzate per i dataset configurati
+        datasets: Dict[str, pd.DataFrame] = {}
+        with ThreadPoolExecutor(max_workers=len(loaders)) as pool:
+            futures = {key: pool.submit(fn) for key, fn in loaders.items()}
+            for key, fut in futures.items():
+                datasets[key] = fut.result()
+        # Filtra colonne inutilizzate (no-op se gia' pruned a livello SQL)
         for key in list(datasets.keys()):
             datasets[key] = _apply_column_filter(key, datasets[key])
         return datasets

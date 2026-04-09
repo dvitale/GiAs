@@ -23,7 +23,12 @@ def _get_two_phase_thresholds() -> dict:
 
 TWO_PHASE_THRESHOLDS = _get_two_phase_thresholds()
 
-TWO_PHASE_SUFFIX = "\n\n>>> Vuoi vedere tutti i dettagli? Rispondi **sì** o **no**."
+TWO_PHASE_SUFFIX = "\n\nVuoi che ti mostri tutti i dettagli?"
+
+TWO_PHASE_SUGGESTIONS = [
+    {"text": "✅ Sì, mostra dettagli", "query": "si"},
+    {"text": "❌ No, grazie", "query": "no"},
+]
 
 
 def apply_two_phase_check(
@@ -64,4 +69,5 @@ def apply_two_phase_check(
             "item_count": item_count
         }
         result["formatted_response"] = summary_text + TWO_PHASE_SUFFIX
+        state["suggestions"] = TWO_PHASE_SUGGESTIONS
     return result

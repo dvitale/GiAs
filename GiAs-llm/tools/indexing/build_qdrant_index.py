@@ -90,8 +90,8 @@ def index_piani(client, model, piani_df):
         if pd.notna(row.get("sezione")):
             desc_parts.append(f"SEZIONE {row['sezione']}")
 
-        if pd.notna(row.get("descrizione_piano")):
-            desc_parts.append(str(row["descrizione_piano"]))
+        if pd.notna(row.get("descrizione_piano_attivita")):
+            desc_parts.append(str(row["descrizione_piano_attivita"]))
 
         if pd.notna(row.get("descrizione_indicatore")):
             desc_parts.append(str(row["descrizione_indicatore"]))
@@ -110,8 +110,10 @@ def index_piani(client, model, piani_df):
                 "alias_piano_attivita": row["alias_piano_attivita"],
                 "alias_indicatore": row.get("alias_indicatore", "") or "",
                 "sezione": row.get("sezione", "") or "",
-                "descrizione_piano": row.get("descrizione_piano", "") or "",
+                "descrizione_piano_attivita": row.get("descrizione_piano_attivita", "") or "",
                 "descrizione_indicatore": row.get("descrizione_indicatore", "") or "",
+                "anno": int(row["anno"]) if pd.notna(row.get("anno")) else 0,
+                "tipo_item_dpat": row.get("tipo_item_dpat", "") or "",
                 "full_text": full_text
             }
         )
@@ -152,7 +154,7 @@ def test_search(client, model):
         for i, hit in enumerate(results, 1):
             score = hit.score
             alias = hit.payload.get('alias_piano_attivita', hit.payload.get('alias', ''))
-            desc = hit.payload.get('descrizione_piano', hit.payload.get('descrizione', ''))[:80]
+            desc = hit.payload.get('descrizione_piano_attivita', hit.payload.get('descrizione', ''))[:80]
             print(f"  {i}. {alias} (score: {score:.3f}) - {desc}...")
 
 

@@ -51,10 +51,22 @@ class DataRetriever:
     @staticmethod
     def get_piano_by_id(piano_id: str) -> Optional[pd.DataFrame]:
         """
-        Recupera piano per ID (alias o alias_indicatore).
+        Recupera piano per ID. Delega al PianoRepository (flag
+        `data_source.repositories.piano`).
+        """
+        try:
+            from data_sources.repositories import get_piano_repository
+            return get_piano_repository().find_by_alias(piano_id)
+        except Exception as e:
+            print(f"[DataRetriever] Piano repo fallito ({e}), fallback legacy")
+            return DataRetriever._get_piano_by_id_pandas_legacy(piano_id)
 
-        Returns:
-            DataFrame con righe del piano o None se non trovato
+    @staticmethod
+    def _get_piano_by_id_pandas_legacy(piano_id: str) -> Optional[pd.DataFrame]:
+        """
+        Implementazione pandas originale. Chiamata dal PandasPianoRepository
+        per evitare ricorsione con `get_piano_by_id` che ora delega al repo.
+        Non chiamare direttamente dal codice applicativo.
         """
         if piani_df.empty or not piano_id:
             return None
@@ -66,17 +78,16 @@ class DataRetriever:
         ]
 
         # Fallback 1: alias_indicatore ha prefisso "ATT " (es. "ATT AO5_A")
-        # Se l'utente cerca "AO5_A", prova con prefisso
         if piano_rows.empty and not pid.startswith("ATT "):
             piano_rows = piani_df[
                 piani_df["alias_indicatore"].str.upper() == f"ATT {pid}"
             ]
 
-        # Fallback 2: prefix match su alias_indicatore (es. "ATT B5" → "ATT B5_A", "ATT B5_B")
-        # Gestisce: "attività B5" (piano_code="ATT B5") e codici senza suffisso
+        # Fallback 2: prefix match su alias_indicatore
         if piano_rows.empty:
             prefix = pid if pid.startswith("ATT ") else f"ATT {pid}"
-            pattern = rf'^{re.escape(prefix)}(?:[_ ]|$)'
+            prefix_pattern = re.escape(prefix).replace(r"ATT\ ", r"ATT[_ ]")
+            pattern = rf'^{prefix_pattern}(?:[_ ]|$)'
             piano_rows = piani_df[
                 piani_df["alias_indicatore"].str.upper().str.match(pattern, na=False)
             ]
@@ -86,34 +97,66 @@ class DataRetriever:
     @staticmethod
     def get_controlli_by_piano(piano_id: str) -> Optional[pd.DataFrame]:
         """
-        Recupera controlli eseguiti per un piano usando il campo descrizione_indicatore.
+        Recupera controlli eseguiti per un piano/attività.
+        Delega al ControlliRepository (flag `data_source.repositories.controlli`).
+        """
+        try:
+            from data_sources.repositories import get_controlli_repository
+            return get_controlli_repository().get_by_piano(piano_id)
+        except Exception as e:
+            print(f"[DataRetriever] Controlli repo fallito ({e}), fallback legacy")
+            return DataRetriever._get_controlli_by_piano_pandas_legacy(piano_id)
 
-        Returns:
-            DataFrame con controlli filtrati o None se non trovato
+    @staticmethod
+    def _get_controlli_by_piano_pandas_legacy(piano_id: str) -> Optional[pd.DataFrame]:
+        """
+        Implementazione pandas originale. Chiamata dal PandasControlliRepository
+        per evitare ricorsione. Non chiamare direttamente dal codice applicativo.
         """
         if controlli_df.empty or not piano_id:
             return None
 
-        # Usa alias_indicatore con matching esatto o sottopiani (A1, A1_A, ma non A10)
-        piano_upper = piano_id.upper()
-        # Strip prefisso ATT per matching flessibile
-        if piano_upper.startswith("ATT "):
-            piano_upper = piano_upper[4:]
-        pattern = rf'^(ATT\s+)?{re.escape(piano_upper)}(?:[_ ]|$)'
-        piano_filtrato = controlli_df[
-            controlli_df['alias_indicatore'].str.upper().str.match(pattern, na=False)
-        ]
+        piano_upper = piano_id.upper().strip()
+        is_attivita = piano_upper.startswith("ATT ")
+
+        if is_attivita:
+            att_code = "ATT_" + piano_upper[4:]
+            piano_filtrato = controlli_df[
+                controlli_df['descrizione_indicatore'].str.upper().str.startswith(att_code, na=False)
+            ]
+            if piano_filtrato.empty:
+                base_code = piano_upper[4:]
+                pattern = rf'^(ATT[_ ])?{re.escape(base_code)}(?:[_ ]|$)'
+                piano_filtrato = controlli_df[
+                    controlli_df['alias_indicatore'].str.upper().str.match(pattern, na=False)
+                ]
+        else:
+            pattern = rf'^(ATT\s+)?{re.escape(piano_upper)}(?:[_ ]|$)'
+            piano_filtrato = controlli_df[
+                controlli_df['alias_indicatore'].str.upper().str.match(pattern, na=False)
+            ]
 
         return piano_filtrato if not piano_filtrato.empty else None
 
     @staticmethod
     def get_osa_mai_controllati(asl: Optional[str] = None, limit: Optional[int] = None) -> pd.DataFrame:
         """
-        Recupera stabilimenti mai controllati, opzionalmente filtrati per ASL.
-
-        Returns:
-            DataFrame filtrato (può essere vuoto)
+        Recupera stabilimenti mai controllati. Delega al OsaRepository
+        (flag `data_source.repositories.osa`).
         """
+        try:
+            from data_sources.repositories import get_osa_repository
+            return get_osa_repository().get_all(asl=asl, limit=limit)
+        except Exception as e:
+            print(f"[DataRetriever] Osa repo fallito ({e}), fallback legacy")
+            return DataRetriever._get_osa_mai_controllati_pandas_legacy(asl=asl, limit=limit)
+
+    @staticmethod
+    def _get_osa_mai_controllati_pandas_legacy(
+        asl: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> pd.DataFrame:
+        """Implementazione pandas originale. Chiamata dal PandasOsaRepository."""
         if osa_mai_controllati_df.empty:
             return pd.DataFrame()
 
@@ -133,11 +176,23 @@ class DataRetriever:
     @staticmethod
     def get_diff_programmati_eseguiti(uoc_name: str, asl: Optional[str] = None, uos: Optional[str] = None) -> pd.DataFrame:
         """
-        Recupera differenze programmati vs eseguiti per struttura UOC, ASL e UOS.
-
-        Returns:
-            DataFrame filtrato per UOC (e ASL/UOS se specificati)
+        Recupera differenze programmati vs eseguiti. Delega al DiffRepository
+        (flag `data_source.repositories.diff`).
         """
+        try:
+            from data_sources.repositories import get_diff_repository
+            return get_diff_repository().get_for_struttura(uoc_name, asl=asl, uos=uos)
+        except Exception as e:
+            print(f"[DataRetriever] Diff repo fallito ({e}), fallback legacy")
+            return DataRetriever._get_diff_programmati_eseguiti_pandas_legacy(uoc_name, asl, uos)
+
+    @staticmethod
+    def _get_diff_programmati_eseguiti_pandas_legacy(
+        uoc_name: str,
+        asl: Optional[str] = None,
+        uos: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """Implementazione pandas originale. Chiamata dal PandasDiffRepository."""
         if diff_prog_eseg_df.empty or not uoc_name:
             return pd.DataFrame()
 
@@ -163,10 +218,10 @@ class DataRetriever:
         return result
 
     @staticmethod
-    def search_piani_by_db(query: str, sezione: str = None, campionamento: bool = None) -> List[Dict[str, Any]]:
+    def search_piani_by_db(query: str, sezione: str = None, campionamento: bool = None) -> List[Dict[str, Any]]:  # noqa: E501 — firma legacy non Optional per backward compat
         """
         Cerca piani per keyword direttamente sul DataFrame piani_monitoraggio in memoria.
-        Equivalente a SQL ILIKE '%query%' su colonne descrizione_piano e descrizione_indicatore.
+        Equivalente a SQL ILIKE '%query%' su colonne descrizione_piano_attivita e descrizione_indicatore.
 
         Args:
             query: Termine di ricerca (es. "scrofe", "bovini", "latte")
@@ -174,7 +229,7 @@ class DataRetriever:
             campionamento: Filtro booleano opzionale per campionamento (True/False)
 
         Returns:
-            Lista di dict con chiavi: sezione, alias_piano_attivita, alias_indicatore, descrizione_piano, descrizione_indicatore, campionamento
+            Lista di dict con chiavi: sezione, alias_piano_attivita, alias_indicatore, descrizione_piano_attivita, descrizione_indicatore, campionamento
         """
         if piani_df.empty:
             return []
@@ -196,7 +251,7 @@ class DataRetriever:
             else:
                 # Filtro per sezione + keyword nelle descrizioni
                 search_term = query.strip()
-                mask_desc = filtered_df['descrizione_piano'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+                mask_desc = filtered_df['descrizione_piano_attivita'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
                 mask_desc2 = filtered_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
                 matched = filtered_df[mask_desc | mask_desc2]
                 # Se keyword non trova nulla nella sezione, mostra tutti i piani della sezione
@@ -207,8 +262,8 @@ class DataRetriever:
                 return []
             search_term = query.strip()
 
-            # Cerca in descrizione_piano e descrizione_indicatore (case-insensitive)
-            mask_desc = piani_df['descrizione_piano'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
+            # Cerca in descrizione_piano_attivita e descrizione_indicatore (case-insensitive)
+            mask_desc = piani_df['descrizione_piano_attivita'].fillna('').str.contains(search_term, case=False, na=False, regex=False)
             mask_desc2 = piani_df[desc2_col].fillna('').str.contains(search_term, case=False, na=False, regex=False)
 
             matched = piani_df[mask_desc | mask_desc2]
@@ -241,9 +296,11 @@ class DataRetriever:
                 'sezione': row.get('sezione', ''),
                 'alias_piano_attivita': alias,
                 'alias_indicatore': alias_ind,
-                'descrizione_piano': row.get('descrizione_piano', ''),
+                'descrizione_piano_attivita': row.get('descrizione_piano_attivita', ''),
                 'descrizione_indicatore': row.get(desc2_col, ''),
                 'campionamento': campionamento,
+                'anno': row.get('anno', ''),
+                'tipo_item_dpat': row.get('tipo_item_dpat', ''),
             })
 
         return results
@@ -347,7 +404,7 @@ class DataRetriever:
                     'alias_piano_attivita': p.get('alias_piano_attivita', p.get('alias', '')),
                     'alias_indicatore': p.get('alias_indicatore', ''),
                     'sezione': p.get('sezione', ''),
-                    'descrizione_piano': p.get('descrizione_piano', p.get('descrizione', '')),
+                    'descrizione_piano_attivita': p.get('descrizione_piano_attivita', p.get('descrizione', '')),
                     'descrizione_indicatore': p.get('descrizione_indicatore', p.get('descrizione_2', '')),
                     'similarity': hit.score,
                     'rank': len(matches) + 1
@@ -430,7 +487,7 @@ class DataRetriever:
             piani_raw = data_source.get_piani()
             # Precompute desc_full once and store in cache
             piani_raw['desc_full'] = (
-                piani_raw['descrizione_piano'].fillna('').astype(str) + " " +
+                piani_raw['descrizione_piano_attivita'].fillna('').astype(str) + " " +
                 piani_raw.get('descrizione_indicatore', pd.Series([''] * len(piani_raw))).fillna('').astype(str)
             ).str.strip()
             DataRetriever._piani_cache = piani_raw
@@ -472,7 +529,7 @@ class DataRetriever:
                     'sezione': row_data.get('sezione', ''),
                     'alias_piano_attivita': row_data.get('alias_piano_attivita', ''),
                     'alias_indicatore': row_data.get('alias_indicatore', ''),
-                    'descrizione_piano': row_data.get('descrizione_piano', ''),
+                    'descrizione_piano_attivita': row_data.get('descrizione_piano_attivita', ''),
                     'descrizione_indicatore': row_data.get('descrizione_indicatore', ''),
                     'similarity': max_similarity
                 })
@@ -843,6 +900,18 @@ class BusinessLogic:
         df['numero_nc_gravi'] = pd.to_numeric(df.get('numero_nc_gravi', 0), errors='coerce').fillna(0).astype('int64')
         df['numero_nc_non_gravi'] = pd.to_numeric(df.get('numero_nc_non_gravi', 0), errors='coerce').fillna(0).astype('int64')
 
+        # Normalizza whitespace nelle chiavi di aggregazione: i dati sorgente
+        # contengono spazi doppi/inconsistenti che fanno apparire come distinte
+        # righe in realtà identiche (es. "DI VICINATO DEL SETTORE  ALIMENTARE"
+        # vs "DI VICINATO DEL SETTORE ALIMENTARE").
+        for _col in ('macroarea_cu', 'aggregazione_cu', 'attivita_cu'):
+            if _col in df.columns:
+                df[_col] = (
+                    df[_col].astype(str)
+                    .str.replace(r'\s+', ' ', regex=True)
+                    .str.strip()
+                )
+
         # Aggrega per tipologia - nunique per conteggio controlli (1:N per NC)
         stabilimenti_count = df.groupby(
             ['macroarea_cu', 'aggregazione_cu', 'attivita_cu']
@@ -897,19 +966,26 @@ class BusinessLogic:
     @staticmethod
     def calculate_delayed_plans(diff_df: pd.DataFrame, piano_id: Optional[str] = None, target_year: int = None) -> pd.DataFrame:
         """
-        Calcola piani in ritardo (programmati > eseguiti) per l'anno specificato.
-        Solo i ritardi dell'anno corrente sono operativamente rilevanti.
+        Calcola piani in ritardo per l'anno specificato.
+        Per l'anno corrente usa il ritardo proporzionale (confronta eseguiti con
+        la quota attesa in base alla frazione d'anno trascorsa).
+        Per gli anni passati usa il ritardo assoluto (programmati - eseguiti).
 
         Args:
             diff_df: DataFrame con dati programmati/eseguiti
             piano_id: Filtra per piano specifico (opzionale)
-            target_year: Anno di riferimento (default: anno corrente 2025)
+            target_year: Anno di riferimento (default: anno corrente da config)
 
         Returns:
-            DataFrame con piani in ritardo ordinati per gravità
+            DataFrame con piani in ritardo ordinati per gravità.
+            Colonne aggiunte: programmati, eseguiti, attesi, ritardo,
+            avanzamento_pct, avanzamento_atteso_pct.
         """
         if diff_df.empty:
             return pd.DataFrame()
+
+        from datetime import datetime as _dt
+        import calendar
 
         # Filtra per anno target (default da configurazione)
         if target_year is None:
@@ -917,8 +993,7 @@ class BusinessLogic:
                 from configs.config_loader import get_config
                 target_year = get_config().get_current_year()
             except ImportError:
-                # Fallback se config_loader non disponibile
-                target_year = 2025
+                target_year = _dt.now().year
 
         if 'anno' in diff_df.columns:
             diff_df = diff_df[diff_df['anno'] == target_year].copy()
@@ -926,10 +1001,27 @@ class BusinessLogic:
         if diff_df.empty:
             return pd.DataFrame()
 
-        # Ensure numeric coercion for programmati and eseguiti before subtraction
+        # Coercizione numerica
         diff_df['programmati'] = pd.to_numeric(diff_df['programmati'], errors='coerce').fillna(0)
         diff_df['eseguiti'] = pd.to_numeric(diff_df['eseguiti'], errors='coerce').fillna(0)
-        diff_df['ritardo'] = diff_df['programmati'] - diff_df['eseguiti']
+
+        # Calcolo ritardo: proporzionale per anno corrente, assoluto per anni passati
+        now = _dt.now()
+        if target_year == now.year:
+            days_in_year = 366 if calendar.isleap(target_year) else 365
+            fraction = now.timetuple().tm_yday / days_in_year
+            diff_df['attesi'] = (diff_df['programmati'] * fraction).round(0).astype(int)
+            diff_df['ritardo'] = (diff_df['attesi'] - diff_df['eseguiti']).clip(lower=0).astype(int)
+            diff_df['avanzamento_atteso_pct'] = round(fraction * 100, 1)
+        else:
+            diff_df['attesi'] = diff_df['programmati'].astype(int)
+            diff_df['ritardo'] = (diff_df['programmati'] - diff_df['eseguiti']).clip(lower=0).astype(int)
+            diff_df['avanzamento_atteso_pct'] = 100.0
+
+        diff_df['avanzamento_pct'] = (
+            diff_df['eseguiti'] / diff_df['programmati'].replace(0, 1) * 100
+        ).round(1)
+
         delayed = diff_df[diff_df['ritardo'] > 0].copy()
 
         if piano_id:
@@ -940,26 +1032,27 @@ class BusinessLogic:
     @staticmethod
     def correlate_piano_attivita(piano_id: str) -> pd.DataFrame:
         """
-        Trova correlazione statistica piano → attività dai controlli 2025.
+        Trova correlazione statistica piano → attività dai controlli del piano.
 
-        Returns:
-            DataFrame con attività correlate ordinate per frequency
+        Refactor (Fase 4 gap-fill): invece di fare un groupby globale su
+        controlli_df (~3.3M righe), recuperiamo prima i controlli del piano
+        via `DataRetriever.get_controlli_by_piano` (che delega al repository,
+        quindi può emettere una query SQL mirata quando flag=sql) e poi
+        aggregiamo solo sul subset (~migliaia di righe).
         """
-        if controlli_df.empty or not piano_id:
+        if not piano_id:
             return pd.DataFrame()
 
-        piano_attivita = controlli_df.groupby(
-            ['alias_piano_attivita', 'attivita_cu']
-        ).size().reset_index(name='count')
+        controlli_piano = DataRetriever.get_controlli_by_piano(piano_id)
+        if controlli_piano is None or controlli_piano.empty:
+            return pd.DataFrame()
 
-        piano_upper = piano_id.upper()
-        if piano_upper.startswith("ATT "):
-            piano_upper = piano_upper[4:]
-        pattern = rf'^(ATT\s+)?{re.escape(piano_upper)}(?:[_ ]|$)'
-        related = piano_attivita[
-            piano_attivita['alias_piano_attivita'].str.upper().str.match(pattern, na=False)
-        ]
-
+        # Groupby sul subset già filtrato per piano
+        related = (
+            controlli_piano.groupby(['alias_piano_attivita', 'attivita_cu'])
+            .size()
+            .reset_index(name='count')
+        )
         return related.sort_values('count', ascending=False)
 
     @staticmethod
@@ -970,7 +1063,7 @@ class BusinessLogic:
         Interpretazione campi tabella piani_monitoraggio (nomi canonici):
         - alias_piano_attivita: nome/codice del piano (es. "A1", "B2")
         - alias_indicatore: nome/codice del sottopiano
-        - descrizione_piano: descrizione del piano
+        - descrizione_piano_attivita: descrizione del piano/attività
         - descrizione_indicatore: descrizione del sotto-piano
         - campionamento: True = prelievo campioni, False = attivita' di controllo
         - sezione: sezione del piano (es. "A", "B", "C")
@@ -984,7 +1077,7 @@ class BusinessLogic:
             sezione = row.get("sezione", "")
             alias = row.get("alias_piano_attivita", "")
             alias_ind = row.get("alias_indicatore", "")
-            desc1 = row.get("descrizione_piano", "")
+            desc1 = row.get("descrizione_piano_attivita", "")
             desc2 = row.get("descrizione_indicatore", "")
             camp_raw = row.get("campionamento", None)
             campionamento = bool(camp_raw) if pd.notna(camp_raw) else None
@@ -1045,7 +1138,7 @@ class BusinessLogic:
 
         count = 0
         for row in piano_rows.itertuples(index=False):
-            if pd.notna(getattr(row, "descrizione_piano", None)):
+            if pd.notna(getattr(row, "descrizione_piano_attivita", None)):
                 count += 1
             if pd.notna(getattr(row, "descrizione_indicatore", None)):
                 count += 1
@@ -1123,14 +1216,30 @@ class RiskAnalyzer:
     @staticmethod
     def calculate_risk_scores() -> pd.DataFrame:
         """
-        Calcola punteggio rischio per attivita da controlli_df (cu_eseguiti_nc) con caching.
+        Calcola punteggio rischio per attivita.
 
-        Formula: risk_score = P(NC) x Impatto
-        P(NC) = (NC totali) / (controlli totali)
-        Impatto = (NC gravi) / (controlli totali)
+        Dal refactor Hybrid (Fase 3) delega al RiskRepository governato dal
+        flag `data_source.repositories.risk`:
+          - "pandas" (default): usa il calcolo in-memory legacy
+            (`_calculate_risk_scores_pandas_original`)
+          - "sql": legge dalla view `v_risk_score_per_attivita`
 
-        Returns:
-            DataFrame con punteggi rischio per attivita
+        Il contract del DataFrame ritornato è invariato.
+        """
+        try:
+            from data_sources.repositories import get_risk_repository
+            return get_risk_repository().get_risk_scores()
+        except Exception as e:
+            print(f"[RiskAnalyzer] Repository fallito ({e}), fallback a pandas inline")
+            return RiskAnalyzer._calculate_risk_scores_pandas_original()
+
+    @staticmethod
+    def _calculate_risk_scores_pandas_original() -> pd.DataFrame:
+        """
+        Calcolo legacy in-memory (conservato per compatibilità e per essere
+        richiamato dal PandasRiskRepository). Non chiamare direttamente dal
+        codice applicativo — usa `calculate_risk_scores()` che passa dal
+        repository.
         """
         if RiskAnalyzer._risk_scores_cache is not None:
             print("[RiskAnalyzer] Using cached risk scores")
@@ -1206,9 +1315,17 @@ class RiskAnalyzer:
 
     @staticmethod
     def clear_risk_cache():
-        """Clear all cached risk scores."""
+        """Clear all cached risk scores (both legacy in-process and repository)."""
         RiskAnalyzer._risk_scores_cache = None
         RiskAnalyzer._categorized_risk_scores_cache = None
+        # Invalidare anche la cache del repository SQL (se attivo)
+        try:
+            from data_sources.repositories import get_risk_repository
+            repo = get_risk_repository()
+            if hasattr(repo, "clear_cache"):
+                repo.clear_cache()
+        except Exception:
+            pass
         print("[RiskAnalyzer] All risk scores caches cleared")
 
     @staticmethod
@@ -1308,7 +1425,8 @@ class RiskAnalyzer:
         nc_copy['anno_controllo'] = pd.to_datetime(nc_copy['data_inizio_controllo'], errors='coerce').dt.year
 
         if periodo_mesi <= 12:
-            anno_corrente = 2025
+            from configs.config_loader import get_config
+            anno_corrente = get_config().get_current_year()
             nc_copy = nc_copy[nc_copy['anno_controllo'] >= anno_corrente]
 
         nc_copy['numero_nc_gravi'] = pd.to_numeric(nc_copy['numero_nc_gravi'], errors='coerce').fillna(0)

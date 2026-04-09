@@ -1,13 +1,8 @@
+# pyright: reportAttributeAccessIssue=false, reportOptionalMemberAccess=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportCallIssue=false, reportOptionalOperand=false, reportReturnType=false, reportAssignmentType=false, reportPossiblyUnboundVariable=false
 from typing import Dict, Any, Optional
 import pandas as pd
 
-try:
-    from langchain_core.tools import tool
-except ImportError:
-    def tool(_name):
-        def decorator(func):
-            return func
-        return decorator
+from tools._tool_compat import tool
 
 try:
     from agents.data_agent import DataRetriever, RiskAnalyzer
@@ -59,7 +54,7 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
                 "info": f"Nessun stabilimento mai controllato per ASL {asl}",
                 "asl": asl,
                 "total": 0,
-                "formatted_response": f"✅ Non sono stati trovati stabilimenti mai controllati per l'ASL **{asl}**."
+                "formatted_response": ResponseFormatter.format_no_data("stabilimenti mai controllati", f"per l'ASL **{asl}**", " Buon segno! Se vuoi, posso cercare quelli a rischio piu' alto oppure i piani in ritardo.")
             }
 
         if piano_code:
@@ -148,7 +143,7 @@ def get_risk_based_priority(asl: Optional[str] = None, piano_code: Optional[str]
         }
 
     except Exception as e:
-        return {"error": f"Errore nell'analisi del rischio: {str(e)}", "formatted_response": f"Si è verificato un errore durante l'analisi del rischio: {str(e)}"}
+        return {"error": f"Errore nell'analisi del rischio: {str(e)}", "formatted_response": ResponseFormatter.format_tool_error("l'analisi del rischio")}
 
 
 def _analyze_controlled_establishments_risk(piano_code: str) -> Dict[str, Any]:
@@ -203,7 +198,7 @@ def _analyze_controlled_establishments_risk(piano_code: str) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        return {"error": f"Errore nell'analisi del rischio per piano {piano_code}: {str(e)}", "formatted_response": f"Si è verificato un errore durante l'analisi del rischio per il piano {piano_code}: {str(e)}"}
+        return {"error": f"Errore nell'analisi del rischio per piano {piano_code}: {str(e)}", "formatted_response": ResponseFormatter.format_tool_error(f"l'analisi del rischio per il piano {piano_code}")}
 
 
 def _format_risk_analysis_for_controlled_establishments(
@@ -298,7 +293,7 @@ def get_establishments_with_sanctions(asl: Optional[str] = None, limit: int = 20
                 "info": f"Nessuno stabilimento con sanzioni trovato{asl_text}",
                 "asl": asl,
                 "total": 0,
-                "formatted_response": f"✅ Non sono stati trovati stabilimenti con non conformità{asl_text}."
+                "formatted_response": ResponseFormatter.format_no_data("stabilimenti con non conformita'", asl_text, " Vuoi che cerchi informazioni su un'altra ASL o su un piano specifico?")
             }
 
         # Prepara dati per output
@@ -335,7 +330,7 @@ def get_establishments_with_sanctions(asl: Optional[str] = None, limit: int = 20
     except Exception as e:
         return {
             "error": f"Errore nell'analisi sanzioni: {str(e)}",
-            "formatted_response": f"Si è verificato un errore durante l'analisi degli stabilimenti con sanzioni: {str(e)}"
+            "formatted_response": ResponseFormatter.format_tool_error("l'analisi degli stabilimenti con sanzioni")
         }
 
 

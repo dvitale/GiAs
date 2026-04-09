@@ -527,7 +527,7 @@ JSON:"""
         suggestions: List[Dict],
         phase: int = 1,
         intro_message: str = None
-    ) -> str:
+    ) -> tuple:
         """
         Formatta messaggio con suggerimenti per l'utente.
 
@@ -537,16 +537,17 @@ JSON:"""
             intro_message: Messaggio introduttivo custom
 
         Returns:
-            Messaggio formattato
+            Tupla (messaggio formattato, lista suggerimenti strutturati per pill buttons)
         """
         if not suggestions:
-            return "Scusa, non ho capito la tua richiesta. Usa 'aiuto' per vedere cosa posso fare."
+            return ("Non sono riuscito a capire cosa cerchi. Prova a riformulare oppure scrivi *aiuto* per vedere tutto quello che posso fare.", [])
 
         # Messaggio introduttivo
         if intro_message is None:
-            intro_message = "Non sono sicuro di aver capito. Intendevi una di queste operazioni?"
+            intro_message = "Mmm, non ho inquadrato bene la richiesta. Forse intendevi una di queste cose?"
 
         lines = [intro_message, ""]
+        structured = []
 
         # Separa intent da categorie
         intents = [s for s in suggestions if s.get("type") == "intent"]
@@ -560,6 +561,7 @@ JSON:"""
                 label = suggestion.get("label", "")
                 description = suggestion.get("description", "")
                 lines.append(f"{i}. {emoji} **{label}** - {description}")
+                structured.append({"text": f"{emoji} {label}", "query": label.lower()})
             lines.append("")
 
         # Mostra menu categorie
@@ -574,13 +576,10 @@ JSON:"""
                 emoji = suggestion.get("emoji", "📋")
                 label = suggestion.get("label", "")
                 lines.append(f"{i}. {emoji} {label}")
+                structured.append({"text": f"{emoji} {label}", "query": label.lower()})
             lines.append("")
 
-        # Istruzioni finali
-        max_num = len(suggestions)
-        lines.append(f"Rispondi con il numero (1-{max_num}) o descrivi meglio la tua richiesta.")
-
-        return "\n".join(lines)
+        return "\n".join(lines), structured
 
     def clear_cache(self) -> None:
         """Pulisce cache keyword (voci e timestamp)."""

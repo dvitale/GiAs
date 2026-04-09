@@ -318,6 +318,7 @@ def _build_chat_result(result: Dict[str, Any]) -> ChatResult:
         suggestions=suggestions,
         fallback_intents=fallback_intents,
         execution=execution,
+        tool_output=result.get("tool_output"),
         needs_clarification=result.get("needs_clarification", False),
         has_more_details=result.get("has_more_details", False),
         error=error if error else None,

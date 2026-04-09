@@ -440,6 +440,8 @@ class ConversationGraph:
         elif result.action == "ask_user":
             state["dm_question"] = result.question
             state["dm_target_tool"] = None
+            if result.suggestions:
+                state["suggestions"] = result.suggestions
 
         elif result.action == "fallback":
             state["dm_target_tool"] = "fallback_tool"
@@ -621,11 +623,13 @@ class ConversationGraph:
         state["fallback_suggestions"] = suggestions
 
         intro = f"**{selected_category}** - Scegli l'operazione:" if selected_category else None
-        response = self._fallback_engine.format_suggestions_message(
+        response, structured_suggestions = self._fallback_engine.format_suggestions_message(
             suggestions, phase=phase, intro_message=intro
         )
 
         state["tool_output"] = {"type": "fallback", "data": {"formatted_response": response}}
+        if structured_suggestions:
+            state["suggestions"] = structured_suggestions
         state["error"] = ""
         _track_fallback()
         return state
@@ -795,6 +799,34 @@ class ConversationGraph:
                 "execution_path": final_state.get("execution_path", []),
                 "node_timings": final_state.get("node_timings", {}),
                 "total_execution_ms": total_execution_ms,
+                # Tool output summary per debug page
+                "tool_output": self._summarize_tool_output(final_state.get("tool_output")),
             }
         finally:
             self._event_callback = None
+
+    @staticmethod
+    def _summarize_tool_output(tool_output) -> Optional[Dict[str, Any]]:
+        """Estrae un riepilogo leggibile del tool_output per la debug page.
+
+        Include tutte le chiavi scalari (str, int, float, bool), esclude
+        payload pesanti (list, dict, formatted_response, raw_data, ecc.).
+        """
+        if not tool_output or not isinstance(tool_output, dict):
+            return None
+        data = tool_output.get("data") or {}
+        if not isinstance(data, dict):
+            return {"type": tool_output.get("type", "unknown")}
+        summary = {"type": tool_output.get("type", "unknown")}
+        # Pseudo-query SQL (generata in tool_nodes.py)
+        if tool_output.get("pseudo_query"):
+            summary["pseudo_query"] = tool_output["pseudo_query"]
+        _exclude = {"formatted_response", "detail_response", "raw_data",
+                     "top_stabilimenti", "delayed_plans", "priority_establishments",
+                     "osa_rischiosi", "sottopiani", "matches"}
+        for key, val in data.items():
+            if key in _exclude:
+                continue
+            if isinstance(val, (str, int, float, bool)):
+                summary[key] = val
+        return summary

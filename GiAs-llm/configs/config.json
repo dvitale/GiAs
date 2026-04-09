@@ -1,5 +1,5 @@
 {
-  "current_year": 2025,
+  "current_year": 2026,
   "llm_backend": {
     "type": "openrouter",
     "options": [
@@ -86,10 +86,8 @@
         "attivita": "Master list rev 11_filtered.csv",
         "controlli": "vw_cu.csv",
         "osa_mai_controllati": "osa_mai_controllati_con_linea_852-3_filtered.csv",
-        "diff_prog_eseg": "vw_diff_programmati_eseguiti.csv",
-        "personale": "personale_filtered.csv"
-      },
-      "personale_separator": "|"
+        "diff_prog_eseg": "vw_diff_programmati_eseguiti.csv"
+      }
     },
     "postgresql": {
       "enabled": true,
@@ -106,6 +104,15 @@
         "diff_prog_eseg": "cu_diff_programmati_eseguiti",
         "personale": "personale"
       }
+    },
+    "repositories": {
+      "_comment": "Flag di migrazione Hybrid SQL-first. Valori: 'pandas' (DataFrame in-memory, default) o 'sql' (query diretta su PostgreSQL). Vedi docs/testing_db.md e data_sources/repositories/.",
+      "piano": "pandas",
+      "piano_table": "piani_monitoraggio",
+      "controlli": "pandas",
+      "diff": "pandas",
+      "risk": "pandas",
+      "osa": "pandas"
     }
   },
   "hybrid_search": {

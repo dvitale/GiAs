@@ -64,7 +64,7 @@ Prompt in `_build_response_prompt`: spiega risultati in italiano, motiva priorit
 
 **DataFrame** (in `agents/data_agent.py`): `piani_df`, `controlli_df` (da cu_eseguiti_nc, con NC inline), `osa_mai_controllati_df`, `diff_prog_eseg_df`, `personale_df`. Import: `from ..data import <df>`.
 
-**Schema normalizzato**: le tabelle DB in `public` usano nomi colonna canonici (es. `alias_piano_attivita`, `descrizione_piano`, `descrizione_indicatore`, `alias_indicatore`, `tipo_piano_attivita`, `campionamento`). Le tabelle originali sono archiviate nello schema `old`. Nessun rename applicativo in Python. Schema documentato in `docs/dataset_min.md` e `docs/dataset_min.mmd`. Script di creazione: `sql/create_normalized_views.sql`.
+**Schema normalizzato**: le tabelle DB in `public` usano nomi colonna canonici (es. `alias_piano_attivita`, `descrizione_piano_attivita`, `descrizione_indicatore`, `alias_indicatore`, `tipo_piano_attivita`, `campionamento`). Le tabelle originali sono archiviate nello schema `old`. Nessun rename applicativo in Python. Schema documentato in `docs/dataset_min.md` e `docs/dataset_min.mmd`. Script di creazione: `sql/create_normalized_views.sql`. NB: `piani_monitoraggio` usa `descrizione_piano_attivita`, mentre `cu_eseguiti_nc` usa ancora `descrizione_piano`.
 
 **`osa_mai_controllati`**: sincronizzata da mdgm (`chatbot.osa_mai_controllati`) con `scripts/sync_osa_mai_controllati.py`. Include `ragione_sociale` — usata come identificativo primario nelle risposte di `ask_risk_based_priority`, `ask_priority_establishment` e relative sintesi two-phase. Whitelist in `data_sources/base.py` (`KEEP_COLUMNS`).
 
@@ -140,9 +140,78 @@ Rebuild indice dopo aggiunta esempi: `python tools/indexing/build_intent_example
 
 ### Working with Data
 
-**Usa**: `DataRetriever.get_*()`, `BusinessLogic.*()`, `RiskAnalyzer.*()`, `ResponseFormatter.format_*()`
+**Repository pattern (migrazione Hybrid SQL-first)**
 
-**Mai**: accesso diretto CSV nei tools, mix data logic con text formatting, import fuori dal 3-layer.
+Dal refactor Hybrid, l'accesso ai dati passa attraverso **repository** in
+`data_sources/repositories/`. Ogni repository è un `Protocol` con due
+implementazioni intercambiabili:
+
+- **Pandas facade** (`pandas_*_repository.py`): wrapper thin che delega ai
+  metodi legacy di `DataRetriever`/`BusinessLogic`/`RiskAnalyzer`. Path
+  **default** (zero breaking change).
+- **SQL impl** (`sql_*_repository.py`): query dirette su PostgreSQL tramite
+  l'engine SQLAlchemy condiviso con `PostgreSQLDataSource`. Opt-in via flag.
+
+Repository disponibili:
+
+| Repository | Tabella DB | Tool consumer |
+|---|---|---|
+| `PianoRepository` | `piani_monitoraggio` (MV) | `piano_tools.get_piano_description` |
+| `ControlliRepository` | `cu_eseguiti_nc` | (interno via RiskAnalyzer / piano_tools) |
+| `DiffRepository` | `cu_diff_programmati_eseguiti` | `priority_tools.*` |
+| `RiskRepository` | `v_risk_score_per_attivita` (VIEW) | `RiskAnalyzer.calculate_risk_scores` |
+
+**Flag di configurazione** (`configs/config.json → data_source.repositories`):
+
+```json
+{
+  "repositories": {
+    "piano":     "pandas",  // o "sql"
+    "controlli": "pandas",
+    "diff":      "pandas",
+    "risk":      "pandas"
+  }
+}
+```
+
+Impostando un flag a `"sql"`, il factory instancia la concrezione SQL per
+quella categoria senza toccare il resto. Rollback istantaneo: basta ritornare
+a `"pandas"`.
+
+**Uso dal codice**:
+
+```python
+from data_sources.repositories import (
+    get_piano_repository,
+    get_controlli_repository,
+    get_diff_repository,
+    get_risk_repository,
+)
+
+repo = get_piano_repository()
+df = repo.find_by_alias("A1")   # ritorna DataFrame (stessa forma di legacy)
+```
+
+**Contract invariance**: le due impl devono ritornare strutture identiche.
+Verificato dai contract test parametrizzati in
+`tests/integration/db/test_*_repository_contract.py` — stesso test, due
+fixture (`pandas`/`sql`). Marker `@pytest.mark.db`: i test leggono dal DB
+di sviluppo tramite user readonly `gias_test_readonly`. Setup completo in
+`docs/testing_db.md`.
+
+**Legacy path ancora utilizzato**:
+- `DataRetriever.get_*`, `BusinessLogic.*` — ancora usati direttamente da
+  tool che non sono stati ancora migrati (`establishment_tools`,
+  `procedure_tools`, `search_tools`). Non è un problema — i DataFrame sono
+  ancora caricati eagerly al boot da `agents/data.py`.
+- `RiskAnalyzer.calculate_risk_scores()` → passa sempre dal repository
+  (transparente al consumer, `risk_tools.py` non è stato toccato).
+
+**Mai**:
+- Accesso diretto ai DataFrame globali in `agents/data.py` dai tool nuovi
+  (usare il repository)
+- Mix data logic con text formatting
+- Import fuori dal 3-layer
 
 ## RAG Pipeline (`procedure_tools.py`)
 

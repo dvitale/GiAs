@@ -173,8 +173,8 @@ Concentrati sui {top_k} piani più rilevanti."""
 
             # Combine descriptions efficiently
             desc_parts = []
-            if candidate.get('descrizione_piano', candidate.get('descrizione')):
-                desc_parts.append(str(candidate.get('descrizione_piano', candidate.get('descrizione'))))
+            if candidate.get('descrizione_piano_attivita', candidate.get('descrizione')):
+                desc_parts.append(str(candidate.get('descrizione_piano_attivita', candidate.get('descrizione'))))
             if candidate.get('descrizione_indicatore', candidate.get('descrizione_2')):
                 desc_parts.append(str(candidate.get('descrizione_indicatore', candidate.get('descrizione_2'))))
 

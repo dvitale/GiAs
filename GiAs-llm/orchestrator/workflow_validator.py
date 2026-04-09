@@ -135,7 +135,7 @@ class WorkflowValidator:
     @staticmethod
     def validate_pending_question(
         pending_question: Optional[Dict[str, Any]],
-        workflow_nonce: str
+        workflow_nonce: Optional[str]
     ) -> bool:
         """
         Valida pending_question tied to workflow nonce.

@@ -1,11 +1,22 @@
-# Cartelle di dipendenze e sistema (Blocca tutto il contenuto)
+# ============================================
+# Virtualenv Python (root-level venv)
+# ============================================
+GiAs-llm/models/risk_model_v4.json
+GiAs-llm/predictor_ml/production_assets/risk_model_v4.json
+pyvenv.cfg
 lib/
 lib64/
 bin/
 include/
 share/
+*.egg-info/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
 
+# ============================================
 # Python - Bytecode e Cache
+# ============================================
 __pycache__/
 *.pyc
 *.pyo
@@ -13,18 +24,76 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 
+# ============================================
+# Documenti (md, pdf, mmd, doc, rst, tar)
+# ============================================
+*.md
+*.pdf
+*.mmd
+*.doc
+*.docx
+*.rst
+*.tar
+
+# Eccezione: CLAUDE.md necessario per Claude Code
+!CLAUDE.md
+!*/CLAUDE.md
+!**/CLAUDE.md
+
+# ============================================
+# Test, Benchmark, Debug
+# ============================================
+**/tests/
+**/test/
+**/benchmarks/
+**/debug/
+test_*.py
+*_test.py
+conftest.py
+pytest.ini
+*.py_old
+
+# ============================================
+# SDD (requisiti EARS / traceability)
+# ============================================
+**/SDD/
+
+# ============================================
+# Documentazione e artefatti non-codice
+# ============================================
+docs/
+runtime/
+his
+Modelfile.*
+personale.sql
+.understand-anything/
+
+# ============================================
 # Log e file temporanei
+# ============================================
 *.log
 gchat/log/
 backups/
 
-# Ambienti Virtuali (comuni nomi di cartelle venv)
+# ============================================
+# Ambienti Virtuali (nomi comuni)
+# ============================================
 venv/
 .venv/
 env/
 
+# ============================================
+# Database locale
+# ============================================
+*.sqlite
+
+# ============================================
 # OS specific
+# ============================================
 .DS_Store
 Thumbs.db
 
+# ============================================
+# Secrets
+# ============================================
 github-token.txt

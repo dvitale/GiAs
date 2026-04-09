@@ -412,7 +412,7 @@ class TestFormatSuggestions:
         result = engine.format_suggestions(suggestions)
         assert "---" in result
 
-    def test_vuoi_approfondire_header_present(self, engine):
+    def test_followup_header_present(self, engine):
         suggestions = [{"text": "Qualcosa", "query": "q"}]
         result = engine.format_suggestions(suggestions)
-        assert "Vuoi approfondire?" in result
+        assert "Ti puo' interessare anche:" in result

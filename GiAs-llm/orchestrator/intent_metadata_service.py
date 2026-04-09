@@ -72,7 +72,8 @@ class IntentMetadataService:
                            keywords, context_keywords, negative_keywords,
                            is_direct_response, disambiguation_rules,
                            query_equivalent, notes, section_number,
-                           self_sufficient, followup_excluded
+                           self_sufficient, followup_excluded,
+                           llm_description, anaphora_context, intro_phrases
                     FROM intents
                     ORDER BY section_number
                 """)).fetchall()
@@ -104,6 +105,9 @@ class IntentMetadataService:
                         "section_number": row[17],
                         "self_sufficient": row[18] if len(row) > 18 else False,
                         "followup_excluded": row[19] if len(row) > 19 else False,
+                        "llm_description": row[20] if len(row) > 20 else None,
+                        "anaphora_context": row[21] if len(row) > 21 else None,
+                        "intro_phrases": row[22] if len(row) > 22 and row[22] else [],
                     }
 
                 # Carica esempi
@@ -394,7 +398,7 @@ class IntentMetadataService:
         rules = [
             '1. "STABILIMENTI a rischio" → ask_risk_based_priority (NON ask_top_risk_activities)',
             '2. "ATTIVITÀ rischiose" / "classifica attività" → ask_top_risk_activities (NON ask_risk_based_priority)',
-            '3. "piani in ritardo" (plurale/generico) → ask_delayed_plans',
+            '3. "piani in ritardo" / "attività in ritardo" (plurale/generico) → ask_delayed_plans',
             '4. "il piano X è in ritardo" (specifico) → check_if_plan_delayed',
             '5. greet se messaggio è saluto/convenevole SENZA domande operative; goodbye se è commiato',
             '6. Slot mancante per intent che lo richiede → needs_clarification:true',
@@ -406,6 +410,7 @@ class IntentMetadataService:
             '12. Filtro per MACROAREA/AGGREGAZIONE → estrai come slot per filtrare i risultati dell\'intent più vicino',
             '13. "quanti controlli nell\'ASL X" / "controlli eseguiti a X" → query_data (conteggio su cu_eseguiti_nc). NON ask_piano_statistics (che riguarda statistiche dei PIANI).',
             '14. query_data SOLO per domande su dati tabulari non coperte dagli intent specifici. Confidence MAI > 0.80 (preferire sempre intent specifici).',
+            '15. "controlli per l\'attività/piano X" con codice specifico (es. B47, A1) → ask_piano_stabilimenti con slot piano_code. NON query_data: l\'utente chiede dettagli su un piano/attività specifico, non un conteggio generico.',
         ]
         return "\n".join(rules)
 
@@ -487,6 +492,33 @@ class IntentMetadataService:
             "dataretriever_class": meta.get("data_retriever"),
             "two_phase_threshold": meta.get("two_phase_threshold"),
             "sql": meta.get("query_equivalent"),
+        }
+
+    def get_llm_descriptions(self) -> Dict[str, str]:
+        """Mapping intent -> descrizione per prompt LLM."""
+        self._ensure_loaded()
+        return {
+            k: v["llm_description"]
+            for k, v in self._intents.items()
+            if v.get("llm_description")
+        }
+
+    def get_anaphora_contexts(self) -> Dict[str, str]:
+        """Mapping intent -> contesto breve per risoluzione anaforica."""
+        self._ensure_loaded()
+        return {
+            k: v["anaphora_context"]
+            for k, v in self._intents.items()
+            if v.get("anaphora_context")
+        }
+
+    def get_intro_phrases(self) -> Dict[str, list]:
+        """Mapping intent -> lista frasi intro conversazionali."""
+        self._ensure_loaded()
+        return {
+            k: v["intro_phrases"]
+            for k, v in self._intents.items()
+            if v.get("intro_phrases")
         }
 
     def reload(self):

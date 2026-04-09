@@ -15,7 +15,7 @@ import time
 import random
 import string
 from pathlib import Path
-from typing import Dict, Callable
+from typing import Any, Dict, Callable, Optional
 
 import pytest
 import requests
@@ -65,6 +65,10 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "rag: Tests requiring RAG/vector search"
+    )
+    config.addinivalue_line(
+        "markers", "db: Tests reading from the development PostgreSQL "
+                   "(read-only user gias_test_readonly)"
     )
 
 
@@ -132,7 +136,117 @@ def skip_if_server_down(request, server_available):
     # Skip solo per test marcati e2e o integration
     markers = [m.name for m in request.node.iter_markers()]
     if ("e2e" in markers or "integration" in markers) and not server_available:
-        pytest.skip("Server GiAs-llm non disponibile - avvia con: scripts/server.sh start")
+        # Eccezione: i test marcati anche `db` non richiedono il server
+        # HTTP (parlano direttamente col DB), quindi non vanno skippati qui.
+        if "db" not in markers:
+            pytest.skip("Server GiAs-llm non disponibile - avvia con: scripts/server.sh start")
+
+
+# ============================================================
+# DB fixtures — test che leggono dal PostgreSQL di sviluppo
+# Vedi docs/testing_db.md
+# ============================================================
+
+@pytest.fixture(scope="session")
+def db_config() -> Dict:
+    """
+    Configurazione di connessione al DB di test.
+
+    Host/port/database letti da configs/config.json (sezione postgresql).
+    User e password sovrascritti a `gias_test_readonly` per garantire
+    che i test non possano mai scrivere sul DB.
+
+    Env vars di override:
+      GIAS_TEST_DB_HOST, GIAS_TEST_DB_PORT, GIAS_TEST_DB_NAME, GIAS_TEST_DB_PASSWORD
+    """
+    try:
+        from configs.config_loader import get_config
+        pg = get_config().get_postgresql_config()
+    except Exception:
+        pg = {}
+
+    return {
+        "host": os.environ.get("GIAS_TEST_DB_HOST", pg.get("host", "localhost")),
+        "port": int(os.environ.get("GIAS_TEST_DB_PORT") or pg.get("port", 5432)),
+        "database": os.environ.get("GIAS_TEST_DB_NAME", pg.get("database", "gias_db")),
+        "user": "gias_test_readonly",
+        "password": os.environ.get("GIAS_TEST_DB_PASSWORD", "gias_test_ro_2026"),
+    }
+
+
+@pytest.fixture(scope="session")
+def db_engine(db_config):
+    """
+    Engine SQLAlchemy read-only per test DB. Scope session: una sola
+    connection pool condivisa tra tutti i test DB della sessione.
+
+    Se l'engine non può essere creato o il ping iniziale fallisce,
+    restituisce None — la fixture `skip_if_db_down` poi skippa i test
+    marcati `db`. In questo modo la CI senza accesso al DB non rompe.
+    """
+    try:
+        from sqlalchemy import create_engine, text
+    except ImportError:
+        return None
+
+    cfg = db_config
+    url = (
+        f"postgresql://{cfg['user']}:{cfg['password']}"
+        f"@{cfg['host']}:{cfg['port']}/{cfg['database']}"
+    )
+    try:
+        engine = create_engine(
+            url,
+            pool_size=3,
+            max_overflow=5,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+            echo=False,
+        )
+        # Ping: verifica effettiva raggiungibilità + grants
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return engine
+    except Exception as e:
+        print(f"[db_engine] DB non raggiungibile ({e}), test `db` verranno skippati")
+        return None
+
+
+@pytest.fixture(scope="session")
+def db_available(db_engine) -> bool:
+    """True se il DB è raggiungibile con l'user readonly."""
+    return db_engine is not None
+
+
+@pytest.fixture(autouse=True)
+def skip_if_db_down(request, db_available):
+    """Skip automatico per test marcati `db` se DB non raggiungibile."""
+    markers = [m.name for m in request.node.iter_markers()]
+    if "db" in markers and not db_available:
+        pytest.skip(
+            "DB di sviluppo non raggiungibile con user gias_test_readonly. "
+            "Vedi docs/testing_db.md per il setup."
+        )
+
+
+@pytest.fixture(scope="session")
+def canary_registry() -> Dict:
+    """
+    Carica tests/fixtures/canary_data.yaml come dict.
+    Restituisce dict vuoto se il file non esiste o PyYAML non è installato.
+    """
+    yaml_path = TEST_DIR / "fixtures" / "canary_data.yaml"
+    if not yaml_path.exists():
+        return {}
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        return {}
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
 
 
 # ============================================================
@@ -250,14 +364,14 @@ def api_client(webhook_url, diagnostic_ctx) -> Callable:
     Include automaticamente tracciamento diagnostico per arricchire
     i report di fallimento con request/response context.
     """
-    def call(message: str, sender: str, metadata: Dict = None) -> Dict:
+    def call(message: str, sender: str, metadata: Optional[Dict] = None) -> Dict:
         """Chiama /api/v1/chat e ritorna risposta compatibile."""
         # Traccia request per diagnostica
         diagnostic_ctx.set_request(message, sender, metadata)
 
-        payload = {
+        payload: Dict[str, Any] = {
             "sender": sender,
-            "message": message
+            "message": message,
         }
         if metadata:
             payload["metadata"] = metadata
@@ -286,10 +400,10 @@ def api_client_raw(webhook_url) -> Callable:
     """
     Client che ritorna response V1 completa.
     """
-    def call(message: str, sender: str, metadata: Dict = None) -> Dict:
-        payload = {
+    def call(message: str, sender: str, metadata: Optional[Dict] = None) -> Dict:
+        payload: Dict[str, Any] = {
             "sender": sender,
-            "message": message
+            "message": message,
         }
         if metadata:
             payload["metadata"] = metadata
@@ -309,8 +423,8 @@ def api_client_raw(webhook_url) -> Callable:
 @pytest.fixture
 def parse_client(parse_url) -> Callable:
     """Client per endpoint /api/v1/parse (NLU)."""
-    def call(text: str, metadata: Dict = None) -> Dict:
-        payload = {"text": text}
+    def call(text: str, metadata: Optional[Dict] = None) -> Dict:
+        payload: Dict[str, Any] = {"text": text}
         if metadata:
             payload["metadata"] = metadata
 
@@ -426,7 +540,7 @@ def ctx():
     Fixture per test_server.py che richiede TestContext.
     """
     try:
-        from tests.test_server import TestContext
+        from tests.test_server import TestContext  # type: ignore[import-not-found]
         return TestContext(
             quick_mode=True,
             verbose=False,
@@ -452,7 +566,7 @@ class DiagnosticContext:
         self.last_response = None
         self.metadata = {}
 
-    def set_request(self, query: str, sender: str, metadata: Dict = None):
+    def set_request(self, query: str, sender: str, metadata: Optional[Dict] = None):
         """Registra l'ultima request effettuata."""
         self.last_request = {
             "query": query,
@@ -540,13 +654,13 @@ def api_client_diagnostic(webhook_url, diagnostic_ctx) -> Callable:
     Client API che traccia automaticamente request/response per diagnosi.
     Usa questo invece di api_client per avere report dettagliati in caso di fallimento.
     """
-    def call(message: str, sender: str, metadata: Dict = None) -> Dict:
+    def call(message: str, sender: str, metadata: Optional[Dict] = None) -> Dict:
         # Traccia request
         diagnostic_ctx.set_request(message, sender, metadata)
 
-        payload = {
+        payload: Dict[str, Any] = {
             "sender": sender,
-            "message": message
+            "message": message,
         }
         if metadata:
             payload["metadata"] = metadata
@@ -621,7 +735,7 @@ def pytest_runtest_makereport(item, call):
 # Assert helpers per messaggi diagnostici
 # ============================================================
 
-def assert_intent(response: Dict, expected_intent: str, query: str = None):
+def assert_intent(response: Dict, expected_intent: str, query: Optional[str] = None):
     """
     Assert su intent con messaggio diagnostico completo.
 
@@ -642,7 +756,7 @@ def assert_intent(response: Dict, expected_intent: str, query: str = None):
     )
 
 
-def assert_patterns(response: Dict, patterns: list, min_matches: int = 1, query: str = None):
+def assert_patterns(response: Dict, patterns: list, min_matches: int = 1, query: Optional[str] = None):
     """
     Assert su pattern presenti nella risposta con contesto diagnostico.
 
@@ -664,7 +778,7 @@ def assert_patterns(response: Dict, patterns: list, min_matches: int = 1, query:
     )
 
 
-def assert_response_valid(response: Dict, query: str = None):
+def assert_response_valid(response: Dict, query: Optional[str] = None):
     """
     Assert che la response sia valida e non vuota.
 

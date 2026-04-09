@@ -167,14 +167,14 @@ class SchemaCatalog:
     def _static_fallback(self) -> str:
         """Fallback hardcoded se DB non disponibile."""
         return (
-            "- piani_monitoraggio ~730 righe: Piani di controllo veterinario per sezione PRISCAV\n"
-            "  Filtri: sezione(SEZIONE A,SEZIONE B,SEZIONE C), alias(A1,A22,B2), alias_indicatore, anno, tipo_attivita\n"
+            "- piani_monitoraggio ~730 righe/anno: Piani di controllo veterinario per sezione PRISCAV\n"
+            "  Filtri: anno, sezione(SEZIONE A,SEZIONE B,SEZIONE C), alias_piano_attivita(A1,A22,B2), alias_indicatore, campionamento, tipo_piano_attivita, tipo_item_dpat\n"
             "  Valori: sezione: SEZIONE A=Sicurezza Alimentare, SEZIONE B=Sanità Animale, SEZIONE C=Igiene Allevamenti, "
             "SEZIONE D=Alimentazione Animale, SEZIONE E=Farmacosorveglianza, SEZIONE F=Benessere Animale, SEZIONE G=Sottoprodotti\n"
             "- masterlist ~105,000 righe: Tassonomia attività (NORMA, MACROAREA, AGGREGAZIONE, LINEA DI ATTIVITA)\n"
-            "- cu_eseguiti_nc ~400,000 righe: Controlli eseguiti 2019-2025 con NC inline (descrizione_asl, descrizione_uoc, descrizione_piano, macroarea_cu, sezione, data_inizio_controllo, num_riconoscimento, alias_piano_attivita, alias_indicatore, tipo_non_conformita, numero_nc_gravi, numero_nc_non_gravi, oggetto_non_conformita, comune)\n"
+            "- cu_eseguiti_nc ~400,000 righe: Controlli ufficiali eseguiti (UN RECORD PER CONTROLLO). Usare SEMPRE per contare/filtrare/aggregare controlli eseguiti da ASL/UOC/UOS, per periodo, macroarea, stabilimento. Colonne: descrizione_asl, descrizione_uoc, descrizione_uos, descrizione_piano, macroarea_cu, sezione, data_inizio_controllo, num_riconoscimento, alias_piano_attivita, alias_indicatore, tipo_non_conformita, numero_nc_gravi, numero_nc_non_gravi, oggetto_non_conformita, comune\n"
             "- osa_mai_controllati ~643,000 righe: Stabilimenti mai controllati (asl, comune, macroarea, aggregazione, attivita)\n"
-            "- cu_diff_programmati_eseguiti: Programmati vs eseguiti per indicatore, descrizione_asl, descrizione_uoc, anno\n"
+            "- cu_diff_programmati_eseguiti: Tabella AGGREGATA (un record per combinazione indicatore+ASL+UOC+UOS+anno) con due colonne numeriche 'programmati' ed 'eseguiti'. NON contiene i singoli controlli: NON usare per contare controlli eseguiti (usa cu_eseguiti_nc). Usare SOLO per calcolo ritardi/copertura programmazione.\n"
             "- personale ~100,000 righe: Struttura organizzativa (user_id, asl, descrizione_area_struttura_complessa)"
         )
 

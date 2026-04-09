@@ -10,6 +10,7 @@ import logging
 from typing import Dict, Any
 
 from .followup_suggestions import FollowUpSuggestionEngine
+from .conversational_framing import frame_response
 
 _followup_engine = FollowUpSuggestionEngine()
 
@@ -54,14 +55,70 @@ Se menzioni punteggi di rischio, usa SOLO questa formula:
    - Che guidino verso azioni operative
 
 **REGOLE:**
-- Tono formale ma accessibile, adatto a operatori ASL
+- Tono cordiale e naturale, come un collega esperto che ti spiega qualcosa
+- Inizia riformulando brevemente la richiesta per mostrare che l'hai capita
+- Integra i numeri nel discorso, evita elenchi aridi senza contesto
+- Usa connettori naturali: "in pratica", "il punto chiave e'", "vale la pena notare che"
+- NON usare frasi meccaniche come "Risultato:" o "Ecco i dati:"
 - NON inventare dati non presenti
-- Se i risultati sono vuoti o in errore, spiegalo chiaramente
+- Se i risultati sono vuoti o in errore, spiegalo chiaramente e proponi un'alternativa
 - Usa terminologia tecnica corretta (ASL, UOC, OSA, NC, piani di controllo)
-- Formatta usando markdown per migliore leggibilità
+- Formatta usando markdown per migliore leggibilita'
 
 **OUTPUT:**
-Rispondi SOLO con il testo della risposta finale, strutturato e professionale.
+Rispondi SOLO con il testo della risposta finale.
+NO prefissi tipo "Ecco la risposta:" o "Sulla base dei dati:".
+Inizia direttamente con il contenuto."""
+
+BUDDY_SYSTEM_PROMPT = """Sei un assistente esperto nel monitoraggio veterinario della Regione Campania — ma con uno stile amichevole e informale.
+
+**TASK:**
+Genera una risposta chiara e utile in italiano, con un tono caldo e colloquiale:
+
+1. **Spiega i risultati** in modo comprensibile:
+   - Sintetizza le informazioni principali
+   - Evidenzia numeri e metriche chiave
+   - Usa formattazione markdown (bold, liste) per chiarezza
+
+2. **Motiva le priorita'** (se presenti):
+   - Spiega PERCHE' certi stabilimenti/piani sono prioritari
+   - Evidenzia i criteri utilizzati (rischio storico, ritardi, correlazioni)
+   - Dai contesto operativo pratico
+
+3. **Fornisci valore aggiunto**:
+   - Interpreta i dati in chiave operativa
+   - Suggerisci 1-2 domande di follow-up pertinenti
+   - NON aggiungere informazioni sui punteggi che non sono presenti nei dati forniti
+
+**IMPORTANTE - Formula Risk Score:**
+Se menzioni punteggi di rischio, usa SOLO questa formula:
+- Risk Score = P(NC) x Impatto x 100
+- P(NC) = (NC totali) / (controlli totali)
+- Impatto = (NC gravi) / (controlli totali)
+- NON usare mai formule come "NC grave = 3 punti" che sono ERRATE
+
+4. **Linee guida per la risposta**:
+   - Interpreta i dati nel contesto veterinario regionale
+   - Suggerisci azioni concrete basate sui risultati
+   - Se ci sono anomalie o punti critici, evidenziali
+
+5. **Proponi 1-2 domande successive** che l'utente potrebbe trovare utili
+
+**REGOLE DI TONO (BUDDY MODE):**
+- Tono amichevole e informale, come un collega che ti parla al bar dopo il lavoro
+- Usa connettori colloquiali: "senti", "guarda", "dai un'occhiata a questo", "in soldoni"
+- Aggiungi incoraggiamento: "ottima domanda!", "bella scelta", "occhio a questo"
+- Usa qualche emoji con moderazione (1-3 per risposta, non di piu')
+- Inizia riformulando brevemente la richiesta in modo conversazionale
+- Integra i numeri nel discorso, evita elenchi aridi senza contesto
+- NON usare frasi meccaniche come "Risultato:" o "Ecco i dati:"
+- NON inventare dati non presenti
+- Se i risultati sono vuoti o in errore, spiegalo chiaramente e proponi un'alternativa
+- Usa terminologia tecnica corretta (ASL, UOC, OSA, NC, piani di controllo)
+- Formatta usando markdown per migliore leggibilita'
+
+**OUTPUT:**
+Rispondi SOLO con il testo della risposta finale.
 NO prefissi tipo "Ecco la risposta:" o "Sulla base dei dati:".
 Inizia direttamente con il contenuto."""
 
@@ -77,22 +134,35 @@ L'utente ha richiesto: {context_description}
 **RISULTATI OTTENUTI:**
 {data}"""
 
-INTENT_DESCRIPTIONS = {
-    "ask_piano_description": "descrizione di un piano di controllo veterinario",
-    "ask_piano_stabilimenti": "analisi degli stabilimenti controllati per un piano",
-    "ask_piano_statistics": "statistiche aggregate sui piani di controllo eseguiti",
-    "search_piani_by_topic": "ricerca di piani per argomento",
-    "ask_priority_establishment": "stabilimenti prioritari da controllare secondo programmazione",
-    "ask_risk_based_priority": "stabilimenti prioritari basati sul rischio storico",
-    "ask_suggest_controls": "suggerimenti per controlli di stabilimenti mai ispezionati",
-    "ask_delayed_plans": "analisi dei piani in ritardo",
-    "check_if_plan_delayed": "verifica se un piano specifico è in ritardo",
-    "ask_establishment_history": "storico controlli e NC per stabilimento",
-    "ask_top_risk_activities": "top attività con risk score più elevato",
-    "ask_help": "informazioni sulle funzionalità disponibili",
-    "info_procedure": "informazioni su procedure operative da documentazione",
-    "query_data": "interrogazione dati su misura"
-}
+def _get_intent_descriptions() -> Dict[str, str]:
+    """Carica descrizioni intent da DB (via IntentMetadataService), fallback hardcoded."""
+    try:
+        from .intent_metadata_service import get_intent_metadata_service
+        svc = get_intent_metadata_service()
+        descs = svc.get_llm_descriptions()
+        if descs:
+            return descs
+    except Exception:
+        pass
+    # Fallback Python
+    return {
+        "ask_piano_description": "descrizione di un piano di controllo veterinario",
+        "ask_piano_stabilimenti": "analisi degli stabilimenti controllati per un piano",
+        "ask_piano_statistics": "statistiche aggregate sui piani di controllo eseguiti",
+        "search_piani_by_topic": "ricerca di piani per argomento",
+        "ask_priority_establishment": "stabilimenti prioritari da controllare secondo programmazione",
+        "ask_risk_based_priority": "stabilimenti prioritari basati sul rischio storico",
+        "ask_suggest_controls": "suggerimenti per controlli di stabilimenti mai ispezionati",
+        "ask_delayed_plans": "analisi dei piani in ritardo",
+        "check_if_plan_delayed": "verifica se un piano specifico e' in ritardo",
+        "ask_establishment_history": "storico controlli e NC per stabilimento",
+        "ask_top_risk_activities": "top attivita' con risk score piu' elevato",
+        "ask_help": "informazioni sulle funzionalita' disponibili",
+        "info_procedure": "informazioni su procedure operative da documentazione",
+        "query_data": "interrogazione dati su misura",
+    }
+
+INTENT_DESCRIPTIONS = None  # Lazy-loaded
 
 # Intent che restituiscono risposte dirette senza passaggio LLM (caricati da DB)
 def _get_direct_response_intents() -> set:
@@ -167,31 +237,39 @@ def extract_response_context(intent: str, slots: Dict[str, Any], tool_output: Di
         if match:
             context_parts.append(f"{match.group(1)} {match.group(2)}")
 
-    # 4. Aggiungi descrizione intent
-    intent_context = {
-        "ask_piano_description": "descrizione piano",
-        "ask_piano_stabilimenti": "stabilimenti piano",
-        "ask_piano_statistics": "statistiche piani",
-        "search_piani_by_topic": "ricerca piani",
-        "ask_delayed_plans": "piani in ritardo",
-        "check_if_plan_delayed": "verifica ritardo piano",
-        "ask_priority_establishment": "stabilimenti prioritari",
-        "ask_risk_based_priority": "priorità rischio",
-        "ask_suggest_controls": "suggerimenti controlli",
-        "ask_establishment_history": "storico stabilimento",
-        "ask_top_risk_activities": "top rischio",
-    }
-    if intent in intent_context:
-        context_parts.insert(0, intent_context[intent])
+    # 4. Aggiungi descrizione intent (da DB o fallback)
+    try:
+        from .intent_metadata_service import get_intent_metadata_service
+        svc = get_intent_metadata_service()
+        anaphora_map = svc.get_anaphora_contexts()
+    except Exception:
+        anaphora_map = {
+            "ask_piano_description": "descrizione piano",
+            "ask_piano_stabilimenti": "stabilimenti piano",
+            "ask_piano_statistics": "statistiche piani",
+            "search_piani_by_topic": "ricerca piani",
+            "ask_delayed_plans": "piani in ritardo",
+            "check_if_plan_delayed": "verifica ritardo piano",
+            "ask_priority_establishment": "stabilimenti prioritari",
+            "ask_risk_based_priority": "priorita' rischio",
+            "ask_suggest_controls": "suggerimenti controlli",
+            "ask_establishment_history": "storico stabilimento",
+            "ask_top_risk_activities": "top rischio",
+        }
+    if intent in anaphora_map:
+        context_parts.insert(0, anaphora_map[intent])
 
     return " - ".join(context_parts) if context_parts else ""
 
 
-def build_response_messages(intent: str, tool_output: Dict[str, Any], user_message: str = "") -> list:
+def build_response_messages(intent: str, tool_output: Dict[str, Any], user_message: str = "", buddy_mode: bool = False) -> list:
     """Costruisce system + user messages per generazione risposta LLM."""
     data = tool_output.get("data", {})
     formatted_response = data.get("formatted_response", "") if isinstance(data, dict) else ""
 
+    global INTENT_DESCRIPTIONS
+    if INTENT_DESCRIPTIONS is None:
+        INTENT_DESCRIPTIONS = _get_intent_descriptions()
     context_description = INTENT_DESCRIPTIONS.get(intent, "analisi di dati veterinari")
     data_str = formatted_response if formatted_response else str(data)
 
@@ -202,8 +280,9 @@ def build_response_messages(intent: str, tool_output: Dict[str, Any], user_messa
         data=data_str
     )
 
+    system_prompt = BUDDY_SYSTEM_PROMPT if buddy_mode else RESPONSE_SYSTEM_PROMPT
     return [
-        {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content}
     ]
 
@@ -245,16 +324,21 @@ def response_generator_node(state: Dict[str, Any], llm_client, event_callback=No
             state["final_response"] = str(data)
         return state
 
+    # Buddy mode: tono amichevole se richiesto dall'utente
+    metadata = state.get("metadata") or {}
+    buddy_mode = bool(metadata.get("buddy_mode"))
+
     # Se il tool ha gia' prodotto una formatted_response, usala direttamente
     # (evita chiamata LLM - risparmio ~800ms-1.5s su CPU)
     if isinstance(data, dict) and "formatted_response" in data:
         response = data["formatted_response"]
+        response = frame_response(intent, response, buddy_mode=buddy_mode)
         response = clean_excessive_newlines(response)
         state["final_response"] = response
     else:
         # Fallback: genera risposta con LLM solo se non c'e' formatted_response
         logger.info(f"[ResponseNode] LLM generation for intent={intent} (no formatted_response)")
-        messages = build_response_messages(intent, tool_output, state.get("message", ""))
+        messages = build_response_messages(intent, tool_output, state.get("message", ""), buddy_mode=buddy_mode)
 
         try:
             response = llm_client.query(messages=messages)
@@ -263,8 +347,8 @@ def response_generator_node(state: Dict[str, Any], llm_client, event_callback=No
         except Exception as e:
             state["final_response"] = f"Errore: {str(e)}"
 
-    # Append suggerimenti di follow-up contestuali
-    if _followup_engine.should_append(state):
+    # Append suggerimenti di follow-up contestuali (skip se già impostati da disambiguazione)
+    if not state.get("suggestions") and _followup_engine.should_append(state):
         suggestions = _followup_engine.get_suggestions(
             intent=intent,
             slots=state.get("slots", {}),

@@ -25,11 +25,13 @@ from typing import Dict, Any, Optional
 
 try:
     from agents.data_agent import DataRetriever
+    from agents.response_agent import ResponseFormatter
 except ImportError:
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from agents.data_agent import DataRetriever
+    from agents.response_agent import ResponseFormatter
 
 
 @tool("get_establishment_history")
@@ -74,12 +76,9 @@ def get_establishment_history(
         # Validazione: almeno un parametro
         if not any([num_registrazione, numero_riconoscimento, partita_iva, ragione_sociale]):
             return {
-                "formatted_response": "❌ **Errore**: Specifica almeno uno dei seguenti parametri:\n"
-                                     "- Numero di registrazione (es. 'IT 123')\n"
-                                     "- Numero di riconoscimento UE (es. 'UE IT 15 273')\n"
-                                     "- Partita IVA\n"
-                                     "- Ragione sociale (anche parziale)\n\n"
-                                     "Esempio: 'storico stabilimento UE IT 15 273'",
+                "formatted_response": ResponseFormatter.format_missing_param(
+                    ["Numero di registrazione (es. IT 123)", "Numero di riconoscimento UE (es. UE IT 15 273)", "Partita IVA", "Ragione sociale (anche parziale)"],
+                    examples=["storico stabilimento Rossi SRL"], any_of=True),
                 "error": "missing_parameters"
             }
 
@@ -142,8 +141,6 @@ def get_establishment_history(
         logger.error(f"[get_establishment_history] Errore: {e}", exc_info=True)
 
         return {
-            "formatted_response": f"❌ **Errore** durante il recupero dello storico controlli.\n\n"
-                                 f"Dettaglio: {str(e)}\n\n"
-                                 f"Verifica i parametri e riprova.",
+            "formatted_response": ResponseFormatter.format_tool_error("il recupero dello storico controlli"),
             "error": str(e)
         }

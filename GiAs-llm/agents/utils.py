@@ -98,3 +98,37 @@ def filter_by_asl(df: pd.DataFrame, asl_code: str, asl_column: str = 'asl') -> p
         return df
 
     return df[df[asl_column].str.upper() == asl_code.upper()].copy()
+
+
+def _normalize_uos(value: str) -> str:
+    """Normalizza stringhe UOS per confronto robusto.
+
+    Il dato in cu_eseguiti_nc.descrizione_uos è molto rumoroso:
+    spazi multipli/leading/trailing, case misto. Normalizziamo a:
+    uppercase + collasso spazi + strip.
+    """
+    if value is None:
+        return ""
+    import re
+    return re.sub(r"\s+", " ", str(value).strip().upper())
+
+
+def filter_by_uos(df: pd.DataFrame, uos: str, uos_column: str = "descrizione_uos") -> pd.DataFrame:
+    """Filtra DataFrame per UOS utente (confronto normalizzato).
+
+    Args:
+        df: DataFrame da filtrare
+        uos: Descrizione UOS dell'utente collegato
+        uos_column: Nome colonna contenente la UOS
+
+    Returns:
+        DataFrame filtrato (copy). Se uos è vuota o la colonna non esiste,
+        restituisce il df originale senza modifiche.
+    """
+    if not uos or uos_column not in df.columns:
+        return df
+    target = _normalize_uos(uos)
+    if not target:
+        return df
+    mask = df[uos_column].fillna("").map(_normalize_uos) == target
+    return df[mask].copy()

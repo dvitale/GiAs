@@ -1,3 +1,4 @@
+# pyright: reportAttributeAccessIssue=false, reportOptionalMemberAccess=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportCallIssue=false, reportOptionalOperand=false, reportReturnType=false, reportAssignmentType=false, reportPossiblyUnboundVariable=false
 """
 Query Builder Tools - Intent query_data con Query Builder vincolato.
 
@@ -255,7 +256,23 @@ class SafeQueryExecutor:
         return None
 
     def _get_dataframe(self, table_key: str):
-        """Carica DataFrame dal modulo agents.data."""
+        """Carica DataFrame dal modulo agents.data.
+
+        NOTA (migrazione Hybrid SQL-first — Fase 4 deferita):
+        Questo metodo è ancora basato sui DataFrame in-memory globali.
+        A differenza di piano_tools / priority_tools / risk_tools che sono
+        già passati ai repository (vedi data_sources/repositories/), il
+        SafeQueryExecutor ha una logica di filtraggio/aggregazione complessa
+        (7 operazioni, PII blacklist, fuzzy column match, ASL normalization)
+        che merita un refactor dedicato in una fase successiva.
+
+        Strategia futura: introdurre `SqlSafeQueryExecutor` che costruisce
+        le query via SQLAlchemy e emette SQL parametrizzato, riutilizzando
+        la whitelist tabelle/operazioni/PII attuale.
+
+        Per ora, questo path continua a funzionare dato che `agents/data.py`
+        carica eagerly i DataFrame al boot.
+        """
         try:
             # Import diretto (funziona nel contesto del server dove agents.data è già caricato)
             from agents.data import (
@@ -509,6 +526,10 @@ REGOLE:
 - Limite massimo: 100 righe
 - Preferisci aggregazioni (group_count, sum) a filter su tabelle grandi (>100K righe)
 
+DISAMBIGUAZIONE TABELLE (CRITICO):
+- "controlli" (cu_eseguiti_nc) ha UN RECORD PER CONTROLLO singolo eseguito. Usa SEMPRE questa tabella quando l'utente chiede di CONTARE, FILTRARE o ELENCARE controlli eseguiti (totale, per ASL/UOC/UOS, per periodo, per macroarea, per stabilimento, ecc.).
+- "programmazione" (cu_diff_programmati_eseguiti) e' una tabella AGGREGATA: un record = (indicatore, ASL, UOC, UOS, anno) con due colonne numeriche "programmati" ed "eseguiti". NON contiene i singoli controlli. Usala SOLO quando la domanda riguarda ESPLICITAMENTE la programmazione, il confronto programmati vs eseguiti, i ritardi o la copertura del piano. MAI per un semplice "quanti controlli ha eseguito la mia UOS".
+
 ALIAS COLONNE (il sistema traduce automaticamente):
 - "anno" / "year" → filtro range su data_inizio_controllo (tabella controlli), oppure anno_controllo (tabella nc_storiche), oppure anno (tabella programmazione)
 - "asl" → descrizione_asl (controlli, programmazione), asl (mai_controllati, nc_storiche)
@@ -523,6 +544,7 @@ ESEMPI:
 "distribuzione NC per anno" → {{"table":"nc_storiche","operation":"group_count","filters":[],"group_by":["anno_controllo"],"order_by":{{"column":"anno_controllo","direction":"asc"}},"limit":20}}
 "controlli a Napoli nel 2025" → {{"table":"controlli","operation":"count","filters":[{{"column":"descrizione_asl","op":"contains","value":"NAPOLI"}},{{"column":"anno","op":"eq","value":"2025"}}],"limit":1}}
 "quanti controlli ASL Benevento 2025" → {{"table":"controlli","operation":"count","filters":[{{"column":"descrizione_asl","op":"contains","value":"BENEVENTO"}},{{"column":"anno","op":"eq","value":"2025"}}],"limit":1}}
+"totale controlli eseguiti dalla mia UOS anno corrente" (con UOS="UOS XYZ", anno=2026 nel CONTESTO) → {{"table":"controlli","operation":"count","filters":[{{"column":"descrizione_uos","op":"contains","value":"UOS XYZ"}},{{"column":"anno","op":"eq","value":"2026"}}],"limit":1}}
 "top 10 macroaree con più NC gravi" → {{"table":"nc_storiche","operation":"top_n","filters":[],"group_by":["macroarea_sottoposta_a_controllo"],"order_by":{{"column":"numero_nc_gravi","direction":"desc"}},"limit":10}}
 "quanti utenti per ASL" → {{"table":"personale","operation":"group_count","filters":[],"group_by":["asl"],"limit":20}}
 
@@ -589,22 +611,24 @@ def query_most_controlled_nearby(
     """
     import pandas as pd
 
+    # Repository-backed: usa ControlliRepository.get_by_asl (pandas o sql
+    # secondo il flag `data_source.repositories.controlli`). Evita accesso
+    # diretto al DataFrame globale.
     try:
-        from agents.data import controlli_df
-    except ImportError:
-        return {"error": True, "formatted_response": "Dati controlli non disponibili."}
-
-    if controlli_df is None or controlli_df.empty:
-        return {"error": True, "formatted_response": "Dati controlli non disponibili."}
-
-    df = controlli_df.copy()
-
-    # Filtro ASL
-    if asl and "descrizione_asl" in df.columns:
-        mask = df["descrizione_asl"].str.contains(asl, case=False, na=False)
-        df = df[mask]
-        if df.empty:
-            return {"error": True, "formatted_response": f"Nessun controllo trovato per ASL {asl}."}
+        from data_sources.repositories import get_controlli_repository
+        repo = get_controlli_repository()
+        if asl:
+            df = repo.get_by_asl(asl)
+            if df is None or df.empty:
+                return {"error": True, "formatted_response": f"Nessun controllo trovato per ASL {asl}."}
+        else:
+            # Nessun ASL → fallback al DF globale (caso raro, richiede bulk)
+            from agents.data import controlli_df
+            if controlli_df is None or controlli_df.empty:
+                return {"error": True, "formatted_response": "Dati controlli non disponibili."}
+            df = controlli_df.copy()
+    except Exception as e:
+        return {"error": True, "formatted_response": f"Dati controlli non disponibili: {e}"}
 
     # Identifica colonna stabilimento (preferisci num_registrazione, fallback num_riconoscimento)
     id_col = None

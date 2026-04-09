@@ -11,13 +11,7 @@ import warnings
 # Sopprime warnings per output più pulito
 warnings.filterwarnings('ignore', category=UserWarning)
 
-try:
-    from langchain_core.tools import tool
-except ImportError:
-    def tool(_name):
-        def decorator(func):
-            return func
-        return decorator
+from tools._tool_compat import tool
 
 # Import del modulo ML con fallback graceful
 try:

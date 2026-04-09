@@ -156,6 +156,7 @@ class DialogueManagerResult:
         updated_state: Optional[DialogueState] = None,
         intent: Optional[str] = None,
         slots: Optional[Dict[str, Any]] = None,
+        suggestions: Optional[List[Dict[str, str]]] = None,
     ):
         self.action = action
         self.target_tool = target_tool
@@ -163,6 +164,7 @@ class DialogueManagerResult:
         self.updated_state = updated_state
         self.intent = intent
         self.slots = slots
+        self.suggestions = suggestions
 
 
 def _get_missing_slots(intent: str, slots: Dict[str, Any]) -> List[str]:
@@ -174,6 +176,11 @@ def _get_missing_slots(intent: str, slots: Dict[str, Any]) -> List[str]:
         if any(slots.get(k) for k in required):
             return []
         return required
+    if intent == "search_piani_by_topic" and slots.get("sezione"):
+        # "piani della sezione A" e' una query strutturata valida: la sezione
+        # e' un filtro sulla colonna omonima di piani_monitoraggio e rende
+        # superfluo il topic testuale.
+        return []
     return [r for r in required if not slots.get(r)]
 
 
@@ -229,37 +236,50 @@ def _build_slot_question(intent: str, missing: List[str]) -> str:
     # Caso speciale: ask_establishment_history richiede ALMENO UNO degli identificatori
     if intent == "ask_establishment_history":
         return (
-            f"Per trovare lo storico dello stabilimento, fornisci **uno** dei seguenti identificatori:\n\n"
-            f"- Numero di registrazione (es. IT 123456, UE IT 2287 M)\n"
-            f"- Partita IVA (es. 01234567890)\n"
-            f"- Ragione sociale (anche parziale, es. \"Rossi SRL\")"
+            "Certo, cerco subito lo storico. Mi serve solo **uno** di questi dati:\n\n"
+            "- Numero di registrazione (es. IT 123456, UE IT 2287 M)\n"
+            "- Partita IVA (es. 01234567890)\n"
+            "- Ragione sociale (anche parziale, es. \"Rossi SRL\")"
         )
 
     prompts = [f"- {SLOT_PROMPTS.get(s, f'Specifica: {s}')}" for s in missing]
 
-    return f"Per completare la richiesta su *{label}*, ho bisogno di:\n\n" + "\n".join(prompts)
+    return f"Ok, per *{label}* mi serve ancora un'informazione:\n\n" + "\n".join(prompts)
 
 
-def _build_disambiguation_question(candidates: List[IntentCandidate]) -> str:
-    """Costruisce domanda di disambiguazione tra intent candidati."""
+def _build_disambiguation_question(candidates: List[IntentCandidate]) -> Tuple[str, List[Dict[str, str]]]:
+    """Costruisce domanda di disambiguazione tra intent candidati.
+
+    Returns:
+        Tupla (testo domanda, lista suggerimenti strutturati per pill buttons)
+    """
     top = candidates[:3]
     options = []
+    suggestions = []
     for i, c in enumerate(top, 1):
         metadata = get_intent_metadata(c["intent"])
         if metadata:
             options.append(f"{i}. **{metadata.label}**: {metadata.description}")
+            emoji = getattr(metadata, "emoji", "") or ""
+            label = metadata.label
+            suggestions.append({"text": f"{emoji} {label}".strip(), "query": label.lower()})
         else:
             options.append(f"{i}. {c['intent']}")
+            suggestions.append({"text": c["intent"], "query": c["intent"]})
 
-    return (
-        "Non sono sicuro di aver capito. Intendi:\n\n"
+    question = (
+        "Ho capito la richiesta, ma potrebbe riguardare cose diverse. A quale ti riferisci?\n\n"
         + "\n".join(options)
-        + "\n\n*Rispondi con il numero o riformula la domanda.*"
     )
+    return question, suggestions
 
 
-def _build_strategy_question(intent: str) -> Optional[str]:
-    """Costruisce domanda per scelta strategia."""
+def _build_strategy_question(intent: str) -> Optional[tuple]:
+    """Costruisce domanda per scelta strategia.
+
+    Returns:
+        None se nessuna strategia, altrimenti tupla (testo domanda, lista suggestions)
+    """
     config = get_strategy_config(intent)
     strategies = config.get("strategies", [])
     if not strategies:
@@ -267,10 +287,13 @@ def _build_strategy_question(intent: str) -> Optional[str]:
 
     initial_q = config.get("initial_question", "Come vuoi procedere?")
     options = []
+    suggestions = []
     for i, s in enumerate(strategies, 1):
         options.append(f"{i}. **{s['label']}**: {s.get('description', '')}")
+        suggestions.append({"text": s["label"], "query": s["label"].lower()})
 
-    return initial_q + "\n\n" + "\n".join(options)
+    question = initial_q + "\n\n" + "\n".join(options)
+    return question, suggestions
 
 
 def _resolve_tool(intent: str) -> str:
@@ -340,10 +363,13 @@ def _rule_oppure(message: str, ds: DialogueState) -> Optional[DialogueManagerRes
 
     question = (
         f"**Alternativa**: {next_strategy['label']}\n\n"
-        f"{next_strategy.get('description', '')}\n\n"
-        f"Vuoi procedere con questa opzione?"
+        f"{next_strategy.get('description', '')}"
     )
-    return DialogueManagerResult(action="ask_user", question=question, updated_state=ds)
+    suggestions = [
+        {"text": "✅ Sì, procedi", "query": "si"},
+        {"text": "❌ No, grazie", "query": "no"},
+    ]
+    return DialogueManagerResult(action="ask_user", question=question, updated_state=ds, suggestions=suggestions)
 
 
 def _rule_refinement(
@@ -414,9 +440,10 @@ def _rule_high_confidence_execute(
             and not ds.get("confirmed_strategy_id")
             and is_vague(message)
         ):
-            question = _build_strategy_question(top_intent)
-            if question:
-                return DialogueManagerResult(action="ask_user", question=question, updated_state=ds)
+            result = _build_strategy_question(top_intent)
+            if result:
+                question, suggestions = result
+                return DialogueManagerResult(action="ask_user", question=question, updated_state=ds, suggestions=suggestions)
 
         tool_name = _resolve_tool(top_intent)
         ds["last_tool_intent"] = top_intent
@@ -446,8 +473,8 @@ def _rule_ambiguous(
         return None
 
     ds["intent_candidates"] = candidates[:3]
-    question = _build_disambiguation_question(candidates)
-    return DialogueManagerResult(action="ask_user", question=question, updated_state=ds)
+    question, suggestions = _build_disambiguation_question(candidates)
+    return DialogueManagerResult(action="ask_user", question=question, updated_state=ds, suggestions=suggestions)
 
 
 def evaluate(

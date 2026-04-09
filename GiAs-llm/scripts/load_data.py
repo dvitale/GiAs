@@ -164,8 +164,7 @@ def main():
         (csv_config['files']['controlli'], pg_config['tables']['controlli'], ','),
         (csv_config['files']['osa_mai_controllati'], pg_config['tables']['osa_mai_controllati'], ','),
         (csv_config['files']['ocse'], pg_config['tables']['ocse'], csv_config['ocse_separator']),
-        (csv_config['files']['diff_prog_eseg'], pg_config['tables']['diff_prog_eseg'], ','),
-        (csv_config['files']['personale'], pg_config['tables']['personale'], csv_config['personale_separator'])
+        (csv_config['files']['diff_prog_eseg'], pg_config['tables']['diff_prog_eseg'], ',')
     ]
 
     # Load each file

@@ -36,12 +36,46 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 echo ""
-echo "📊 Verifica dataset..."
-if [ -d "$PROJECT_ROOT/data/dataset.10" ]; then
-    NUM_FILES=$(ls -1 "$PROJECT_ROOT/data/dataset.10"/*.csv 2>/dev/null | wc -l)
-    echo "   ✅ Dataset trovato: $NUM_FILES file CSV"
+echo "📊 Verifica data source..."
+CONFIG_FILE="$PROJECT_ROOT/configs/config.json"
+
+# Legge config e verifica DB in un'unica invocazione Python
+DS_CHECK=$(python3 -c "
+import json, sys
+c = json.load(open('$CONFIG_FILE'))
+ds = c.get('data_source', {})
+ds_type = ds.get('type', 'csv')
+if ds_type == 'postgresql':
+    pg = ds.get('postgresql', {})
+    host, db = pg.get('host', 'localhost'), pg.get('database', 'gias_db')
+    print(f'TYPE=postgresql HOST={host} DB={db}', end=' ')
+    try:
+        import psycopg2
+        conn = psycopg2.connect(host=pg['host'], port=pg.get('port',5432), dbname=pg['database'], user=pg['user'], password=pg['password'], connect_timeout=3)
+        conn.close()
+        print('REACHABLE=yes')
+    except Exception:
+        print('REACHABLE=no')
+else:
+    print(f'TYPE={ds_type}')
+" 2>/dev/null)
+
+if echo "$DS_CHECK" | grep -q "TYPE=postgresql"; then
+    DB_HOST=$(echo "$DS_CHECK" | grep -oP 'HOST=\K\S+')
+    DB_NAME=$(echo "$DS_CHECK" | grep -oP 'DB=\K\S+')
+    echo "   📌 Data source: PostgreSQL ($DB_HOST/$DB_NAME)"
+    if echo "$DS_CHECK" | grep -q "REACHABLE=yes"; then
+        echo "   ✅ Database raggiungibile"
+    else
+        echo "   ⚠️  Database non raggiungibile (il server partira' comunque)"
+    fi
 else
-    echo "   ⚠️  Directory dataset.10 non trovata"
+    if [ -d "$PROJECT_ROOT/data/dataset.10" ]; then
+        NUM_FILES=$(ls -1 "$PROJECT_ROOT/data/dataset.10"/*.csv 2>/dev/null | wc -l)
+        echo "   📌 Data source: CSV ($NUM_FILES file)"
+    else
+        echo "   ⚠️  Directory dataset.10 non trovata"
+    fi
 fi
 
 echo ""
@@ -259,11 +293,12 @@ echo $API_PID > "$PID_FILE"
 sleep 2
 
 if ps -p "$API_PID" > /dev/null 2>&1; then
-    WAIT_SECONDS=30
+    WAIT_SECONDS=60
     CHECK_INTERVAL=1
     ELAPSED=0
+    READY=0
     echo "   ⏳ Avvio in corso, attendo risposta API..."
-    while true; do
+    while [ "$ELAPSED" -lt "$WAIT_SECONDS" ]; do
         if ! ps -p "$API_PID" > /dev/null 2>&1; then
             echo "   ❌ Il processo API è terminato durante l'avvio"
             echo "   Controlla il log: $API_LOG"
@@ -272,12 +307,7 @@ if ps -p "$API_PID" > /dev/null 2>&1; then
         fi
 
         if curl -sSf "http://localhost:5005/status" > /dev/null 2>&1; then
-            break
-        fi
-
-        if [ "$ELAPSED" -ge "$WAIT_SECONDS" ]; then
-            echo "   ⚠️  Timeout in attesa della risposta API"
-            echo "   Controlla il log: $API_LOG"
+            READY=1
             break
         fi
 
@@ -285,6 +315,14 @@ if ps -p "$API_PID" > /dev/null 2>&1; then
         sleep "$CHECK_INTERVAL"
         ELAPSED=$((ELAPSED + CHECK_INTERVAL))
     done
+
+    if [ "$READY" -ne 1 ]; then
+        echo "   ❌ Timeout (${WAIT_SECONDS}s) in attesa della risposta API"
+        echo "   Il processo (PID: $API_PID) è ancora in esecuzione ma non risponde su :5005"
+        echo "   Controlla il log: $API_LOG"
+        echo "   Per terminarlo: ./stop_server.sh"
+        exit 1
+    fi
 
     echo "   ✅ API Server avviato (PID: $API_PID)"
     echo ""

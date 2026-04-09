@@ -4,6 +4,7 @@ Configuration loader for GiAs-llm system.
 
 import json
 import os
+from datetime import datetime
 from typing import Dict, Any
 
 
@@ -35,7 +36,7 @@ class Config:
     def _get_default_config(self) -> Dict[str, Any]:
         """Return default configuration."""
         return {
-            "current_year": 2025,
+            "current_year": datetime.now().year,
             "data_source": {
                 "type": "csv",
                 "csv": {
@@ -46,10 +47,8 @@ class Config:
                         "controlli": "vw_2025_eseguiti_filtered.csv",
                         "osa_mai_controllati": "osa_mai_controllati_con_linea_852-3_filtered.csv",
                         "ocse": "OCSE_ISP_SEMP_2025_filtered_v2.csv",
-                        "diff_prog_eseg": "vw_diff_programmmati_eseguiti.csv",
-                        "personale": "personale_filtered.csv"
-                    },
-                    "personale_separator": "|"
+                        "diff_prog_eseg": "vw_diff_programmmati_eseguiti.csv"
+                    }
                 },
                 "postgresql": {
                     "enabled": False
@@ -78,7 +77,25 @@ class Config:
 
     def get_current_year(self) -> int:
         """Get configured current year for analysis."""
-        return self.config.get("current_year", 2025)
+        return self.config.get("current_year", datetime.now().year)
+
+    def get_repository_mode(self, name: str, default: str = "pandas") -> str:
+        """
+        Get repository mode for a specific category.
+
+        Args:
+            name: Repository category (e.g., "piano", "controlli", "risk")
+            default: Fallback mode if not configured
+
+        Returns:
+            "pandas" or "sql" (lowercase)
+        """
+        mode = (
+            self.config.get("data_source", {})
+            .get("repositories", {})
+            .get(name, default)
+        )
+        return str(mode).lower()
 
 
 # Global config instance

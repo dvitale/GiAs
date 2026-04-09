@@ -83,7 +83,7 @@ Se sei incerto (confidence < 0.85), aggiungi fino a 2 alternative:
 INTENT PER CATEGORIA:
 {intent_catalog}
 
-SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km, sezione(A-G), macroarea, aggregazione, anno(2016-2025), comune
+SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km, sezione(A-G), macroarea, aggregazione, anno(2019-2026), comune
 
 DATI DISPONIBILI:
 {schema_catalog}
@@ -132,7 +132,7 @@ ask_suggest_controls - stabilimenti MAI controllati
 ask_nearby_priority(location,radius_km) - stabilimenti MAI CONTROLLATI vicino a INDIRIZZO FISICO specifico (richiede location geocodificabile, NON per aggregazioni/conteggi)
 
 [Ritardi]
-ask_delayed_plans - LISTA piani in ritardo (plurale/generico)
+ask_delayed_plans - LISTA piani/attività in ritardo (plurale/generico)
 check_if_plan_delayed(piano_code) - verifica ritardo UN piano specifico
 
 [Storico]
@@ -152,7 +152,7 @@ confirm_show_details - sì/ok/mostrami (in risposta a offerta dettagli)
 decline_show_details - no/basta (in risposta a offerta dettagli)
 fallback - fuori dominio
 
-SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km, sezione(A-G), macroarea, aggregazione, anno(2016-2025), comune
+SLOT: piano_code(A1,B2), topic, num_registrazione(IT...), partita_iva(11cifre), ragione_sociale, categoria(HACCP,IGIENE,STRUTTURE), location, radius_km, sezione(A-G), macroarea, aggregazione, anno(2019-2026), comune
 
 DATI DISPONIBILI:
 - piani_monitoraggio ~730 righe: Piani di controllo veterinario per sezione PRISCAV
@@ -169,7 +169,7 @@ Quando l'utente filtra per colonne strutturate (sezione, macroarea, anno, comune
 REGOLE DISAMBIGUAZIONE:
 1. "STABILIMENTI a rischio" → ask_risk_based_priority (NON ask_top_risk_activities)
 2. "LINEE DI ATTIVITÀ rischiose" / "classifica linee di attività" → ask_top_risk_activities (NON ask_risk_based_priority)
-3. "piani in ritardo" (plurale/generico) → ask_delayed_plans
+3. "piani in ritardo" / "attività in ritardo" (plurale/generico) → ask_delayed_plans
 4. "il piano X è in ritardo" (specifico) → check_if_plan_delayed
 5. greet se messaggio è saluto/convenevole SENZA domande operative; goodbye se è commiato
 6. Slot mancante per intent che lo richiede → needs_clarification:true
@@ -183,11 +183,13 @@ REGOLE DISAMBIGUAZIONE:
 14. query_data per domande su dati tabulari NON coperte dagli intent specifici. Confidence MAI > 0.80.
 15. "più controllati"/"più controlli"/"quanti controlli per stabilimento" = aggregazione dati → query_data. NON ask_priority_establishment (priorità per ritardi) né ask_nearby_priority (MAI controllati vicino a indirizzo).
 16. "nelle mie vicinanze"/"vicino a me" SENZA indirizzo fisico → se la domanda è aggregazione dati, usa query_data con filtro ASL/comune dai metadata. ask_nearby_priority richiede un indirizzo geocodificabile (es. "Via Roma 15, Napoli").
+17. "controlli per l'attività/piano X" con codice specifico (es. B47, A1) → ask_piano_stabilimenti con slot piano_code. NON query_data: l'utente chiede dettagli su un piano/attività specifico, non un conteggio generico.
 
 ESEMPI CRITICI (coppie confuse):
 "stabilimenti a rischio" → {"reasoning":"chiede stabilimenti con alto rischio","intent":"ask_risk_based_priority","slots":{},"needs_clarification":false,"confidence":0.95}
 "linee di attività più rischiose" → {"reasoning":"chiede classifica linee di attività per rischio","intent":"ask_top_risk_activities","slots":{},"needs_clarification":false,"confidence":0.95}
 "piani in ritardo" → {"reasoning":"lista piani ritardo generico","intent":"ask_delayed_plans","slots":{},"needs_clarification":false,"confidence":0.95}
+"attività in ritardo" → {"reasoning":"lista attività ritardo generico","intent":"ask_delayed_plans","slots":{},"needs_clarification":false,"confidence":0.95}
 "il piano B2 è in ritardo?" → {"reasoning":"verifica ritardo piano specifico B2","intent":"check_if_plan_delayed","slots":{"piano_code":"B2"},"needs_clarification":false,"confidence":0.95}
 "voglio verificare se un piano è in ritardo" → {"reasoning":"manca piano_code","intent":"check_if_plan_delayed","slots":{},"needs_clarification":true,"confidence":0.85}
 "piano A1" → {"reasoning":"info piano A1","intent":"ask_piano_stabilimenti","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.90}
@@ -201,6 +203,8 @@ ESEMPI CRITICI (coppie confuse):
 "vicino a Napoli" → {"reasoning":"controlli vicino indirizzo","intent":"ask_nearby_priority","slots":{"location":"Napoli"},"needs_clarification":false,"confidence":0.90}
 "entro 5 km da Via Roma" → {"reasoning":"raggio specifico","intent":"ask_nearby_priority","slots":{"location":"Via Roma","radius_km":5},"needs_clarification":false,"confidence":0.95}
 "NC categoria HACCP" → {"reasoning":"filtra controlli per oggetto_non_conformita HACCP","intent":"query_data","slots":{},"needs_clarification":false,"confidence":0.75}
+"controlli eseguiti per l'attività B47" → {"reasoning":"controlli per attività specifica B47","intent":"ask_piano_stabilimenti","slots":{"piano_code":"ATT B47"},"needs_clarification":false,"confidence":0.90}
+"controlli per il piano A1" → {"reasoning":"controlli per piano specifico A1","intent":"ask_piano_stabilimenti","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.90}
 "procedura ispezione" → {"reasoning":"come si fa ispezione","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.90}
 "cos'e il borsellino in Matrix" → {"reasoning":"definizione termine Matrix","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.95}
 "piani della sezione A" → {"reasoning":"cerca piani sezione A=Sicurezza Alimentare","intent":"search_piani_by_topic","slots":{"topic":"sezione A","sezione":"A"},"needs_clarification":false,"confidence":0.95}
@@ -693,7 +697,7 @@ OUTPUT:"""
         # Fallback: regex
         return self._clean_location_from_message(message)
 
-    def __init__(self, llm_client: LLMClient = None, enable_cache: bool = True, cache_ttl: int = 3600):
+    def __init__(self, llm_client: Optional["LLMClient"] = None, enable_cache: bool = True, cache_ttl: int = 3600):
         self.llm_client = llm_client or LLMClient()
         self.enable_cache = enable_cache
         self.intent_cache = IntentCache(ttl_seconds=cache_ttl) if enable_cache else None
@@ -763,7 +767,7 @@ OUTPUT:"""
         from .schema_catalog import SchemaCatalog
         return SchemaCatalog()._static_fallback()
 
-    def classify(self, message: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    def classify(self, message: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Classifica il messaggio con approccio ibrido:
         0. Gibberish detection per messaggi senza senso
@@ -811,7 +815,7 @@ OUTPUT:"""
             slots = self._extract_slots(message)
             heuristic_result["slots"] = slots
             # Post-validation
-            heuristic_result = self._post_validate(heuristic_result)
+            heuristic_result = self._post_validate(heuristic_result, message=message)
             return heuristic_result
 
         # =====================================================================
@@ -830,7 +834,7 @@ OUTPUT:"""
                 self.intent_cache.record_time_saved(24000)
                 # Usa SOLO slot estratti dalla query corrente (quelli cached potrebbero essere di sessioni diverse)
                 cached_result["slots"] = extracted_slots
-                return self._post_validate(cached_result)
+                return self._post_validate(cached_result, message=message)
 
         # =====================================================================
         # LAYER 5+6: LLM classification con fallback locale
@@ -979,7 +983,7 @@ OUTPUT:"""
 
         result = self._fallback_response("LLM non disponibile")
         result["slots"] = self._normalize_slots(extracted_slots)
-        return self._post_validate(result)
+        return self._post_validate(result, message=message)
 
     def _build_session_context(self, metadata: Dict[str, Any]) -> str:
         """Costruisce contesto sessione per il prompt LLM (~150 token max)."""
@@ -1060,16 +1064,39 @@ OUTPUT:"""
         )
         if attivita_match:
             slots["piano_code"] = f"ATT {attivita_match.group(1).upper()}"
+            slots["entity_hint"] = "attivita"
         else:
             # Piano code
             piano_match = self.RE_PIANO_CODE.search(message)
             if piano_match:
                 slots["piano_code"] = piano_match.group(1).upper()
+                # Hint esplicito "piano X" (l'utente qualifica il codice come piano)
+                if re.search(
+                    rf'\bpiano\s+{re.escape(piano_match.group(1))}\b',
+                    message, re.IGNORECASE
+                ):
+                    slots["entity_hint"] = "piano"
 
         # ASL
+        # Nota: il pattern RE_ASL `[A-Z]{2}[0-9]` collide con pattern piano/attività
+        # (es. "AO1" è un piano, non una ASL). Se il token estratto coincide con
+        # `piano_code` già rilevato, non sovrascrivere lo slot — è un piano.
+        # Stessa cosa se il token contiene underscore (piani come A1_A) o se
+        # l'utente ha usato la parola "piano"/"attività" come hint.
         asl_match = self.RE_ASL.search(message)
         if asl_match:
-            slots["asl"] = asl_match.group(1).upper()
+            asl_candidate = asl_match.group(1).upper()
+            piano_already = (slots.get("piano_code") or "").upper().replace("ATT ", "")
+            # Skip se il candidato coincide col piano già estratto
+            if asl_candidate != piano_already:
+                # Skip anche se l'utente ha qualificato il token come piano/attività
+                entity_hint = slots.get("entity_hint")
+                has_piano_hint = bool(re.search(
+                    rf'\b(?:piano|attivit[àa])\s+{re.escape(asl_candidate)}\b',
+                    message, re.IGNORECASE
+                ))
+                if not (entity_hint or has_piano_hint):
+                    slots["asl"] = asl_candidate
 
         # Numero riconoscimento UE (priorità su numero registrazione)
         num_ric_match = self.RE_NUM_RIC.search(message)
@@ -1381,6 +1408,42 @@ OUTPUT:"""
                 result["confidence"] = 0.75
                 result["needs_clarification"] = False
 
+        # Fix 4: query_data con piano_code → ask_piano_stabilimenti
+        # "controlli per l'attività B47" / "controlli per il piano A1" con codice specifico
+        # non è un conteggio generico ma una richiesta di dettagli su piano/attività
+        if intent == "query_data" and slots.get("piano_code"):
+            result["intent"] = "ask_piano_stabilimenti"
+            intent = "ask_piano_stabilimenti"
+            result["confidence"] = 0.90
+            result["needs_clarification"] = False
+
+        # Fix 5: "attività in ritardo" generico → ask_delayed_plans
+        # Se classificato come check_if_plan_delayed ma senza piano_code e messaggio
+        # contiene "attività" + ritardo → è una lista, non una verifica specifica
+        if intent == "check_if_plan_delayed" and not slots.get("piano_code") and message:
+            if re.search(r'\battivit[aà]\b.*\b(ritard[oi]|scadut[eiao])\b', message, re.IGNORECASE):
+                result["intent"] = "ask_delayed_plans"
+                intent = "ask_delayed_plans"
+                result["confidence"] = 0.95
+                result["needs_clarification"] = False
+
+        # Fix 6: "controlli programmati per piano X" → check_if_plan_delayed
+        # Gli intent ask_piano_stabilimenti / ask_piano_statistics / query_data
+        # lavorano sugli ESEGUITI. Quando l'utente chiede esplicitamente i
+        # controlli "programmati" (o il confronto programmati vs eseguiti),
+        # la fonte è cu_diff_programmati_eseguiti gestita da check_if_plan_delayed,
+        # che mostra programmati/eseguiti/ritardo per un piano specifico.
+        _programmed_intents = {
+            "ask_piano_stabilimenti", "ask_piano_statistics",
+            "query_data", "ask_piano_description",
+        }
+        if intent in _programmed_intents and slots.get("piano_code") and message:
+            if re.search(r'\bprogramm(?:at[oiae]|azione)\b', message, re.IGNORECASE):
+                result["intent"] = "check_if_plan_delayed"
+                intent = "check_if_plan_delayed"
+                result["confidence"] = 0.90
+                result["needs_clarification"] = False
+
         # Correzioni semantiche (deterministiche, no LLM cost)
         # P3: Skip quando MINIMAL_HEURISTICS=True - deleghiamo all'LLM
         if message and not self.MINIMAL_HEURISTICS:
@@ -1414,6 +1477,10 @@ OUTPUT:"""
             else:
                 result["needs_clarification"] = True
                 result["slots"] = {}
+        elif intent == "search_piani_by_topic" and slots.get("sezione"):
+            # "piani della sezione A": la sezione e' un filtro strutturato
+            # valido, il topic testuale non e' piu' richiesto.
+            result["needs_clarification"] = False
         else:
             # Tutti i required devono essere presenti
             missing = [r for r in required if not slots.get(r)]

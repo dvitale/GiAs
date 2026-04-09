@@ -9,13 +9,7 @@ import json
 from typing import Dict, Any, List, Tuple
 import re
 
-try:
-    from langchain_core.tools import tool
-except ImportError:
-    def tool(_name):
-        def decorator(func):
-            return func
-        return decorator
+from tools._tool_compat import tool
 
 try:
     from agents.data_agent import DataRetriever

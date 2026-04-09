@@ -27,7 +27,7 @@ INSERT INTO schema_metadata VALUES (
     {"name":"sezione","type":"varchar","description_it":"Sezione PRISCAV (A-G)","filterable":true,"sample_values":["SEZIONE A","SEZIONE B","SEZIONE C"]},
     {"name":"alias_piano_attivita","type":"varchar","description_it":"Codice piano (A1, B2, C3, D1)","filterable":true,"sample_values":["A1","A22","B2","C3"]},
     {"name":"alias_indicatore","type":"varchar","description_it":"Codice indicatore specifico del piano","filterable":true,"sample_values":["A1_A","A22_B","B2_A"]},
-    {"name":"descrizione_piano","type":"text","description_it":"Descrizione del piano di controllo","filterable":false},
+    {"name":"descrizione_piano_attivita","type":"text","description_it":"Descrizione del piano o attività di controllo","filterable":false},
     {"name":"descrizione_indicatore","type":"text","description_it":"Descrizione del sotto-piano/indicatore","filterable":false},
     {"name":"campionamento","type":"boolean","description_it":"True = prelievo campioni, False = controllo ufficiale","filterable":true},
     {"name":"tipo_piano_attivita","type":"varchar","description_it":"Tipo: piano o attivita","filterable":true,"sample_values":["piano","attivita"]}

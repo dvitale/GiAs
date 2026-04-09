@@ -21,7 +21,7 @@ def _get_excluded_intents() -> set:
 EXCLUDED_INTENTS = None
 
 # Header del blocco suggerimenti
-FOLLOWUP_HEADER = "\n\n---\n**Vuoi approfondire?** Ecco cosa posso fare:"
+FOLLOWUP_HEADER = "\n\n---\n**Ti puo' interessare anche:**"
 
 # Lunghezza minima della risposta per appendere suggerimenti
 MIN_RESPONSE_LENGTH = 50

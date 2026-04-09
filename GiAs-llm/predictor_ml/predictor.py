@@ -1,3 +1,4 @@
+# pyright: reportAttributeAccessIssue=false, reportOptionalMemberAccess=false, reportArgumentType=false, reportGeneralTypeIssues=false, reportCallIssue=false, reportOptionalOperand=false, reportReturnType=false, reportAssignmentType=false, reportPossiblyUnboundVariable=false
 """
 Machine Learning Risk Predictor per stabilimenti mai controllati.
 
@@ -145,21 +146,16 @@ class RiskPredictor:
         try:
             import time as _time
 
-            # 1. Carica dati stabilimenti mai controllati
-            from agents.data import osa_mai_controllati_df
+            # 1. Carica dati stabilimenti mai controllati via repository
+            # (migrazione Hybrid: passa da OsaRepository, governato dal flag
+            # data_source.repositories.osa)
+            from agents.data_agent import DataRetriever
 
             # Normalizza ASL per filtro (None = tutte le ASL)
             asl_normalized = self._normalize_asl_for_filter(asl)
 
             t0 = _time.time()
-            if asl_normalized:
-                # Filtro per ASL specifica
-                osa_filtered = osa_mai_controllati_df[
-                    osa_mai_controllati_df['asl'].str.upper() == asl_normalized.upper()
-                ].copy()
-            else:
-                # Nessun filtro ASL (equivalente a WHERE asl LIKE '%')
-                osa_filtered = osa_mai_controllati_df.copy()
+            osa_filtered = DataRetriever.get_osa_mai_controllati(asl=asl_normalized).copy()
             logger.info(f"[MLPredictor] ASL filter '{asl_normalized}': {len(osa_filtered)} rows in {_time.time()-t0:.2f}s")
 
             if osa_filtered.empty:
@@ -180,12 +176,8 @@ class RiskPredictor:
             if piano_code:
                 osa_filtered, activities_analyzed = self._filter_by_piano(osa_filtered, piano_code)
                 if osa_filtered.empty:
-                    if asl_normalized:
-                        total_count = len(osa_mai_controllati_df[
-                            osa_mai_controllati_df['asl'].str.upper() == asl_normalized.upper()
-                        ])
-                    else:
-                        total_count = len(osa_mai_controllati_df)
+                    # Total count: riusa OsaRepository per coerenza
+                    total_count = len(DataRetriever.get_osa_mai_controllati(asl=asl_normalized))
                     return {
                         "asl": asl,
                         "piano_code": piano_code,
@@ -230,12 +222,7 @@ class RiskPredictor:
 
             # 7. Formatta output conforme al contratto
             t4 = _time.time()
-            if asl_normalized:
-                total_never_controlled = len(osa_mai_controllati_df[
-                    osa_mai_controllati_df['asl'].str.upper() == asl_normalized.upper()
-                ])
-            else:
-                total_never_controlled = len(osa_mai_controllati_df)
+            total_never_controlled = len(DataRetriever.get_osa_mai_controllati(asl=asl_normalized))
 
             result = self._format_ml_output(
                 asl=asl,
@@ -334,18 +321,13 @@ class RiskPredictor:
     def _filter_by_piano(self, osa_df: pd.DataFrame, piano_code: str) -> tuple:
         """Filtra stabilimenti per attività correlate al piano."""
         try:
-            from agents.data import controlli_df
+            # Usa DataRetriever (che delega al ControlliRepository) per ottenere
+            # i controlli del piano — evita accesso diretto a controlli_df e
+            # riusa la logica di matching piano/attività centralizzata.
+            from agents.data_agent import DataRetriever
+            controlli_piano = DataRetriever.get_controlli_by_piano(piano_code)
 
-            # Estrai attività correlate al piano con matching esatto o sottopiani (A1, A1_A, ma non A10)
-            piano_upper = piano_code.upper()
-            if piano_upper.startswith("ATT "):
-                piano_upper = piano_upper[4:]
-            pattern = rf'^(ATT\s+)?{re.escape(piano_upper)}(?:[_ ]|$)'
-            controlli_piano = controlli_df[
-                controlli_df['alias_indicatore'].str.upper().str.match(pattern, na=False)
-            ].copy()
-
-            if controlli_piano.empty:
+            if controlli_piano is None or controlli_piano.empty:
                 return pd.DataFrame(), 0
 
             # Estrai attività uniche

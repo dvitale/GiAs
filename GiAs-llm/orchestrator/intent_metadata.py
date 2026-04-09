@@ -195,13 +195,13 @@ INTENT_REGISTRY: Dict[str, IntentMetadata] = {
     # ===== CATEGORIA: Ritardi =====
     "ask_delayed_plans": IntentMetadata(
         intent_id="ask_delayed_plans",
-        label="Piani in Ritardo",
-        description="Elenco dei piani di controllo in ritardo",
+        label="Piani/Attività in Ritardo",
+        description="Elenco dei piani di controllo o attività in ritardo",
         category="Ritardi e Monitoraggio",
-        keywords=["ritardo", "ritardi", "in ritardo", "scaduti", "piani"],
+        keywords=["ritardo", "ritardi", "in ritardo", "scaduti", "piani", "attività in ritardo", "attività scadute"],
         context_keywords=["quali", "elenco"],
         negative_keywords=["piano A", "piano B", "piano C"],  # Piano singolo
-        examples=["Piani in ritardo", "Quali piani sono scaduti?", "Elenco ritardi"],
+        examples=["Piani in ritardo", "Attività in ritardo", "Quali piani sono scaduti?", "Quali attività sono in ritardo?", "Elenco ritardi"],
         requires_slots=[],
         emoji="⏰"
     ),

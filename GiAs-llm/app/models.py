@@ -19,6 +19,7 @@ class UserMetadata(BaseModel):
     latitude: Optional[float] = None       # REQ: [API-10] GPS device
     longitude: Optional[float] = None
     gps_accuracy_m: Optional[float] = None
+    buddy_mode: Optional[bool] = False
 
 
 class ChatMessage(BaseModel):
@@ -59,6 +60,7 @@ class ChatResult(BaseModel):
     suggestions: List[Suggestion] = []
     fallback_intents: List[FallbackIntentSuggestion] = []
     execution: Optional[ExecutionInfo] = None
+    tool_output: Optional[Dict[str, Any]] = None
     needs_clarification: bool = False
     has_more_details: bool = False
     error: Optional[str] = None

@@ -3,7 +3,7 @@ PostgreSQL data source implementation with SQLAlchemy connection pooling.
 """
 
 import pandas as pd
-from data_sources.base import DataSource
+from data_sources.base import DataSource, KEEP_COLUMNS
 
 try:
     from sqlalchemy import create_engine, text
@@ -86,6 +86,38 @@ class PostgreSQLDataSource(DataSource):
                 raise
         return self.connection
 
+    # Cache per lista colonne reali di una tabella (evita probe ripetuti)
+    _column_cache: dict = {}
+
+    def _get_table_columns(self, table_name: str) -> list:
+        """Restituisce la lista colonne di `table_name` con una probe LIMIT 0 (1 round-trip)."""
+        if table_name in self._column_cache:
+            return self._column_cache[table_name]
+        try:
+            probe = pd.read_sql_query(f"SELECT * FROM {table_name} LIMIT 0", self._engine)
+            cols = list(probe.columns)
+        except Exception as e:
+            print(f"[PostgreSQLDataSource] Probe colonne fallita per {table_name}: {e}")
+            cols = []
+        self._column_cache[table_name] = cols
+        return cols
+
+    def _build_select_expr(self, key: str, table_name: str) -> str:
+        """
+        Costruisce l'espressione SELECT:
+        - Se `key` ha una whitelist in KEEP_COLUMNS → `SELECT "c1","c2",...` (solo colonne effettivamente presenti)
+        - Altrimenti → `SELECT *`
+        """
+        if key not in KEEP_COLUMNS:
+            return "*"
+        available = set(self._get_table_columns(table_name))
+        if not available:
+            return "*"
+        pruned = [c for c in KEEP_COLUMNS[key] if c in available]
+        if not pruned:
+            return "*"
+        return ", ".join(f'"{c}"' for c in pruned)
+
     def _load_table(self, key: str) -> pd.DataFrame:
         """
         Load table by key with caching using SQLAlchemy or psycopg2.
@@ -108,7 +140,10 @@ class PostgreSQLDataSource(DataSource):
         try:
             # Use SQLAlchemy with connection pooling if available
             if self.use_sqlalchemy and self._engine is not None:
-                query = f"SELECT * FROM {table_name}"
+                # Column pruning a livello SQL: evita di scaricare colonne
+                # che verrebbero comunque scartate dal filtro whitelist.
+                select_expr = self._build_select_expr(key, table_name)
+                query = f"SELECT {select_expr} FROM {table_name}"
                 df = pd.read_sql_query(query, self._engine)
             else:
                 # Fallback to psycopg2
@@ -126,18 +161,18 @@ class PostgreSQLDataSource(DataSource):
 
     def load_piani(self) -> pd.DataFrame:
         """
-        Load piani_monitoraggio data with deduplication.
+        Load piani_monitoraggio data filtered by current_year.
 
-        PostgreSQL contains duplicates (5x per record).
-        This method deduplicates based on (sezione, alias, alias_indicatore).
+        La materialized view contiene tutti gli anni da gisa.chatbot.dpat.
+        Filtra per anno == current_year da config (come load_personale).
         """
         df = self._load_table("piani")
-        if not df.empty:
-            df = df.drop_duplicates(
-                subset=['sezione', 'alias_piano_attivita', 'alias_indicatore'],
-                keep='first'
-            )
-            print(f"[PostgreSQLDataSource] Deduplicated piani: {len(df)} unique records")
+        if not df.empty and 'anno' in df.columns:
+            from configs.config_loader import get_config
+            current_year = get_config().get_current_year()
+            before = len(df)
+            df = df[df['anno'] == current_year]
+            print(f"[PostgreSQLDataSource] Filtered piani by anno={current_year}: {len(df)}/{before} rows")
         return df
 
     def load_attivita(self) -> pd.DataFrame:

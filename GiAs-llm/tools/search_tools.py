@@ -1,12 +1,6 @@
 from typing import Dict, Any, List, Optional
 
-try:
-    from langchain_core.tools import tool
-except ImportError:
-    def tool(_name):
-        def decorator(func):
-            return func
-        return decorator
+from tools._tool_compat import tool
 
 try:
     from agents.data_agent import DataRetriever
@@ -40,7 +34,7 @@ def search_piani_by_topic(query: str, similarity_threshold: float = 0.4, sezione
     """
     Cerca piani di controllo per argomento sul database in memoria.
 
-    Esegue ricerca testuale (ILIKE) sulle colonne descrizione_piano e descrizione_indicatore
+    Esegue ricerca testuale (ILIKE) sulle colonne descrizione_piano_attivita e descrizione_indicatore
     del DataFrame piani_monitoraggio gia' caricato in RAM al startup.
 
     Args:
@@ -79,7 +73,7 @@ def search_piani_by_topic(query: str, similarity_threshold: float = 0.4, sezione
                 "search_term": search_term,
                 "total_found": 0,
                 "search_strategy": "db_ilike",
-                "formatted_response": f"Non ho trovato piani di monitoraggio che corrispondono a **'{search_term}'**.\n\nProva con termini più specifici come:\n- Bovini, suini, avicoli\n- Latte, carne, mangimi\n- Allevamenti\n- Nome specifico del piano (es. A1, B2)"
+                "formatted_response": f"Non ho trovato piani relativi a **'{search_term}'**. Prova con un termine diverso, ad esempio:\n- Bovini, suini, avicoli\n- Latte, carne, mangimi\n- Allevamenti\n- Codice piano (es. A1, B2)"
             }
 
         # Format response
