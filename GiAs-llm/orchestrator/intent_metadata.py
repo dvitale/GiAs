@@ -192,7 +192,20 @@ INTENT_REGISTRY: Dict[str, IntentMetadata] = {
         emoji="📍"
     ),
 
-    # ===== CATEGORIA: Ritardi =====
+    # ===== CATEGORIA: Monitoraggio e Ritardi =====
+    "ask_cu_statistics": IntentMetadata(
+        intent_id="ask_cu_statistics",
+        label="Statistiche Controlli",
+        description="Conteggio e statistiche dei controlli ufficiali eseguiti o programmati",
+        category="Ritardi e Monitoraggio",
+        keywords=["controlli eseguiti", "controlli fatti", "controlli totali", "quanti controlli", "numero controlli", "controlli programmati"],
+        context_keywords=["anno", "asl", "macroarea", "piano"],
+        negative_keywords=["stabilimenti", "ritardo", "priorità", "rischio", "elenco", "lista"],
+        examples=["Controlli eseguiti per il piano AO1", "Quanti controlli totali quest'anno?", "Controlli programmati per il 2026"],
+        requires_slots=[],
+        emoji="📊"
+    ),
+
     "ask_delayed_plans": IntentMetadata(
         intent_id="ask_delayed_plans",
         label="Piani/Attività in Ritardo",
@@ -333,6 +346,7 @@ CATEGORY_HIERARCHY: Dict[str, List[str]] = {
         "search_piani_by_topic"
     ],
     "Ritardi e Monitoraggio": [
+        "ask_cu_statistics",
         "ask_delayed_plans",
         "check_if_plan_delayed"
     ],

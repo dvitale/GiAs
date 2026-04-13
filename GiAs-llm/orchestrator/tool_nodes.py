@@ -20,6 +20,7 @@ try:
     from tools.risk_analysis_tools import get_top_risk_activities
     from tools.predictor_tools import get_ml_risk_prediction
     from tools.proximity_tools import get_nearby_priority
+    from tools.cu_statistics_tools import get_cu_statistics
     from agents.response_agent import ResponseFormatter
     from configs.config import RiskPredictorConfig
 except ImportError:
@@ -34,6 +35,7 @@ except ImportError:
     from tools.risk_analysis_tools import get_top_risk_activities
     from tools.predictor_tools import get_ml_risk_prediction
     from tools.proximity_tools import get_nearby_priority
+    from tools.cu_statistics_tools import get_cu_statistics
     from agents.response_agent import ResponseFormatter
     from configs.config import RiskPredictorConfig
 
@@ -1283,6 +1285,83 @@ def nearby_priority_tool(state: Dict[str, Any], event_callback=None, **_) -> Dic
     return state
 
 
+def cu_statistics_tool(state: Dict[str, Any], **_) -> Dict[str, Any]:
+    from agents.data import get_uos_from_user_id
+
+    asl = state["metadata"].get("asl")
+    piano_code = state["slots"].get("piano_code")
+    anno = state["slots"].get("anno")
+    macroarea = state["slots"].get("macroarea")
+    tipo_conteggio = state["slots"].get("tipo_conteggio", "eseguiti")
+
+    # Scope: se l'utente menziona esplicitamente "ASL" nel messaggio o
+    # il router ha estratto asl come slot, lo scope è ASL-wide (no filtro UOS).
+    # Altrimenti, default alla UOS dell'operatore.
+    asl_explicit = bool(state["slots"].get("asl"))
+    message = state.get("message", "").lower()
+    if not asl_explicit and ("asl" in message or "intera asl" in message or "tutta l'asl" in message or "della mia asl" in message):
+        asl_explicit = True
+
+    user_uos = None
+    if not asl_explicit:
+        user_uos = state["metadata"].get("uos")
+        if not user_uos:
+            user_id = state["metadata"].get("user_id")
+            if user_id:
+                user_uos = get_uos_from_user_id(user_id)
+
+    # Normalizza anno (potrebbe arrivare come stringa)
+    if anno is not None:
+        try:
+            anno = int(anno)
+        except (ValueError, TypeError):
+            anno = None
+
+    result = get_cu_statistics(
+        piano_code=piano_code,
+        anno=anno,
+        asl=asl,
+        macroarea=macroarea,
+        user_uos=user_uos,
+        tipo_conteggio=tipo_conteggio,
+    )
+
+    # Usa l'anno effettivo (il tool applica default anno corrente se non specificato)
+    effective_anno = result.get("anno") or anno
+
+    # Pseudo-query per debug page
+    where_parts = []
+    if piano_code:
+        where_parts.append(f"UPPER(alias_indicatore) ~ '^(ATT\\s+)?{piano_code.upper()}'")
+    if effective_anno:
+        where_parts.append(f"EXTRACT(YEAR FROM data_inizio_controllo) = {effective_anno}")
+    if asl:
+        where_parts.append(f"descrizione_asl ILIKE '%{asl}%'")
+    if macroarea:
+        where_parts.append(f"macroarea_cu ILIKE '%{macroarea}%'")
+    if user_uos:
+        where_parts.append(f"descrizione_uos ILIKE '%{user_uos}%'")
+
+    table = "cu_eseguiti_nc" if tipo_conteggio == "eseguiti" else "cu_diff_programmati_eseguiti"
+    col = "COUNT(DISTINCT id_controllo)" if tipo_conteggio == "eseguiti" else "SUM(programmati), SUM(eseguiti)"
+    pq = f"SELECT {col} FROM {table}"
+    if where_parts:
+        pq += " WHERE " + " AND ".join(where_parts)
+
+    # Two-phase: mostra prima il totale, poi il dettaglio su richiesta
+    total_controls = result.get("total_controls", 0)
+    detail_formatted = result.pop("detail_formatted", None)
+    if detail_formatted and total_controls > 0:
+        result = apply_two_phase_check(
+            state, "ask_cu_statistics", result, total_controls,
+            result["formatted_response"],
+            full_formatted_response=detail_formatted,
+        )
+
+    state["tool_output"] = {"type": "cu_statistics", "data": result, "pseudo_query": pq}
+    return state
+
+
 # =============================================================================
 # TOOL REGISTRY: mappa nome nodo → funzione
 # =============================================================================
@@ -1305,6 +1384,7 @@ TOOL_REGISTRY = {
     "top_risk_activities_tool": top_risk_activities_tool,
     "info_procedure_tool": info_procedure_tool,
     "query_data_tool": query_data_tool,
+    "cu_statistics_tool": cu_statistics_tool,
     "confirm_details_tool": confirm_details_tool,
     "decline_details_tool": decline_details_tool,
 }
@@ -1332,6 +1412,7 @@ def _get_intent_to_tool() -> dict:
             "ask_top_risk_activities": "top_risk_activities_tool",
             "info_procedure": "info_procedure_tool",
             "query_data": "query_data_tool",
+            "ask_cu_statistics": "cu_statistics_tool",
             "confirm_show_details": "confirm_details_tool",
             "decline_show_details": "decline_details_tool",
         }

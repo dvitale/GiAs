@@ -110,9 +110,9 @@ WORKFLOW_STRATEGIES = {
 # =============================================================================
 
 FILTER_PATTERNS = {
-    "comune": r"(?:nel\s+comune\s+(?:di\s+)?|a\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+    "comune": r"(?:nel\s+comune\s+(?:di\s+)?|\ba\s+(?!chi\b|cosa\b|quale\b|che\b))([A-Z][a-zA-Z']+(?:\s+[A-Z][a-zA-Z']+)*)",
     "asl": r"(?:ASL\s+|asl\s+)([A-Z]{2}[0-9])",
-    "limit": r"(?:primi?\s+|top\s+)?(\d+)",
+    "limit": r"(?:primi?\s+|top\s+)(\d+)",
     "tipo_attivita": {
         "macroarea": r"macroarea\s+([^\s,]+)",
         "aggregazione": r"aggregazione\s+([^\s,]+)",

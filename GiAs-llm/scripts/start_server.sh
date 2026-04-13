@@ -293,8 +293,8 @@ echo $API_PID > "$PID_FILE"
 sleep 2
 
 if ps -p "$API_PID" > /dev/null 2>&1; then
-    WAIT_SECONDS=60
-    CHECK_INTERVAL=1
+    WAIT_SECONDS=180
+    CHECK_INTERVAL=3
     ELAPSED=0
     READY=0
     echo "   ⏳ Avvio in corso, attendo risposta API..."

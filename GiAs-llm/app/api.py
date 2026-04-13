@@ -475,7 +475,7 @@ async def chat_feedback(req: FeedbackRequest):
             if result.rowcount == 0:
                 raise HTTPException(status_code=404, detail="message_id non trovato")
 
-        # Feedback loop automatico: alimenta domande_risposte
+        # Feedback loop automatico: alimenta intent_examples
         try:
             _feedback_loop(engine, req.message_id, req.rating)
         except Exception as fl_err:
@@ -492,7 +492,7 @@ async def chat_feedback(req: FeedbackRequest):
 
 
 def _feedback_loop(engine, message_id: str, rating: int):
-    """Feedback loop automatico: inserisce in domande_risposte basandosi sul rating."""
+    """Feedback loop automatico: inserisce in intent_examples basandosi sul rating."""
     from sqlalchemy import text
     with engine.connect() as conn:
         # Recupera ask e intent dal chat_log
@@ -511,18 +511,18 @@ def _feedback_loop(engine, message_id: str, rating: int):
 
         if rating >= 4:
             conn.execute(text("""
-                INSERT INTO domande_risposte (domanda, intent, example_type, source, active)
-                VALUES (:domanda, :intent, 'variation', 'feedback_auto', TRUE)
-                ON CONFLICT (domanda, intent) DO NOTHING
-            """), {"domanda": ask, "intent": intent})
+                INSERT INTO intent_examples (text, intent, example_type, source, active)
+                VALUES (:text, :intent, 'variation', 'feedback_auto', TRUE)
+                ON CONFLICT (intent, text, example_type) DO NOTHING
+            """), {"text": ask, "intent": intent})
             conn.commit()
             logger.info(f"[FeedbackLoop] rating={rating}, inserita variazione: '{ask[:50]}' → {intent}")
         elif rating <= 2:
             conn.execute(text("""
-                INSERT INTO domande_risposte (domanda, intent, example_type, source, active)
-                VALUES (:domanda, :intent, 'variation', 'feedback_negative', FALSE)
-                ON CONFLICT (domanda, intent) DO NOTHING
-            """), {"domanda": ask, "intent": intent})
+                INSERT INTO intent_examples (text, intent, example_type, source, active)
+                VALUES (:text, :intent, 'variation', 'feedback_negative', FALSE)
+                ON CONFLICT (intent, text, example_type) DO NOTHING
+            """), {"text": ask, "intent": intent})
             conn.commit()
             logger.info(f"[FeedbackLoop] rating={rating}, segnalata per revisione: '{ask[:50]}' → {intent}")
 
@@ -1496,7 +1496,7 @@ class DomandaRAGCreate(BaseModel):
 
 @app.get("/api/admin/domande-rag")
 async def admin_list_domande_rag():
-    """Lista domande attive dalla tabella domande_risposte."""
+    """Lista domande attive dalla tabella intent_examples."""
     engine = _get_db_engine()
     if engine is None:
         raise HTTPException(status_code=503, detail="Database non disponibile")
@@ -1506,9 +1506,9 @@ async def admin_list_domande_rag():
     try:
         with engine.connect() as conn:
             rows = conn.execute(text("""
-                SELECT id, domanda, risposta, intent, example_type, confused_with,
+                SELECT id, text, risposta, intent, example_type, confused_with,
                        source, notes, created_at, updated_at
-                FROM domande_risposte
+                FROM intent_examples
                 WHERE active = TRUE
                 ORDER BY created_at DESC
             """)).fetchall()
@@ -1538,7 +1538,7 @@ async def admin_list_domande_rag():
 
 @app.post("/api/admin/domande-rag")
 async def admin_create_domanda_rag(payload: DomandaRAGCreate):
-    """Inserisce una nuova domanda nella tabella domande_risposte."""
+    """Inserisce una nuova domanda nella tabella intent_examples."""
     engine = _get_db_engine()
     if engine is None:
         raise HTTPException(status_code=503, detail="Database non disponibile")
@@ -1551,11 +1551,11 @@ async def admin_create_domanda_rag(payload: DomandaRAGCreate):
     try:
         with engine.connect() as conn:
             result = conn.execute(text("""
-                INSERT INTO domande_risposte (domanda, risposta, intent, example_type, confused_with, source, notes)
-                VALUES (:domanda, :risposta, :intent, :example_type, :confused_with, :source, :notes)
+                INSERT INTO intent_examples (text, risposta, intent, example_type, confused_with, source, notes)
+                VALUES (:text, :risposta, :intent, :example_type, :confused_with, :source, :notes)
                 RETURNING id, created_at
             """), {
-                "domanda": payload.domanda.strip(),
+                "text": payload.domanda.strip(),
                 "risposta": payload.risposta.strip() if payload.risposta else None,
                 "intent": payload.intent,
                 "example_type": payload.example_type,
@@ -1574,8 +1574,8 @@ async def admin_create_domanda_rag(payload: DomandaRAGCreate):
             }
     except Exception as e:
         logger.error(f"[AdminRAG] Error creating domanda: {e}")
-        if "uq_domande_risposte_domanda_intent" in str(e):
-            raise HTTPException(status_code=409, detail="Domanda già esistente per questo intent")
+        if "uq_intent_examples_intent_text_type" in str(e):
+            raise HTTPException(status_code=409, detail="Domanda già esistente per questo intent e tipo")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1591,7 +1591,7 @@ async def admin_delete_domanda_rag(domanda_id: int):
     try:
         with engine.connect() as conn:
             result = conn.execute(text("""
-                UPDATE domande_risposte
+                UPDATE intent_examples
                 SET active = FALSE, updated_at = NOW()
                 WHERE id = :id AND active = TRUE
             """), {"id": domanda_id})
@@ -1611,18 +1611,18 @@ async def admin_delete_domanda_rag(domanda_id: int):
 
 @app.post("/api/admin/domande-rag/reindex")
 async def admin_reindex_domande_rag():
-    """Esegue sync domande_risposte -> intent_examples -> Qdrant."""
+    """Ricostruisce indice Qdrant da intent_examples e ricarica il router."""
     import subprocess
 
     script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sync_script = os.path.join(script_dir, "scripts", "sync_domande_risposte.py")
+    index_script = os.path.join(script_dir, "tools", "indexing", "build_intent_examples_index.py")
 
-    if not os.path.exists(sync_script):
-        raise HTTPException(status_code=500, detail="Script sync_domande_risposte.py non trovato")
+    if not os.path.exists(index_script):
+        raise HTTPException(status_code=500, detail="Script build_intent_examples_index.py non trovato")
 
     try:
         result = subprocess.run(
-            [sys.executable, sync_script],
+            [sys.executable, index_script],
             capture_output=True,
             text=True,
             timeout=120,
@@ -1730,12 +1730,12 @@ async def admin_guided_learn(payload: GuidedLearnRequest):
     try:
         with engine.connect() as conn:
             result = conn.execute(text("""
-                INSERT INTO domande_risposte (domanda, intent, source, example_type, active)
-                VALUES (:domanda, :intent, 'guided_learning', 'variation', TRUE)
-                ON CONFLICT (domanda, intent) DO NOTHING
+                INSERT INTO intent_examples (text, intent, source, example_type, active)
+                VALUES (:text, :intent, 'guided_learning', 'variation', TRUE)
+                ON CONFLICT (intent, text, example_type) DO NOTHING
                 RETURNING id
             """), {
-                "domanda": payload.domanda.strip(),
+                "text": payload.domanda.strip(),
                 "intent": payload.intent.strip(),
             })
             row = result.fetchone()
@@ -1757,10 +1757,10 @@ async def admin_guided_learn(payload: GuidedLearnRequest):
             try:
                 import subprocess
                 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                sync_script = os.path.join(script_dir, "scripts", "sync_domande_risposte.py")
-                if os.path.exists(sync_script):
+                index_script = os.path.join(script_dir, "tools", "indexing", "build_intent_examples_index.py")
+                if os.path.exists(index_script):
                     subprocess.run(
-                        [sys.executable, sync_script],
+                        [sys.executable, index_script],
                         capture_output=True, text=True, timeout=120,
                         cwd=script_dir,
                     )

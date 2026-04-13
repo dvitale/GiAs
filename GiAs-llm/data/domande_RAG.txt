@@ -1,89 +1,84 @@
-  La tabella domande_risposte serve solo a insegnare al classificatore che quella domanda è di tipo
-  info_procedure — cioè risolve il problema della classificazione (da fallback a info_procedure).
+  La tabella intent_examples e' la single source of truth per tutti gli esempi
+  di classificazione, comprese le domande RAG curate manualmente.
 
-  La risposta vera viene dal RAG, cioè dai PDF già indicizzati in Qdrant (collection documents, non
-  intent_examples). Quando una domanda viene classificata come info_procedure, il sistema cerca nei
-  chunk dei PDF indicizzati e genera la risposta da lì.
-
-  Quindi:
-
-  - Il campo risposta nella tabella è opzionale e puramente documentale — non viene usato dal sistema
+  Il campo risposta nella tabella e' opzionale e puramente documentale — non viene usato dal sistema
   per rispondere. Serve a te per annotare la risposta attesa.
-  - Sì, le domande che inserisci dovrebbero avere la risposta nei PDF già indicizzati, altrimenti il
-  classificatore le instraderà correttamente a info_procedure, ma il RAG non troverà contenuto
-  pertinente e la risposta sarà povera o generica.
 
-  In sintesi il flusso è:
+  La risposta vera viene dal RAG, cioe' dai PDF gia' indicizzati in Qdrant (collection documents, non
+  intent_examples). Quando una domanda viene classificata come info_procedure, il sistema cerca nei
+  chunk dei PDF indicizzati e genera la risposta da li'.
+
+  In sintesi il flusso e':
 
   Domanda utente
-    → Classificatore (few-shot da domande_risposte) → intent = info_procedure
-      → RAG cerca nei PDF indicizzati → genera risposta
+    -> Classificatore (few-shot da intent_examples) -> intent = info_procedure
+      -> RAG cerca nei PDF indicizzati -> genera risposta
 
   Se vuoi inserire domande su argomenti non coperti dai PDF attuali, devi prima indicizzare i documenti
-   pertinenti e poi aggiungere le domande nella tabella.
+  pertinenti e poi aggiungere le domande nella tabella.
 
 ● Cosa dovrai fare tu
 
   1. Verificare la copertura PDF
 
-  Prima di inserire una domanda, assicurati che la risposta sia già nei PDF indicizzati nel RAG. I
+  Prima di inserire una domanda, assicurati che la risposta sia gia' nei PDF indicizzati nel RAG. I
   documenti attualmente indicizzati sono quelli nella pipeline RAG (es. ManualeGisa.pdf,
   help_matrix_rev1.5.pdf, ecc.).
 
-  Se la risposta non è coperta da nessun PDF → prima indicizza il documento, poi aggiungi la domanda.
+  Se la risposta non e' coperta da nessun PDF -> prima indicizza il documento, poi aggiungi la domanda.
 
   2. Inserire le domande nella tabella
 
-  INSERT INTO domande_risposte (domanda, source) VALUES
-    ('Cos''e il borsellino in Matrix?', 'help_matrix_rev1.5.pdf');
+  INSERT INTO intent_examples (text, intent, source) VALUES
+    ('Cos''e il borsellino in Matrix?', 'info_procedure', 'help_matrix_rev1.5.pdf');
 
-  Campi obbligatori: solo domanda. Tutto il resto ha default sensati (intent = 'info_procedure', active
-   = TRUE).
+  Campi obbligatori: text e intent. Tutto il resto ha default sensati (example_type = 'few_shot',
+  active = TRUE).
 
   Campi opzionali utili:
   - risposta — per tua documentazione (il sistema non la usa)
   - source — per ricordarti quale PDF contiene la risposta
   - notes — note libere
+  - example_type — default 'few_shot', oppure 'disambiguation', 'variation', 'help'
+  - confused_with — intent confondibile (per type 'disambiguation')
 
-  3. Lanciare lo script di sync
+  3. Ricostruire l'indice Qdrant
 
-  cd GiAs-llm && python scripts/sync_domande_risposte.py
+  Dall'interfaccia admin: POST /api/admin/domande-rag/reindex
 
-  Questo fa 3 cose automaticamente:
-  1. Legge le domande attive dalla tabella
-  2. Le inserisce nel sistema few-shot (intent_examples)
-  3. Ricostruisce l'indice Qdrant
+  Oppure da terminale:
+  cd GiAs-llm && python tools/indexing/build_intent_examples_index.py
 
   4. Riavviare il backend
 
   scripts/server.sh restart
 
-  Necessario perché il Router carica il prompt di classificazione all'avvio.
+  Necessario perche' il Router carica il prompt di classificazione all'avvio.
 
   In sintesi
 
   Verifichi che il PDF sia indicizzato
-         ↓
-  INSERT nella tabella
-         ↓
-  python scripts/sync_domande_risposte.py
-         ↓
+         |
+  INSERT nella tabella intent_examples
+         |
+  POST /api/admin/domande-rag/reindex  (o python tools/indexing/build_intent_examples_index.py)
+         |
   scripts/server.sh restart
-         ↓
+         |
   Pronto — testa la domanda
 
-  Puoi accumulare molte domande e lanciare lo script una sola volta alla fine. 
+  Puoi accumulare molte domande e lanciare il reindex una sola volta alla fine.
 
 
 
  Prossimi passi per l'utente
 
   # 1. Inserisci domande (esempio)
-  psql -d gias_db -c "INSERT INTO domande_risposte (domanda, risposta, source) VALUES
-    ('Cos''e il borsellino?', 'Il borsellino e'' ...', 'help_matrix_rev1.5.pdf');"
+  psql -d gias_db -c "INSERT INTO intent_examples (text, risposta, intent, source) VALUES
+    ('Cos''e il borsellino?', 'Il borsellino e'' ...', 'info_procedure', 'help_matrix_rev1.5.pdf');"
 
-  # 2. Sincronizza
-  cd GiAs-llm && python scripts/sync_domande_risposte.py
+  # 2. Ricostruisci indice
+  cd GiAs-llm && python tools/indexing/build_intent_examples_index.py
 
   # 3. Riavvia backend
   scripts/server.sh restart
@@ -91,52 +86,42 @@
 
 
   Caso semplice — domande su terminologia GISA (default info_procedure):
-  INSERT INTO domande_risposte (domanda, risposta, source) VALUES
-    ('Cos''e il borsellino?', 'Il borsellino e'' il contenitore...', 'help_matrix_rev1.5.pdf'),
-    ('Cosa significa preaccettazione?', 'La preaccettazione e''...', 'help_matrix_rev1.5.pdf');
+  INSERT INTO intent_examples (text, risposta, intent, source) VALUES
+    ('Cos''e il borsellino?', 'Il borsellino e'' il contenitore...', 'info_procedure', 'help_matrix_rev1.5.pdf'),
+    ('Cosa significa preaccettazione?', 'La preaccettazione e''...', 'info_procedure', 'help_matrix_rev1.5.pdf');
 
   Caso con intent diverso — la domanda non e' info_procedure:
-  INSERT INTO domande_risposte (domanda, intent) VALUES
+  INSERT INTO intent_examples (text, intent) VALUES
     ('quali OSA non sono mai stati ispezionati', 'ask_suggest_controls');
 
   Caso disambiguation — l'LLM confonde due intent:
-  INSERT INTO domande_risposte (domanda, intent, example_type, confused_with) VALUES
+  INSERT INTO intent_examples (text, intent, example_type, confused_with) VALUES
     ('cos''e il rischio residuo', 'info_procedure', 'disambiguation', 'ask_risk_based_priority');
-
 
 
 
   Formato CSV
 
-  File data/domande_risposte.csv con header:
-  domanda,risposta,source
-  "Cos'e il borsellino?","Il borsellino e' il contenitore...","help_matrix_rev1.5.pdf"
-  "Cosa significa preaccettazione?","La preaccettazione e'...","help_matrix_rev1.5.pdf"
+  File con header:
+  text,risposta,intent,source
+  "Cos'e il borsellino?","Il borsellino e' il contenitore...","info_procedure","help_matrix_rev1.5.pdf"
+  "Cosa significa preaccettazione?","La preaccettazione e'...","info_procedure","help_matrix_rev1.5.pdf"
 
   Comando di caricamento
 
-  PGPASSWORD=5XRe4g8Q5QSg psql -h localhost -U gisa_owner -d gias_db -c "\copy
-  domande_risposte(domanda, risposta, source) FROM 'data/domande_risposte.csv' WITH (FORMAT csv, HEADER
+  PGPASSWORD=xxx psql -h localhost -U gisa_owner -d gias_db -c "\copy
+  intent_examples(text, risposta, intent, source) FROM 'data/domande.csv' WITH (FORMAT csv, HEADER
    true, ENCODING 'UTF-8')"
 
-  I campi omessi (intent, example_type, active, ecc.) prendono i default della tabella.
-
-  Se serve specificare anche intent o altri campi
-
-  Aggiungi le colonne nel CSV e nel comando \copy:
-  domanda,risposta,intent,source
-  "Cos'e il borsellino?","Il borsellino e'...","info_procedure","help_matrix_rev1.5.pdf"
-  "OSA mai ispezionati?","","ask_suggest_controls",""
-
-  \copy domande_risposte(domanda, risposta, intent, source) FROM '...' WITH (FORMAT csv, HEADER true)
+  I campi omessi (example_type, active, ecc.) prendono i default della tabella.
 
   Nota sulla idempotenza
 
   Il \copy non gestisce ON CONFLICT — se rilanci il caricamento con le stesse domande otterrai un
-  errore per il constraint UNIQUE (domanda, intent). Due opzioni:
+  errore per il constraint UNIQUE (intent, text, example_type). Due opzioni:
 
-  1. TRUNCATE prima del reload: TRUNCATE domande_risposte RESTART IDENTITY;
+  1. TRUNCATE prima del reload (ATTENZIONE: cancella anche gli esempi di sistema)
   2. Passa da tabella staging: carica in una temp table, poi INSERT ... ON CONFLICT DO NOTHING
 
-  Per un workflow semplice (prepari il CSV, carichi una volta, lanci il sync) il \copy diretto va
+  Per un workflow semplice (prepari il CSV, carichi una volta, lanci il reindex) il \copy diretto va
   benissimo.

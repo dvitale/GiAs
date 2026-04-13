@@ -44,7 +44,7 @@ class TestServiceInit:
 
     def test_all_intents_loaded(self, service):
         intents = service.get_all_intents()
-        assert len(intents) == 20, f"Attesi 20 intent, trovati {len(intents)}"
+        assert len(intents) == 21, f"Attesi 21 intent, trovati {len(intents)}"
 
     def test_intent_has_required_fields(self, service):
         intent = service.get_intent("ask_delayed_plans")

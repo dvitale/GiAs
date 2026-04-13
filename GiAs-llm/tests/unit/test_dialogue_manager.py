@@ -101,6 +101,9 @@ def patch_dm_externals():
     ), patch(
         "orchestrator.intent_metadata.get_intent_metadata",
         return_value=None,
+    ), patch(
+        "configs.config.AppConfig.is_pre_execution_confirmation_enabled",
+        return_value=False,
     ):
         yield
 
@@ -447,6 +450,47 @@ class TestEvaluateAmbiguous:
         # Non ambiguo → esegue (self-sufficient)
         assert result.action == "execute"
 
+    def test_ambiguous_stabilimenti_vs_statistics(self):
+        """Disambiguazione controlli per piano: stabilimenti vs statistiche."""
+        candidates = [
+            _cand("ask_piano_stabilimenti", 0.65, {"piano_code": "AO1"}),
+            _cand("ask_piano_statistics", 0.55, {"piano_code": "AO1"}),
+        ]
+        result = evaluate("controlli fatti per AO1", candidates, {"piano_code": "AO1"}, _fresh_state())
+
+        assert result.action == "ask_user"
+        assert result.question is not None
+        # Lo stato deve conservare i candidati
+        stored = result.updated_state.get("intent_candidates", [])
+        assert len(stored) >= 2
+
+    def test_ambiguous_suggestions_include_piano_code(self):
+        """I suggerimenti pill includono il piano_code per ri-estrazione."""
+        candidates = [
+            _cand("ask_piano_stabilimenti", 0.65, {"piano_code": "AO1"}),
+            _cand("ask_piano_statistics", 0.55, {"piano_code": "AO1"}),
+        ]
+        result = evaluate("controlli fatti per AO1", candidates, {"piano_code": "AO1"}, _fresh_state())
+
+        assert result.suggestions is not None
+        # Ogni suggerimento pill deve contenere AO1 nella query
+        for s in result.suggestions:
+            assert "AO1" in s["query"], f"Piano code mancante nella query: {s['query']}"
+
+    def test_ambiguous_clears_intent_candidates_on_next_turn(self):
+        """intent_candidates viene pulito al turno successivo."""
+        state = _fresh_state(
+            intent_candidates=[
+                _cand("ask_piano_stabilimenti", 0.65),
+                _cand("ask_piano_statistics", 0.55),
+            ]
+        )
+        candidates = [_cand("ask_piano_statistics", 0.90)]
+        result = evaluate("statistiche piano AO1", candidates, {"piano_code": "AO1"}, state)
+
+        # intent_candidates deve essere stato pulito
+        assert result.updated_state.get("intent_candidates") is None
+
 
 # ===========================================================================
 # 8. TestSlotContinuation
@@ -567,3 +611,112 @@ class TestEvaluateNoCandidates:
         # Regola 0 deve eseguire il tool anche senza candidati dal router
         assert result.action == "execute"
         assert result.intent == "ask_piano_description"
+
+
+# ===========================================================================
+# 10. TestPreExecutionConfirmation
+# ===========================================================================
+
+class TestPreExecutionConfirmation:
+    """Conferma pre-esecuzione: intercetta execute per intent funzionali."""
+
+    @pytest.fixture(autouse=True)
+    def enable_confirmation(self):
+        """Abilita la conferma pre-esecuzione per questi test."""
+        with patch(
+            "configs.config.AppConfig.is_pre_execution_confirmation_enabled",
+            return_value=True,
+        ):
+            yield
+
+    def test_functional_intent_gets_confirmation(self):
+        """Intent funzionale con alta confidence → ask_user (conferma)."""
+        candidates = [_cand("ask_delayed_plans", CONFIDENCE_HIGH)]
+        result = evaluate("piani in ritardo", candidates, {}, _fresh_state())
+
+        assert result.action == "ask_user"
+        assert "Ho capito" in result.question
+        assert result.updated_state.get("pending_confirmation") is True
+        assert result.updated_state.get("pending_confirmation_intent") == "ask_delayed_plans"
+
+    def test_non_functional_intent_skips_confirmation(self):
+        """Intent non-funzionale (greet) → execute diretto."""
+        candidates = [_cand("greet", CONFIDENCE_HIGH)]
+        result = evaluate("ciao", candidates, {}, _fresh_state())
+
+        assert result.action == "execute"
+        assert result.intent == "greet"
+
+    def test_confirmation_shows_slots(self):
+        """Il messaggio di conferma include i parametri estratti."""
+        candidates = [_cand("ask_piano_description", CONFIDENCE_HIGH, {"piano_code": "A1"})]
+        result = evaluate(
+            "descrivimi il piano A1", candidates, {}, _fresh_state(),
+            user_metadata={"asl": "NAPOLI 1 CENTRO"},
+        )
+
+        assert result.action == "ask_user"
+        assert "A1" in result.question
+        assert "NAPOLI 1 CENTRO" in result.question
+
+    def test_confirmation_accepted_executes_tool(self):
+        """Utente dice 'sì' → esegui il tool pending."""
+        state = _fresh_state(
+            pending_confirmation=True,
+            pending_confirmation_intent="ask_delayed_plans",
+            pending_confirmation_tool="ask_delayed_plans_tool",
+            pending_confirmation_slots={},
+        )
+        candidates = [_cand("confirm_show_details", 0.60)]
+        result = evaluate("sì", candidates, {}, state)
+
+        assert result.action == "execute"
+        assert result.intent == "ask_delayed_plans"
+        assert result.target_tool == "ask_delayed_plans_tool"
+
+    def test_confirmation_rejected_cancels(self):
+        """Utente dice 'no' → annulla."""
+        state = _fresh_state(
+            pending_confirmation=True,
+            pending_confirmation_intent="ask_delayed_plans",
+            pending_confirmation_tool="ask_delayed_plans_tool",
+            pending_confirmation_slots={},
+        )
+        candidates = [_cand("fallback", 0.30)]
+        result = evaluate("no", candidates, {}, state)
+
+        assert result.action == "ask_user"
+        assert "annullato" in result.question.lower()
+        assert result.updated_state.get("pending_confirmation") is None
+
+    def test_confirmation_ignored_new_message_falls_through(self):
+        """Messaggio diverso da conferma/annulla → fall-through a regole normali.
+
+        Il vecchio pending viene cancellato da _rule_pending_confirmation,
+        poi il nuovo intent funzionale ottiene a sua volta la conferma.
+        """
+        state = _fresh_state(
+            pending_confirmation=True,
+            pending_confirmation_intent="ask_delayed_plans",
+            pending_confirmation_tool="ask_delayed_plans_tool",
+            pending_confirmation_slots={},
+        )
+        # Nuovo messaggio con intent diverso
+        candidates = [_cand("ask_piano_description", CONFIDENCE_HIGH, {"piano_code": "B2"})]
+        result = evaluate("descrivimi il piano B2", candidates, {"piano_code": "B2"}, state)
+
+        # Il vecchio pending è stato sostituito dal nuovo intent
+        assert result.action == "ask_user"
+        # La conferma è ora per il nuovo intent
+        assert result.updated_state.get("pending_confirmation_intent") == "ask_piano_description"
+
+    def test_confirmation_suggestions_present(self):
+        """Il messaggio di conferma include suggerimenti (pill buttons)."""
+        candidates = [_cand("ask_delayed_plans", CONFIDENCE_HIGH)]
+        result = evaluate("piani in ritardo", candidates, {}, _fresh_state())
+
+        assert result.suggestions is not None
+        assert len(result.suggestions) == 2
+        queries = [s["query"] for s in result.suggestions]
+        assert "si" in queries
+        assert "annulla" in queries

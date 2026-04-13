@@ -51,6 +51,12 @@ class DialogueState(TypedDict, total=False):
     # Per risoluzione riferimenti anaforici (es. "le varianti" -> "varianti del piano A2")
     last_response_context: Optional[str]  # Breve descrizione del contenuto della risposta
 
+    # Conferma pre-esecuzione
+    pending_confirmation: Optional[bool]
+    pending_confirmation_intent: Optional[str]
+    pending_confirmation_tool: Optional[str]
+    pending_confirmation_slots: Optional[Dict[str, Any]]
+
     # Timestamp per TTL
     timestamp: float
 
@@ -77,6 +83,10 @@ def create_empty_state() -> DialogueState:
         last_tool_strategy=None,
         last_tool_slots=None,
         last_response_context=None,
+        pending_confirmation=None,
+        pending_confirmation_intent=None,
+        pending_confirmation_tool=None,
+        pending_confirmation_slots=None,
         timestamp=time.time(),
     )
 

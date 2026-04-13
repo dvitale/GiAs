@@ -94,6 +94,7 @@ class FollowUpSuggestionEngine:
             "ask_priority_establishment": self._suggest_priority,
             "ask_risk_based_priority": self._suggest_risk,
             "ask_suggest_controls": self._suggest_controls,
+            "ask_cu_statistics": self._suggest_cu_statistics,
             "ask_delayed_plans": self._suggest_delayed_plans,
             "check_if_plan_delayed": self._suggest_check_plan,
             "ask_establishment_history": self._suggest_establishment_history,
@@ -256,6 +257,31 @@ class FollowUpSuggestionEngine:
                 "query": "stabilimenti prioritari"
             },
         ]
+
+    def _suggest_cu_statistics(
+        self, slots: Dict, data: Dict
+    ) -> List[Dict[str, str]]:
+        piano = _get_piano_code(slots)
+        suggestions = []
+        if piano:
+            suggestions.append({
+                "text": f"Il piano {piano} e' in ritardo?",
+                "query": f"il piano {piano} e' in ritardo?"
+            })
+            suggestions.append({
+                "text": f"Stabilimenti controllati per {piano}",
+                "query": f"stabilimenti controllati per piano {piano}"
+            })
+        else:
+            suggestions.append({
+                "text": "Piani in ritardo",
+                "query": "piani in ritardo"
+            })
+            suggestions.append({
+                "text": "Attivita' piu' rischiose",
+                "query": "attivita' piu' rischiose"
+            })
+        return suggestions
 
     def _suggest_delayed_plans(
         self, slots: Dict, data: Dict

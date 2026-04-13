@@ -14,4 +14,4 @@ echo "  Remote Host: $REMOTE_HOST (User: $REMOTE_USER)"
 echo "--------------------------------------------------"
 sleep 3
 
-ssh $REMOTE_HOST  "cd /opt/lang-env/GiAs-llm && scripts/server.sh restart"
+ssh $REMOTE_HOST  "source /opt/lang-env/bin/activate && cd /opt/lang-env/GiAs-llm/ && scripts/server.sh restart"

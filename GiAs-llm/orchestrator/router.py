@@ -131,7 +131,8 @@ ask_top_risk_activities - classifica ATTIVITÀ più rischiose
 ask_suggest_controls - stabilimenti MAI controllati
 ask_nearby_priority(location,radius_km) - stabilimenti MAI CONTROLLATI vicino a INDIRIZZO FISICO specifico (richiede location geocodificabile, NON per aggregazioni/conteggi)
 
-[Ritardi]
+[Monitoraggio]
+ask_cu_statistics - conteggio/statistiche CONTROLLI ESEGUITI o PROGRAMMATI, con filtri per piano, anno, ASL, macroarea. Slot: piano_code, anno, asl, macroarea, tipo_conteggio(eseguiti|programmati). NON per ritardi (→ ask_delayed_plans) né per ranking piani (→ ask_piano_statistics).
 ask_delayed_plans - LISTA piani/attività in ritardo (plurale/generico)
 check_if_plan_delayed(piano_code) - verifica ritardo UN piano specifico
 
@@ -179,11 +180,12 @@ REGOLE DISAMBIGUAZIONE:
 10. Se la domanda potrebbe corrispondere a 2+ intent con confidence simile, restituisci il migliore come intent principale e gli altri in "alternatives". NON indovinare: è meglio chiedere all'utente che classificare male.
 11. "piani della sezione X" con X in (A-G) → search_piani_by_topic con slot sezione=X
 12. Filtro per MACROAREA/AGGREGAZIONE → estrai come slot per filtrare i risultati dell'intent più vicino
-13. "quanti controlli nell'ASL X" / "controlli eseguiti a BENEVENTO" → query_data (conteggio su cu_eseguiti_nc filtrato per ASL). NON è ask_piano_statistics (che riguarda statistiche dei PIANI, non conteggi grezzi di controlli).
+13. "quanti controlli nell'ASL X" / "controlli eseguiti a BENEVENTO" / "controlli totali quest'anno" / "controlli fatti per il piano AO1" / "controlli eseguiti per il benessere animale" → ask_cu_statistics (conteggio aggregato su cu_eseguiti_nc). NON è query_data (riservato a domande non coperte da intent specifici) né ask_piano_statistics (che riguarda ranking/overview dei PIANI).
 14. query_data per domande su dati tabulari NON coperte dagli intent specifici. Confidence MAI > 0.80.
-15. "più controllati"/"più controlli"/"quanti controlli per stabilimento" = aggregazione dati → query_data. NON ask_priority_establishment (priorità per ritardi) né ask_nearby_priority (MAI controllati vicino a indirizzo).
+15. "più controllati"/"quanti controlli per stabilimento"/"quanti controlli per comune" = aggregazione PER ENTITA' → query_data. MA "quanti controlli" senza "per stabilimento"/"per comune" → ask_cu_statistics.
 16. "nelle mie vicinanze"/"vicino a me" SENZA indirizzo fisico → se la domanda è aggregazione dati, usa query_data con filtro ASL/comune dai metadata. ask_nearby_priority richiede un indirizzo geocodificabile (es. "Via Roma 15, Napoli").
-17. "controlli per l'attività/piano X" con codice specifico (es. B47, A1) → ask_piano_stabilimenti con slot piano_code. NON query_data: l'utente chiede dettagli su un piano/attività specifico, non un conteggio generico.
+17. "controlli per l'attività/piano X" con codice specifico → se chiede "quanti"/"conteggio"/"eseguiti"/"fatti" → ask_cu_statistics. Se chiede "quali stabilimenti"/"elenco"/"lista" → ask_piano_stabilimenti.
+18. "controlli programmati per il 2026" / "programmazione per piano X" → ask_cu_statistics con tipo_conteggio="programmati". NON è ask_delayed_plans (che analizza ritardi programmati-eseguiti) né check_if_plan_delayed.
 
 ESEMPI CRITICI (coppie confuse):
 "stabilimenti a rischio" → {"reasoning":"chiede stabilimenti con alto rischio","intent":"ask_risk_based_priority","slots":{},"needs_clarification":false,"confidence":0.95}
@@ -203,16 +205,20 @@ ESEMPI CRITICI (coppie confuse):
 "vicino a Napoli" → {"reasoning":"controlli vicino indirizzo","intent":"ask_nearby_priority","slots":{"location":"Napoli"},"needs_clarification":false,"confidence":0.90}
 "entro 5 km da Via Roma" → {"reasoning":"raggio specifico","intent":"ask_nearby_priority","slots":{"location":"Via Roma","radius_km":5},"needs_clarification":false,"confidence":0.95}
 "NC categoria HACCP" → {"reasoning":"filtra controlli per oggetto_non_conformita HACCP","intent":"query_data","slots":{},"needs_clarification":false,"confidence":0.75}
-"controlli eseguiti per l'attività B47" → {"reasoning":"controlli per attività specifica B47","intent":"ask_piano_stabilimenti","slots":{"piano_code":"ATT B47"},"needs_clarification":false,"confidence":0.90}
-"controlli per il piano A1" → {"reasoning":"controlli per piano specifico A1","intent":"ask_piano_stabilimenti","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.90}
+"controlli eseguiti per l'attività B47" → {"reasoning":"controlli eseguiti per attività specifica - ambiguo tra conteggio e lista stabilimenti","intent":"ask_cu_statistics","slots":{"piano_code":"ATT B47","tipo_conteggio":"eseguiti"},"needs_clarification":false,"confidence":0.70,"alternatives":[{"intent":"ask_piano_stabilimenti","confidence":0.60,"reasoning":"potrebbe chiedere lista stabilimenti"}]}
+"quali stabilimenti sono stati controllati per il piano A1" → {"reasoning":"chiede esplicitamente stabilimenti","intent":"ask_piano_stabilimenti","slots":{"piano_code":"A1"},"needs_clarification":false,"confidence":0.90}
+"quanti controlli sono stati fatti per AO1" → {"reasoning":"conteggio controlli eseguiti per piano specifico","intent":"ask_cu_statistics","slots":{"piano_code":"AO1","tipo_conteggio":"eseguiti"},"needs_clarification":false,"confidence":0.90}
 "procedura ispezione" → {"reasoning":"come si fa ispezione","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.90}
 "cos'e il borsellino in Matrix" → {"reasoning":"definizione termine Matrix","intent":"info_procedure","slots":{},"needs_clarification":false,"confidence":0.95}
 "piani della sezione A" → {"reasoning":"cerca piani sezione A=Sicurezza Alimentare","intent":"search_piani_by_topic","slots":{"topic":"sezione A","sezione":"A"},"needs_clarification":false,"confidence":0.95}
 "piani sezione B su bovini" → {"reasoning":"cerca piani sezione B con keyword bovini","intent":"search_piani_by_topic","slots":{"topic":"bovini","sezione":"B"},"needs_clarification":false,"confidence":0.95}
 "stabilimenti mai controllati a Benevento" → {"reasoning":"OSA mai controllati filtro comune","intent":"ask_suggest_controls","slots":{"comune":"Benevento"},"needs_clarification":false,"confidence":0.95}
 "quanti controlli per macroarea?" → {"reasoning":"interrogazione dati aggregati su controlli","intent":"query_data","slots":{"table":"controlli","operation":"group_count","group_by":["macroarea_cu"]},"needs_clarification":false,"confidence":0.75}
-"quanti controlli sono stati eseguiti nell'ASL Benevento?" → {"reasoning":"conteggio controlli filtrato per ASL, non è statistiche piani","intent":"query_data","slots":{"table":"controlli","operation":"count","filters":[{"column":"descrizione_asl","op":"contains","value":"BENEVENTO"}]},"needs_clarification":false,"confidence":0.80}
-"quanti controlli ha fatto l'ASL Napoli nel 2025?" → {"reasoning":"conteggio semplice per ASL, query_data non ask_piano_statistics","intent":"query_data","slots":{"table":"controlli","operation":"count","filters":[{"column":"descrizione_asl","op":"contains","value":"NAPOLI"}]},"needs_clarification":false,"confidence":0.80}
+"quanti controlli sono stati eseguiti nell'ASL Benevento?" → {"reasoning":"conteggio controlli per ASL","intent":"ask_cu_statistics","slots":{"asl":"BENEVENTO","tipo_conteggio":"eseguiti"},"needs_clarification":false,"confidence":0.90}
+"quanti controlli ha fatto l'ASL Napoli nel 2025?" → {"reasoning":"conteggio controlli ASL+anno","intent":"ask_cu_statistics","slots":{"asl":"NAPOLI","anno":2025,"tipo_conteggio":"eseguiti"},"needs_clarification":false,"confidence":0.90}
+"controlli eseguiti per il benessere animale" → {"reasoning":"conteggio controlli filtrato per macroarea","intent":"ask_cu_statistics","slots":{"macroarea":"BENESSERE ANIMALE","tipo_conteggio":"eseguiti"},"needs_clarification":false,"confidence":0.90}
+"controlli programmati per il 2026" → {"reasoning":"somma controlli programmati anno futuro","intent":"ask_cu_statistics","slots":{"anno":2026,"tipo_conteggio":"programmati"},"needs_clarification":false,"confidence":0.90}
+"controlli totali eseguiti quest'anno" → {"reasoning":"conteggio totale controlli anno corrente","intent":"ask_cu_statistics","slots":{"tipo_conteggio":"eseguiti"},"needs_clarification":false,"confidence":0.90}
 "distribuzione NC per anno" → {"reasoning":"aggregazione NC storiche per anno","intent":"query_data","slots":{"table":"nc_storiche","operation":"group_count","group_by":["anno"]},"needs_clarification":false,"confidence":0.75}
 "stabilimenti più controllati nelle mie vicinanze" → {"reasoning":"aggregazione: ranking stabilimenti per numero controlli, vicinanze=filtro ASL da metadata, NON ask_nearby_priority","intent":"query_data","slots":{"table":"controlli","operation":"group_count","group_by":["attivita_cu","comune"]},"needs_clarification":false,"confidence":0.75}
 "stabilimenti con più controlli nella mia zona" → {"reasoning":"classifica stabilimenti per controlli, zona=ASL utente","intent":"query_data","slots":{"table":"controlli","operation":"group_count","group_by":["attivita_cu"]},"needs_clarification":false,"confidence":0.75}
@@ -958,7 +964,7 @@ OUTPUT:"""
                     for alt in alternatives[:2]:
                         alt_intent = alt.get("intent")
                         if alt_intent and alt_intent in self.VALID_INTENTS:
-                            candidates.append({"intent": alt_intent, "confidence": alt.get("confidence", 0.50), "slots": {}})
+                            candidates.append({"intent": alt_intent, "confidence": alt.get("confidence", 0.50), "slots": alt.get("slots", {})})
                     result["_candidates"] = candidates
 
                     # Cache
@@ -1443,6 +1449,27 @@ OUTPUT:"""
                 intent = "check_if_plan_delayed"
                 result["confidence"] = 0.90
                 result["needs_clarification"] = False
+
+        # Fix 7: "controlli fatti/eseguiti per [codice]" — ambiguo tra stabilimenti e statistiche
+        # "controlli fatti per AO1" puo' significare:
+        #   - "fammi vedere gli stabilimenti controllati" → ask_piano_stabilimenti
+        #   - "quanti controlli sono stati fatti" → ask_piano_statistics
+        # Se il messaggio NON contiene parole disambiguanti, inietta alternativa
+        if intent == "ask_piano_stabilimenti" and slots.get("piano_code") and message:
+            msg_lower = message.lower()
+            has_controlli = re.search(r'\bcontroll[ioa]\b', msg_lower)
+            has_stab_keywords = re.search(
+                r'\b(stabiliment[io]|elenco|lista|quali\s+stabiliment|dove)\b', msg_lower
+            )
+            has_stat_keywords = re.search(
+                r'\b(quant[ie]|statistic[ah]e|numer[io]|conteggio|frequenz[ae]|totale)\b', msg_lower
+            )
+            if has_controlli and not has_stab_keywords and not has_stat_keywords:
+                result["confidence"] = 0.65
+                result["alternatives"] = [
+                    {"intent": "ask_piano_statistics", "confidence": 0.55,
+                     "slots": {"piano_code": slots["piano_code"]}}
+                ]
 
         # Correzioni semantiche (deterministiche, no LLM cost)
         # P3: Skip quando MINIMAL_HEURISTICS=True - deleghiamo all'LLM

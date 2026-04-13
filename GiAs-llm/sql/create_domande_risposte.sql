@@ -1,4 +1,7 @@
--- create_domande_risposte.sql
+-- DEPRECATED: domande_risposte e' stata unificata in intent_examples.
+-- Vedi sql/evolve_unify_intent_examples.sql per la migrazione.
+--
+-- create_domande_risposte.sql (legacy)
 -- Tabella per raccogliere domande curate dall'utente (few-shot enrichment)
 -- Idempotente: usa IF NOT EXISTS / DO $$ per riesecuzioni sicure
 --

@@ -110,11 +110,12 @@ class IntentMetadataService:
                         "intro_phrases": row[22] if len(row) > 22 and row[22] else [],
                     }
 
-                # Carica esempi
+                # Carica esempi (solo attivi)
                 example_rows = conn.execute(text("""
                     SELECT intent, text, example_type, expected_json,
                            confused_with, display_order
                     FROM intent_examples
+                    WHERE active = TRUE
                     ORDER BY intent, example_type, display_order
                 """)).fetchall()
 
@@ -410,7 +411,7 @@ class IntentMetadataService:
             '12. Filtro per MACROAREA/AGGREGAZIONE → estrai come slot per filtrare i risultati dell\'intent più vicino',
             '13. "quanti controlli nell\'ASL X" / "controlli eseguiti a X" → query_data (conteggio su cu_eseguiti_nc). NON ask_piano_statistics (che riguarda statistiche dei PIANI).',
             '14. query_data SOLO per domande su dati tabulari non coperte dagli intent specifici. Confidence MAI > 0.80 (preferire sempre intent specifici).',
-            '15. "controlli per l\'attività/piano X" con codice specifico (es. B47, A1) → ask_piano_stabilimenti con slot piano_code. NON query_data: l\'utente chiede dettagli su un piano/attività specifico, non un conteggio generico.',
+            '15. "controlli per l\'attività/piano X" con codice specifico → ask_piano_stabilimenti con slot piano_code. NON query_data. Ma se il messaggio dice solo "controlli fatti/eseguiti per X" SENZA parole come "stabilimenti"/"elenco" o "quanti"/"statistiche", restituisci ask_piano_statistics come alternativa (è genuinamente ambiguo).',
         ]
         return "\n".join(rules)
 

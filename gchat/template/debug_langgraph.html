@@ -80,6 +80,26 @@
         }
 
         /* Theme Toggle */
+        .server-led {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #6b7280;
+            margin-right: 8px;
+            vertical-align: middle;
+            transition: background 0.4s ease, box-shadow 0.4s ease;
+            cursor: default;
+        }
+        .server-led.online {
+            background: #22c55e;
+            box-shadow: 0 0 6px #22c55e;
+        }
+        .server-led.offline {
+            background: #ef4444;
+            box-shadow: 0 0 6px #ef4444;
+        }
+
         .theme-toggle {
             background: rgba(255, 255, 255, 0.15);
             border: none;
@@ -1198,6 +1218,7 @@
                             <span>{{if .framework}}{{.framework}}{{else}}LangGraph{{end}} Active</span>
                         </div>
                     </div>
+                    <span id="serverLed" class="server-led" title="Server: checking..."></span>
                     <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
                         <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="5"></circle>
@@ -1534,6 +1555,31 @@
                 const isLight = document.body.classList.contains('light-theme');
                 localStorage.setItem('theme', isLight ? 'light' : 'dark');
             });
+        })();
+
+        // Server keepalive LED
+        (function() {
+            var led = document.getElementById('serverLed');
+            if (!led) return;
+            function checkServer() {
+                fetch('{{.basePath}}/api/health', { method: 'GET', cache: 'no-store' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.status === 'ok') {
+                            led.className = 'server-led online';
+                            led.title = 'Server: online — ' + (data.llm || 'LLM') + ' (' + (data.framework || '') + ')';
+                        } else {
+                            led.className = 'server-led offline';
+                            led.title = 'Server: backend non disponibile';
+                        }
+                    })
+                    .catch(function() {
+                        led.className = 'server-led offline';
+                        led.title = 'Server: non raggiungibile';
+                    });
+            }
+            checkServer();
+            setInterval(checkServer, 30000);
         })();
     </script>
     <script src="{{.basePath}}/static/js/debug_langgraph_visualizer.js"></script>

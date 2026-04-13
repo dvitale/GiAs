@@ -146,5 +146,8 @@
   },
   "guided_learning": {
     "enabled": true
+  },
+  "pre_execution_confirmation": {
+    "enabled": true
   }
 }

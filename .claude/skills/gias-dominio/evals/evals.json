@@ -1,0 +1,47 @@
+{
+  "skill_name": "gias-dominio",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Un utente pilota dell'ASL Avellino dice che quando chiede 'quali stabilimenti devo controllare prima', il chatbot non considera il fatto che alcuni non sono mai stati controllati. Dove devo correggere?",
+      "expected_output": "Claude dovrebbe identificare l'intent ask_risk_based_priority, indicare i file tools/risk_tools.py e predictor_ml/ come punti di intervento, menzionare osa_mai_controllati_df come sorgente dati per gli stabilimenti mai controllati, e suggerire di integrare il flag 'mai controllato' nella logica di ranking del RiskAnalyzer o MLRiskPredictor.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "L'utente dice che quando chiede 'piani in ritardo', la risposta mostra i numeri ma non dice quali piani sono piu' critici. Vuole vedere i ritardi ordinati dal piu' grave. Come correggo?",
+      "expected_output": "Claude dovrebbe identificare l'intent ask_delayed_plans, indicare il tool delayed_plans_tool in tools/piano_tools.py, spiegare che diff_prog_eseg_df contiene programmato vs eseguito, e suggerire di modificare il tool per ordinare i risultati per differenza decrescente e aggiornare il ResponseFormatter per evidenziare i piani piu' critici.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Un utente ha scritto 'quante NC gravi abbiamo trovato quest'anno' e il chatbot ha risposto con informazioni generiche sui piani. Non ha capito che voleva le non conformita'. Cosa devo fare?",
+      "expected_output": "Claude dovrebbe riconoscere un problema di classificazione intent, suggerire di verificare se esiste un intent specifico per le NC (o se cade su query_data), proporre di aggiungere esempi few-shot nella tabella intent_examples, aggiungere pattern nel fallback_classifier.py, e dopo le modifiche ricostruire l'indice con build_intent_examples_index.py.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "L'utente dell'ASL Caserta dice che da ieri il chatbot risponde lento e spesso non capisce le domande. Come faccio la diagnosi?",
+      "expected_output": "Claude dovrebbe seguire il workflow di triage: usare mcp__gias__execute_sql per interrogare v_degradation_alerts per anomalie recenti, v_quality_daily filtrato per gli ultimi 2 giorni, v_fallback_clusters filtrato per ASL Caserta, e v_asl_time_correlation per pattern temporali. Dovrebbe confrontare i dati con v_weekly_comparison per capire se la degradazione e' locale o globale.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Diversi utenti hanno dato rating 1-2 all'intent ask_delayed_plans nelle ultime settimane. Come trovo il problema?",
+      "expected_output": "Claude dovrebbe interrogare chat_log per i record con rating basso su quell'intent (SELECT ask, answer, rating, user_feedback FROM chat_log WHERE intent='ask_delayed_plans' AND rating <= 2), leggere i commenti user_feedback, esaminare le sessioni specifiche per capire se il problema e' nei dati (Pattern 3), nella formattazione (Pattern 4), o nella classificazione (Pattern 1). Dovrebbe anche controllare v_intent_quality per metriche aggregate.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Un utente chiede 'quanti controlli abbiamo fatto a Salerno' e il chatbot va in fallback. Come risolvo e verifico?",
+      "expected_output": "Claude dovrebbe: 1) controllare v_fallback_clusters per vedere se questa domanda compare in un cluster, 2) identificare che dovrebbe mappare a query_data o ask_piano_statistics, 3) aggiungere esempi few-shot in intent_examples con INSERT, 4) ricostruire l'indice con build_intent_examples_index.py, 5) descrivere la verifica: testare la domanda, controllare chat_log per il nuovo intent assegnato, monitorare v_fallback_clusters nei giorni successivi.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "Ho corretto il tool risk_based_priority_tool perche' non mostrava la ragione_sociale. Come verifico che il fix funziona in produzione?",
+      "expected_output": "Claude dovrebbe descrivere il protocollo di verifica completo: 1) test immediato con la domanda originale via API, 2) controllare chat_log per la sessione di test (verificare che answer contenga ragione_sociale), 3) eseguire python -m pytest tests/unit/ -v, 4) monitorare v_degradation_alerts per ask_risk_based_priority nelle 24-48h, 5) controllare il trend rating con AVG(rating) per quell'intent negli ultimi 7 giorni.",
+      "files": []
+    }
+  ]
+}

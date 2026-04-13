@@ -133,6 +133,16 @@ func main() {
 	api := r.Group(basePath)
 	api.Static("/static", "./statics")
 
+	// Health check endpoint per keepalive LED nella debug page
+	api.GET("/api/health", func(c *gin.Context) {
+		status := GetBackendStatus()
+		if status.Status != "ok" {
+			c.JSON(http.StatusServiceUnavailable, status)
+			return
+		}
+		c.JSON(http.StatusOK, status)
+	})
+
 	// REQ: [PG-01] PWA: serve manifest and service worker from scope root
 	api.GET("/manifest.webmanifest", func(c *gin.Context) {
 		c.File("./statics/manifest.webmanifest")

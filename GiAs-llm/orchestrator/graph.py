@@ -371,9 +371,15 @@ class ConversationGraph:
 
         # Topic change detection: se l'intent corrente è diverso da quello confermato
         # nel DialogueState, resetta slots e confirmed_intent per evitare "memory bleed"
+        # NON resettare se pending_confirmation: l'utente sta rispondendo alla conferma
         metadata = state.get("metadata", {})
         session_last_intent = metadata.get("_session_last_intent")
-        if session_last_intent and session_last_intent != intent and intent != "fallback":
+        if (
+            session_last_intent and session_last_intent != intent
+            and intent != "fallback"
+            and not ds.get("pending_confirmation")
+            and not ds.get("intent_candidates")  # disambiguazione in corso
+        ):
             # L'utente ha cambiato argomento - reset DialogueState
             # NON resettare se intent è "fallback": potrebbe essere un messaggio
             # non riconosciuto (es. indirizzo puro) che è in realtà una risposta a slot mancante
@@ -425,6 +431,7 @@ class ConversationGraph:
             extracted_slots=slots,
             dialogue_state=ds,
             raw_message_type=raw_type,
+            user_metadata=metadata,
         )
 
         # Aggiorna state dal risultato

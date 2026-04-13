@@ -144,6 +144,22 @@ CONFIRM_PATTERNS = [
     r"^d['\u2019]?accordo$",
 ]
 
+# Pattern per annullamento / rifiuto
+CANCEL_PATTERNS = [
+    r"^no$",
+    r"^annulla",
+    r"^non\s+(?:voglio|serve|procedere|cercare)",
+    r"^lascia\s+(?:stare|perdere)",
+    r"^cancel",
+]
+
+# Intent esclusi dalla conferma pre-esecuzione (non-funzionali)
+_CONFIRMATION_EXCLUDED_INTENTS = {
+    "greet", "goodbye", "ask_help",
+    "confirm_show_details", "decline_show_details",
+    "fallback",
+}
+
 
 class DialogueManagerResult:
     """Risultato del dialogue manager."""
@@ -208,6 +224,22 @@ def is_vague(message: str) -> bool:
     return any(re.search(p, msg) for p in VAGUE_PATTERNS)
 
 
+def _is_cancellation(message: str) -> bool:
+    """Rileva se il messaggio è un annullamento/rifiuto."""
+    msg = message.strip().lower()
+    return any(re.match(p, msg) for p in CANCEL_PATTERNS)
+
+
+def _is_functional_intent(intent: str) -> bool:
+    """True se l'intent è funzionale e richiede conferma pre-esecuzione."""
+    if intent in _CONFIRMATION_EXCLUDED_INTENTS:
+        return False
+    metadata = get_intent_metadata(intent)
+    if metadata and getattr(metadata, "is_direct_response", False):
+        return False
+    return True
+
+
 def _extract_filters(message: str) -> Dict[str, Any]:
     """Estrae filtri dal messaggio (comune, limit, ecc.)."""
     filters = {}
@@ -256,16 +288,29 @@ def _build_disambiguation_question(candidates: List[IntentCandidate]) -> Tuple[s
     top = candidates[:3]
     options = []
     suggestions = []
+
+    # Slot condivisi tra i candidati (es. piano_code) — li includiamo
+    # nelle query dei suggerimenti cosi' il router li ri-estrae al turno successivo
+    shared_slots = {}
+    for c in top:
+        for k, v in c.get("slots", {}).items():
+            if v and k not in shared_slots:
+                shared_slots[k] = v
+
+    slot_suffix = ""
+    if shared_slots.get("piano_code"):
+        slot_suffix = f" {shared_slots['piano_code']}"
+
     for i, c in enumerate(top, 1):
         metadata = get_intent_metadata(c["intent"])
         if metadata:
             options.append(f"{i}. **{metadata.label}**: {metadata.description}")
             emoji = getattr(metadata, "emoji", "") or ""
             label = metadata.label
-            suggestions.append({"text": f"{emoji} {label}".strip(), "query": label.lower()})
+            suggestions.append({"text": f"{emoji} {label}".strip(), "query": f"{label.lower()}{slot_suffix}"})
         else:
             options.append(f"{i}. {c['intent']}")
-            suggestions.append({"text": c["intent"], "query": c["intent"]})
+            suggestions.append({"text": c["intent"], "query": f"{c['intent']}{slot_suffix}"})
 
     question = (
         "Ho capito la richiesta, ma potrebbe riguardare cose diverse. A quale ti riferisci?\n\n"
@@ -294,6 +339,181 @@ def _build_strategy_question(intent: str) -> Optional[tuple]:
 
     question = initial_q + "\n\n" + "\n".join(options)
     return question, suggestions
+
+
+def _enrich_piano_code(piano_code: str) -> str:
+    """Arricchisce codice piano con descrizione (es. 'A22' → 'A22 — Latte crudo')."""
+    try:
+        from agents.data_agent import DataRetriever
+        result = DataRetriever.get_piano_by_id(piano_code)
+        if result is not None and not result.empty:
+            for col in ("descrizione_piano_attivita", "descrizione_indicatore", "descrizione_piano"):
+                if col in result.columns:
+                    desc = result[col].dropna().iloc[0] if len(result[col].dropna()) > 0 else None
+                    if desc:
+                        return f"{piano_code.upper()} — {desc}"
+    except Exception:
+        pass
+    return piano_code.upper()
+
+
+def _build_confirmation_message(
+    intent: str, slots: Dict[str, Any], user_metadata: Dict[str, Any],
+    ds: DialogueState,
+) -> Tuple[str, List[Dict[str, str]]]:
+    """Costruisce messaggio di conferma pre-esecuzione in linguaggio di dominio.
+
+    Returns:
+        Tupla (testo messaggio, lista suggerimenti per pill buttons)
+    """
+    metadata = get_intent_metadata(intent)
+    emoji = getattr(metadata, "emoji", "") or "" if metadata else ""
+    label = metadata.label if metadata else intent
+    description = getattr(metadata, "description", "") or "" if metadata else ""
+
+    lines = [f"Ho capito, vuoi:\n\n{emoji} **{label}**"]
+    if description:
+        lines.append(f"_{description}_")
+
+    # Parametri: slot + metadata rilevanti
+    params = []
+    asl = user_metadata.get("asl")
+    if asl:
+        params.append(f"ASL: **{asl}**")
+    uos = user_metadata.get("uos")
+    if uos:
+        params.append(f"UOS: **{uos}**")
+
+    slot_labels = {
+        "piano_code": "Piano",
+        "topic": "Argomento",
+        "num_registrazione": "N. Registrazione",
+        "numero_riconoscimento": "N. Riconoscimento UE",
+        "partita_iva": "Partita IVA",
+        "ragione_sociale": "Ragione Sociale",
+        "categoria": "Categoria NC",
+        "location": "Posizione",
+        "sezione": "Sezione",
+    }
+    for key, value in slots.items():
+        if value and key in slot_labels:
+            display = str(value)
+            if key == "piano_code":
+                display = _enrich_piano_code(display)
+            params.append(f"{slot_labels[key]}: **{display}**")
+
+    # Filtri accumulati nel DialogueState
+    filters = ds.get("filters", {})
+    filter_labels = {"comune": "Comune", "limit": "Max risultati", "tipo_attivita": "Tipo attività"}
+    for key, value in filters.items():
+        if value and key in filter_labels:
+            params.append(f"{filter_labels[key]}: **{value}**")
+
+    if params:
+        lines.append("\n📌 **Parametri:**")
+        for p in params:
+            lines.append(f"• {p}")
+
+    lines.append("\nProcedo con la ricerca?")
+
+    suggestions = [
+        {"text": "✅ Sì, procedi", "query": "si"},
+        {"text": "❌ No, annulla", "query": "annulla"},
+    ]
+
+    return "\n".join(lines), suggestions
+
+
+def _rule_pending_confirmation(
+    message: str, ds: DialogueState, current_slots: Dict[str, Any],
+) -> Optional[DialogueManagerResult]:
+    """Gestisce il turno successivo alla conferma pre-esecuzione.
+
+    Se pending_confirmation è attivo:
+    - Conferma → esegui il tool pending
+    - Annullamento → cancella e chiedi cosa fare
+    - Altro messaggio → cancella pending, fall-through a regole normali
+    """
+    if not ds.get("pending_confirmation"):
+        return None
+
+    pending_intent = ds.get("pending_confirmation_intent", "")
+    pending_tool = ds.get("pending_confirmation_tool", "")
+    pending_slots = ds.get("pending_confirmation_slots", {})
+
+    # Clear pending state in ogni caso
+    ds["pending_confirmation"] = None
+    ds["pending_confirmation_intent"] = None
+    ds["pending_confirmation_tool"] = None
+    ds["pending_confirmation_slots"] = None
+
+    if _is_confirmation(message):
+        # Utente conferma: esegui il tool
+        ds["confirmed_intent"] = pending_intent
+        ds["last_tool_intent"] = pending_intent
+        ds["last_tool_slots"] = pending_slots
+        logger.info(f"[DM] Conferma pre-esecuzione accettata: {pending_intent}")
+        return DialogueManagerResult(
+            action="execute", target_tool=pending_tool,
+            updated_state=ds, intent=pending_intent, slots=pending_slots,
+        )
+
+    if _is_cancellation(message):
+        # Utente annulla: reset e chiedi cosa fare
+        ds["confirmed_intent"] = None
+        ds["slots"] = {}
+        ds["filters"] = {}
+        logger.info(f"[DM] Conferma pre-esecuzione rifiutata: {pending_intent}")
+        return DialogueManagerResult(
+            action="ask_user",
+            question="Ok, annullato. Come posso aiutarti?",
+            updated_state=ds,
+        )
+
+    # Messaggio diverso: fall-through a regole normali (nuovo argomento o correzione)
+    logger.info(f"[DM] Conferma pre-esecuzione ignorata, nuovo messaggio: {message[:50]}")
+    return None
+
+
+def _maybe_require_confirmation(
+    result: DialogueManagerResult, ds: DialogueState,
+    user_metadata: Dict[str, Any],
+) -> Optional[DialogueManagerResult]:
+    """Intercetta decisioni 'execute' e richiede conferma pre-esecuzione.
+
+    Returns:
+        DialogueManagerResult con ask_user se conferma richiesta, None altrimenti.
+    """
+    if result.action != "execute":
+        return None
+
+    # Feature flag
+    try:
+        from configs.config import AppConfig
+        if not AppConfig.is_pre_execution_confirmation_enabled():
+            return None
+    except Exception:
+        return None
+
+    # Intent non funzionale: skip
+    intent = result.intent or ""
+    if not _is_functional_intent(intent):
+        return None
+
+    # Salva stato pending
+    ds["pending_confirmation"] = True
+    ds["pending_confirmation_intent"] = intent
+    ds["pending_confirmation_tool"] = result.target_tool
+    ds["pending_confirmation_slots"] = result.slots or {}
+
+    question, suggestions = _build_confirmation_message(
+        intent, result.slots or {}, user_metadata, ds,
+    )
+    logger.info(f"[DM] Conferma pre-esecuzione richiesta per: {intent}")
+    return DialogueManagerResult(
+        action="ask_user", question=question,
+        updated_state=ds, suggestions=suggestions,
+    )
 
 
 def _resolve_tool(intent: str) -> str:
@@ -483,6 +703,7 @@ def evaluate(
     extracted_slots: Dict[str, Any],
     dialogue_state: DialogueState,
     raw_message_type: str = "unknown",
+    user_metadata: Optional[Dict[str, Any]] = None,
 ) -> DialogueManagerResult:
     """
     Funzione principale del Dialogue Manager.
@@ -491,10 +712,15 @@ def evaluate(
     le regole in ordine di priorita'.
     """
     _ensure_dm_metadata()
+    meta = user_metadata or {}
 
     ds = dialogue_state
     ds["turn_count"] = ds.get("turn_count", 0) + 1
     ds["timestamp"] = __import__("time").time()
+
+    # Pulisci stato disambiguazione dal turno precedente
+    # (l'utente ha risposto — non serve piu')
+    ds.pop("intent_candidates", None)
 
     # Merge slot correnti con accumulati
     current_slots = merge_slots(ds.get("slots", {}), extracted_slots)
@@ -508,6 +734,11 @@ def evaluate(
     # --- Regole context-based (prima dei candidati) ---
 
     result = _rule_slot_continuation(ds, current_slots, extracted_slots)
+    if result:
+        return result
+
+    # Conferma pre-esecuzione: gestione turno successivo
+    result = _rule_pending_confirmation(message, ds, current_slots)
     if result:
         return result
 
@@ -538,7 +769,7 @@ def evaluate(
 
     result = _rule_high_confidence_execute(message, ds, current_slots, top_intent, top_confidence)
     if result:
-        return result
+        return _maybe_require_confirmation(result, ds, meta) or result
 
     result = _rule_ambiguous(ds, candidates, top_confidence)
     if result:
@@ -560,7 +791,8 @@ def evaluate(
     tool_name = _resolve_tool(top_intent)
     ds["last_tool_intent"] = top_intent
     ds["last_tool_slots"] = current_slots
-    return DialogueManagerResult(
+    default_result = DialogueManagerResult(
         action="execute", target_tool=tool_name,
         updated_state=ds, intent=top_intent, slots=current_slots,
     )
+    return _maybe_require_confirmation(default_result, ds, meta) or default_result

@@ -335,6 +335,11 @@ class AppConfig:
         return _load_config_json_cached().get("guided_learning", {}).get("enabled", False)
 
     @classmethod
+    def is_pre_execution_confirmation_enabled(cls) -> bool:
+        """Ritorna True se la conferma pre-esecuzione è abilitata in config.json (cached)."""
+        return _load_config_json_cached().get("pre_execution_confirmation", {}).get("enabled", False)
+
+    @classmethod
     def print_config(cls):
         """Stampa la configurazione corrente"""
         model_info = cls.get_model_info()
