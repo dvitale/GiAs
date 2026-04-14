@@ -21,7 +21,7 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
-from tools._tool_compat import tool
+from tools._tool_compat import tool, unwrap_tool
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,7 @@ def build_agent_tools(
         Lista di BaseTool LangChain pronti per `create_react_agent`.
     """
     user_asl = metadata.get("asl")
+    user_uoc = metadata.get("uoc")
     user_uos = _resolve_uos(metadata)
     store = detail_store if detail_store is not None else DetailStore()
 
@@ -169,7 +170,7 @@ def build_agent_tools(
             piano_code: codice piano (es. "A1", "A9_A", "AO1").
         """
         from tools.piano_tools import get_piano_description
-        return get_piano_description(piano_code=piano_code)
+        return unwrap_tool(get_piano_description)(piano_code=piano_code)
 
     # ------------------------------------------------------------------
     # 3) piani_in_ritardo — piani con ritardo programmati-eseguiti
@@ -183,39 +184,53 @@ def build_agent_tools(
     )
 
     @tool("piani_in_ritardo", description=_delayed_desc)
-    def piani_in_ritardo(anno: Optional[int] = None, top_n: int = 10) -> Dict[str, Any]:
+    def piani_in_ritardo(
+        anno: Optional[int] = None,
+        piano_code: Optional[str] = None,
+        tipo: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Piani in ritardo."""
         from tools.priority_tools import get_delayed_plans
-        return get_delayed_plans(anno=_normalize_int(anno) or _default_anno, top_n=top_n, asl=user_asl)
+        return unwrap_tool(get_delayed_plans)(
+            asl=user_asl,
+            uoc=user_uoc,
+            uos=user_uos,
+            piano_code=piano_code,
+            tipo=tipo,
+            target_year=_normalize_int(anno) or _default_anno,
+        )
 
     # ------------------------------------------------------------------
     # 4) priorita_ispezione_rischio — stabilimenti prioritari per rischio
     # ------------------------------------------------------------------
     @tool("priorita_ispezione_rischio")
-    def priorita_ispezione_rischio(top_n: int = 10) -> Dict[str, Any]:
+    def priorita_ispezione_rischio(piano_code: Optional[str] = None) -> Dict[str, Any]:
         """Classifica degli stabilimenti da ispezionare prima in base al rischio.
 
         Usa il predittore (ML o statistico) per ordinare per probabilita' di NC.
 
         Args:
-            top_n: quanti stabilimenti restituire (default 10).
+            piano_code: filtra su un singolo piano (es. "A1"). Opzionale.
         """
         from tools.risk_tools import get_risk_based_priority
-        return get_risk_based_priority(top_n=top_n, asl=user_asl, user_uos=user_uos)
+        return unwrap_tool(get_risk_based_priority)(
+            asl=user_asl,
+            piano_code=piano_code,
+        )
 
     # ------------------------------------------------------------------
     # 5) cerca_piani — ricerca per topic/parole chiave
     # ------------------------------------------------------------------
     @tool("cerca_piani")
-    def cerca_piani(query: str, top_k: int = 5) -> Dict[str, Any]:
+    def cerca_piani(query: str, sezione: Optional[str] = None) -> Dict[str, Any]:
         """Cerca piani di controllo per argomento usando ricerca ibrida.
 
         Args:
             query: testo libero (es. "piani sugli allevamenti avicoli").
-            top_k: numero risultati (default 5).
+            sezione: filtra per sezione del piano (opzionale).
         """
         from tools.search_tools import search_piani_by_topic
-        return search_piani_by_topic(query=query, top_k=top_k)
+        return unwrap_tool(search_piani_by_topic)(query=query, sezione=sezione)
 
     # ------------------------------------------------------------------
     # 6) mostra_dettagli_completi — handoff two-phase

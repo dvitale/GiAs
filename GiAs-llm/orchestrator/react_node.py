@@ -97,6 +97,13 @@ class ReactOrchestrator:
             )
         except Exception as exc:
             logger.exception("ReactOrchestrator.invoke failed: %s", exc)
+            # Pulisci lo state del thread per evitare INVALID_CHAT_HISTORY al
+            # prossimo turno (AIMessage con tool_calls orfani nel checkpoint).
+            try:
+                self._checkpointer.delete_thread(thread_id)
+            except Exception:
+                pass
+            self._detail_stores.pop(thread_id, None)
             return {
                 "final_response": (
                     "Mi dispiace, si e' verificato un errore interno. Riprova tra qualche istante."
