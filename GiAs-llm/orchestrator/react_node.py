@@ -20,6 +20,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
 
 from llm.client import LLMClient
@@ -31,15 +32,27 @@ from .tool_registry import DetailStore, build_agent_tools
 logger = logging.getLogger(__name__)
 
 
-_MAX_HISTORY_TURNS = 3  # ultimi N turni (6 messaggi) nel contesto
-
-
 class ReactOrchestrator:
-    """Orchestratore agentico basato su create_react_agent."""
+    """Orchestratore agentico basato su create_react_agent.
+
+    La persistenza cross-turno e' affidata al checkpointer di LangGraph:
+    una `InMemorySaver` condivisa tra le invocazioni, con `thread_id`
+    legato al sender della sessione. Questo permette all'agente di
+    ricordare la conversazione (es. "controlli A22" -> "2026" ->
+    continuare con A22+2026) senza ricostruire manualmente la history.
+    """
 
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self._client = llm_client or LLMClient()
         self._adapter = GiAsLLM(client=self._client)
+        # Checkpointer per persistere lo stato (messages) tra turni. Lo
+        # stesso oggetto viene riutilizzato tra le invocazioni: il
+        # thread_id (sender) chiavizza le conversazioni.
+        self._checkpointer = InMemorySaver()
+        # DetailStore per thread (two-phase handoff): una istanza per
+        # sender, cosi' il tool `mostra_dettagli_completi` ritrova il
+        # payload anche a turni successivi.
+        self._detail_stores: Dict[str, DetailStore] = {}
 
     # ------------------------------------------------------------------
     # API pubblica
@@ -51,35 +64,37 @@ class ReactOrchestrator:
         metadata: Dict[str, Any],
         session_context: Optional[Dict[str, Any]] = None,
         detail_store: Optional[DetailStore] = None,
-        history: Optional[List[Dict[str, Any]]] = None,
+        history: Optional[List[Dict[str, Any]]] = None,  # legacy, ignorato
     ) -> Dict[str, Any]:
         """Esegue un turno.
 
         Args:
             message: messaggio utente corrente.
-            metadata: session metadata (asl, user_id, uos, ...).
+            metadata: session metadata (sender/user_id, asl, uos, ...).
             session_context: ultimo intent/riassunto per anaforica.
-            detail_store: store two-phase per la sessione.
-            history: lista di turni precedenti come [{role, content}, ...].
-
-        Returns:
-            dict con chiavi compatibili con ConversationState:
-                final_response, intent, slots, tool_output, tool_name,
-                tool_calls_trace, has_more_details, detail_context_id.
+            detail_store: override DetailStore (se None ne gestisce uno per thread).
+            history: legacy, ignorato — lo state e' gestito dal checkpointer.
         """
-        store = detail_store if detail_store is not None else DetailStore()
+        thread_id = self._resolve_thread_id(metadata)
+        store = detail_store or self._detail_stores.setdefault(thread_id, DetailStore())
         tools = build_agent_tools(metadata, detail_store=store)
         system_prompt = build_system_prompt(metadata, session_context)
 
+        # Ricostruiamo l'agente per turno (tools hanno closure sul metadata
+        # corrente) ma il checkpointer e' condiviso -> lo stato persiste.
         agent = create_react_agent(
             model=self._adapter,
             tools=tools,
             prompt=system_prompt,
+            checkpointer=self._checkpointer,
         )
 
-        messages = self._build_messages(message, history)
+        config = {"configurable": {"thread_id": thread_id}}
         try:
-            result = agent.invoke({"messages": messages})
+            result = agent.invoke(
+                {"messages": [HumanMessage(content=message)]},
+                config=config,
+            )
         except Exception as exc:
             logger.exception("ReactOrchestrator.invoke failed: %s", exc)
             return {
@@ -98,31 +113,23 @@ class ReactOrchestrator:
 
         return self._extract_result(result, store)
 
+    @staticmethod
+    def _resolve_thread_id(metadata: Dict[str, Any]) -> str:
+        """Thread id per il checkpointer: privilegia sender/user_id."""
+        for key in ("sender", "user_id", "session_id"):
+            val = metadata.get(key)
+            if val:
+                return str(val)
+        return "__anonymous__"
+
+    def clear_thread(self, thread_id: str) -> None:
+        """Rimuove lo stato di un thread (detail store; la checkpointer non
+        espone delete ufficiale, la history si estingue con il processo)."""
+        self._detail_stores.pop(thread_id, None)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    def _build_messages(
-        self,
-        message: str,
-        history: Optional[List[Dict[str, Any]]],
-    ) -> List[Any]:
-        msgs: List[Any] = []
-        if history:
-            recent = history[-(_MAX_HISTORY_TURNS * 2):]
-            for m in recent:
-                role = m.get("role")
-                content = m.get("content", "")
-                if not content:
-                    continue
-                if role == "user":
-                    msgs.append(HumanMessage(content=content))
-                elif role == "assistant":
-                    msgs.append(AIMessage(content=content))
-                elif role == "system":
-                    msgs.append(SystemMessage(content=content))
-        msgs.append(HumanMessage(content=message))
-        return msgs
 
     def _extract_result(self, agent_result: Dict[str, Any], store: DetailStore) -> Dict[str, Any]:
         messages = agent_result.get("messages", []) or []
