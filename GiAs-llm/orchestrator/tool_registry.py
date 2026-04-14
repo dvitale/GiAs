@@ -219,6 +219,24 @@ def build_agent_tools(
         )
 
     # ------------------------------------------------------------------
+    # 4b) piani_attivita_piu_rischiosi — top N attivita per risk score
+    # ------------------------------------------------------------------
+    @tool("piani_attivita_piu_rischiosi")
+    def piani_attivita_piu_rischiosi(limit: int = 10) -> Dict[str, Any]:
+        """Top N linee di attivita'/piani con il risk score piu' alto.
+
+        Usare quando l'utente chiede "piani/attivita/motivi di ispezione
+        piu' rischiosi", "quali piani presentano piu' rischio", "ranking
+        rischio piani". A differenza di `priorita_ispezione_rischio`
+        (che restituisce STABILIMENTI), questo ritorna PIANI/ATTIVITA.
+
+        Args:
+            limit: numero di attivita' da restituire (default 10).
+        """
+        from tools.risk_analysis_tools import get_top_risk_activities
+        return unwrap_tool(get_top_risk_activities)(limit=limit)
+
+    # ------------------------------------------------------------------
     # 5) cerca_piani — ricerca per topic/parole chiave
     # ------------------------------------------------------------------
     @tool("cerca_piani")
@@ -275,6 +293,7 @@ def build_agent_tools(
         descrizione_piano,
         piani_in_ritardo,
         priorita_ispezione_rischio,
+        piani_attivita_piu_rischiosi,
         cerca_piani,
         mostra_dettagli_completi,
         aiuto,
