@@ -104,6 +104,14 @@ def build_agent_tools(
     user_uos = _resolve_uos(metadata)
     store = detail_store if detail_store is not None else DetailStore()
 
+    # Anno corrente da config.json (default per i tool che filtrano per anno).
+    try:
+        from configs.config_loader import get_config  # type: ignore
+        _default_anno = get_config().get_current_year()
+    except Exception:
+        from datetime import datetime as _dt
+        _default_anno = _dt.now().year
+
     # ------------------------------------------------------------------
     # 1) statistiche_controlli — conteggio CU eseguiti o programmati
     # ------------------------------------------------------------------
@@ -120,16 +128,23 @@ def build_agent_tools(
         "lista dei controlli", "controlli eseguiti", "controlli programmati",
         anche filtrati per piano, anno o macroarea.
 
+        IMPORTANTE: NON chiedere mai all'utente l'anno. Se l'utente non lo
+        specifica, lascia `anno` a None: il tool applica automaticamente
+        l'anno corrente ({year}) come default. Specifica `anno` SOLO se
+        l'utente ha indicato esplicitamente un anno diverso.
+
         Args:
             piano_code: codice piano/attivita (es. "A9_A", "AO1"). Opzionale.
-            anno: anno di riferimento. Se None usa l'anno corrente.
+            anno: anno di riferimento. Default = anno corrente ({year}).
+                Passarlo SOLO se l'utente specifica esplicitamente un anno
+                diverso dal corrente.
             macroarea: macroarea CU (es. "BENESSERE ANIMALE"). Opzionale.
             tipo_conteggio: "eseguiti" (default) o "programmati".
-        """
+        """.replace("{year}", str(_default_anno))
         from tools.cu_statistics_tools import get_cu_statistics
         result = get_cu_statistics(
             piano_code=piano_code,
-            anno=_normalize_int(anno),
+            anno=_normalize_int(anno) or _default_anno,
             asl=user_asl,
             macroarea=macroarea,
             user_uos=user_uos,
@@ -168,12 +183,16 @@ def build_agent_tools(
     def piani_in_ritardo(anno: Optional[int] = None, top_n: int = 10) -> Dict[str, Any]:
         """Elenco dei piani con ritardo tra controlli programmati ed eseguiti.
 
+        NON chiedere mai l'anno all'utente: se non specificato viene usato
+        l'anno corrente ({year}) automaticamente. Passa `anno` SOLO se
+        l'utente ha indicato un anno diverso.
+
         Args:
-            anno: anno di riferimento. Default: anno corrente.
+            anno: anno di riferimento. Default: anno corrente ({year}).
             top_n: numero massimo piani da restituire (default 10).
-        """
+        """.replace("{year}", str(_default_anno))
         from tools.priority_tools import get_delayed_plans
-        return get_delayed_plans(anno=_normalize_int(anno), top_n=top_n, asl=user_asl)
+        return get_delayed_plans(anno=_normalize_int(anno) or _default_anno, top_n=top_n, asl=user_asl)
 
     # ------------------------------------------------------------------
     # 4) priorita_ispezione_rischio — stabilimenti prioritari per rischio

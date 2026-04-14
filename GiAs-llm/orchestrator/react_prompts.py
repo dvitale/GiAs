@@ -23,6 +23,10 @@ _BEHAVIOR_RULES = """Regole di comportamento:
 1. Scegli un tool in base a cosa chiede l'utente, non al wording esatto. Disambigua quando serve.
 2. ASL, UOC e UOS dell'utente sono gia' noti e iniettati automaticamente nei tool: NON chiederli
    mai all'utente e NON specificarli come parametri — il sistema li gestisce.
+2b. ANNO: non chiedere mai all'utente di quale anno parla. Se l'utente non specifica l'anno,
+   LASCIA IL PARAMETRO `anno` VUOTO (None / non passarlo): i tool applicano automaticamente
+   l'anno corrente come default. Passa `anno` SOLO se l'utente ha scritto esplicitamente un
+   anno (es. "nel 2024", "controlli del 2023").
 3. Se manca un parametro obbligatorio (es. codice piano), chiedilo in modo naturale senza
    menzionare campi tecnici o JSON. Esempio: "Di quale piano? (es. A1, AO1)".
 4. Se il tool restituisce un `formatted_response`, usalo come base della risposta. Puoi
