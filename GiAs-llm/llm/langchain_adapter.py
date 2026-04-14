@@ -80,7 +80,9 @@ class GiAsLLM(BaseChatModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    client: LLMClient = Field(...)
+    # Usa Any per consentire mock/stub nei test. A runtime basta che l'oggetto
+    # esponga query(), supports_tool_calling() e query_with_tools().
+    client: Any = Field(...)
     temperature: float = 0.1
     max_tokens: int = 2000
     timeout: Optional[float] = None
