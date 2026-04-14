@@ -308,6 +308,18 @@ class AppConfig:
     LLM_TIMEOUT_SECONDS = int(os.getenv("GIAS_LLM_TIMEOUT", "60"))
     MAX_TOKENS = int(os.getenv("GIAS_MAX_TOKENS", "2000"))
 
+    @classmethod
+    def get_orchestration_mode(cls) -> str:
+        """Mode del ConversationGraph: 'graph' (legacy), 'agent' (ReAct), 'shadow' (both).
+
+        Precedence: env GIAS_ORCHESTRATION_MODE > config.json orchestration.mode > 'graph'.
+        """
+        env = os.getenv("GIAS_ORCHESTRATION_MODE")
+        if env:
+            return env
+        cfg = _load_config_json_cached()
+        return (cfg.get("orchestration") or {}).get("mode", "graph")
+
     # Ollama keep-alive
     KEEP_ALIVE_DURATION = int(os.getenv("OLLAMA_KEEP_ALIVE", "-1"))
 
