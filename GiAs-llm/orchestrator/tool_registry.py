@@ -115,32 +115,27 @@ def build_agent_tools(
     # ------------------------------------------------------------------
     # 1) statistiche_controlli — conteggio CU eseguiti o programmati
     # ------------------------------------------------------------------
-    @tool("statistiche_controlli")
+    _stat_desc = (
+        f"Conteggio aggregato di controlli ufficiali (CU) eseguiti o programmati. "
+        f"Usare quando l'utente chiede 'quanti controlli', 'statistiche controlli', "
+        f"'lista dei controlli', 'controlli eseguiti', 'controlli programmati', "
+        f"anche filtrati per piano, anno o macroarea. "
+        f"IMPORTANTE: NON chiedere mai l'anno all'utente. Se non lo specifica, "
+        f"lascia `anno` a None: il tool applica automaticamente l'anno corrente "
+        f"({_default_anno}) come default. Passa `anno` SOLO se l'utente ha indicato "
+        f"esplicitamente un anno diverso. "
+        f"Args: piano_code (es. 'A9_A', 'AO1', opzionale), anno (default {_default_anno}), "
+        f"macroarea (opzionale), tipo_conteggio ('eseguiti' default o 'programmati')."
+    )
+
+    @tool("statistiche_controlli", description=_stat_desc)
     def statistiche_controlli(
         piano_code: Optional[str] = None,
         anno: Optional[int] = None,
         macroarea: Optional[str] = None,
         tipo_conteggio: str = "eseguiti",
     ) -> Dict[str, Any]:
-        """Conteggio aggregato di controlli ufficiali (CU) eseguiti o programmati.
-
-        Usare quando l'utente chiede "quanti controlli", "statistiche controlli",
-        "lista dei controlli", "controlli eseguiti", "controlli programmati",
-        anche filtrati per piano, anno o macroarea.
-
-        IMPORTANTE: NON chiedere mai all'utente l'anno. Se l'utente non lo
-        specifica, lascia `anno` a None: il tool applica automaticamente
-        l'anno corrente ({year}) come default. Specifica `anno` SOLO se
-        l'utente ha indicato esplicitamente un anno diverso.
-
-        Args:
-            piano_code: codice piano/attivita (es. "A9_A", "AO1"). Opzionale.
-            anno: anno di riferimento. Default = anno corrente ({year}).
-                Passarlo SOLO se l'utente specifica esplicitamente un anno
-                diverso dal corrente.
-            macroarea: macroarea CU (es. "BENESSERE ANIMALE"). Opzionale.
-            tipo_conteggio: "eseguiti" (default) o "programmati".
-        """.replace("{year}", str(_default_anno))
+        """Conteggio CU eseguiti/programmati."""
         from tools.cu_statistics_tools import get_cu_statistics
         result = get_cu_statistics(
             piano_code=piano_code,
@@ -179,18 +174,17 @@ def build_agent_tools(
     # ------------------------------------------------------------------
     # 3) piani_in_ritardo — piani con ritardo programmati-eseguiti
     # ------------------------------------------------------------------
-    @tool("piani_in_ritardo")
+    _delayed_desc = (
+        f"Elenco dei piani con ritardo tra controlli programmati ed eseguiti. "
+        f"NON chiedere mai l'anno all'utente: se non specificato viene usato "
+        f"l'anno corrente ({_default_anno}) automaticamente. Passa `anno` SOLO "
+        f"se l'utente ha indicato un anno diverso. "
+        f"Args: anno (default {_default_anno}), top_n (default 10)."
+    )
+
+    @tool("piani_in_ritardo", description=_delayed_desc)
     def piani_in_ritardo(anno: Optional[int] = None, top_n: int = 10) -> Dict[str, Any]:
-        """Elenco dei piani con ritardo tra controlli programmati ed eseguiti.
-
-        NON chiedere mai l'anno all'utente: se non specificato viene usato
-        l'anno corrente ({year}) automaticamente. Passa `anno` SOLO se
-        l'utente ha indicato un anno diverso.
-
-        Args:
-            anno: anno di riferimento. Default: anno corrente ({year}).
-            top_n: numero massimo piani da restituire (default 10).
-        """.replace("{year}", str(_default_anno))
+        """Piani in ritardo."""
         from tools.priority_tools import get_delayed_plans
         return get_delayed_plans(anno=_normalize_int(anno) or _default_anno, top_n=top_n, asl=user_asl)
 
