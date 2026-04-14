@@ -11,11 +11,36 @@ Supported providers:
 
 import json
 import os
-from typing import Generator, Dict, Any
+from typing import Generator, Dict, Any, List, Optional
 
 import requests
 
 from .provider_base import LLMProvider
+
+
+def _parse_openai_tool_response(result: dict) -> Dict[str, Any]:
+    """Parse an OpenAI /v1/chat/completions response into the normalized dict."""
+    choice = result["choices"][0]
+    msg = choice.get("message", {}) or {}
+    raw_calls = msg.get("tool_calls") or []
+    calls: List[Dict[str, Any]] = []
+    for tc in raw_calls:
+        fn = tc.get("function", {}) or {}
+        args_raw = fn.get("arguments") or "{}"
+        try:
+            args = json.loads(args_raw) if isinstance(args_raw, str) else dict(args_raw)
+        except json.JSONDecodeError:
+            args = {"_raw": args_raw}
+        calls.append({
+            "id": tc.get("id") or f"call_{len(calls)}",
+            "name": fn.get("name", ""),
+            "arguments": args,
+        })
+    return {
+        "content": (msg.get("content") or "").strip() or None,
+        "tool_calls": calls,
+        "finish_reason": choice.get("finish_reason"),
+    }
 
 
 class OllamaProvider(LLMProvider):
@@ -101,6 +126,58 @@ class OllamaProvider(LLMProvider):
             return response.status_code == 200
         except Exception:
             return False
+
+    def supports_tool_calling(self) -> bool:
+        return True  # Ollama >= 0.4
+
+    def query_with_tools(self, messages: list, tools: List[Dict[str, Any]],
+                         temperature: float, max_tokens: int,
+                         timeout: Optional[float] = None,
+                         tool_choice: Optional[str] = None) -> Dict[str, Any]:
+        request_body = {
+            'model': self.model,
+            'messages': messages,
+            'options': {
+                'temperature': temperature,
+                'num_predict': max_tokens,
+            },
+            'keep_alive': self.keep_alive,
+            'stream': False,
+            'tools': tools,
+        }
+        response = requests.post(
+            f"{self.base_url}{self.api_endpoint}",
+            json=request_body,
+            timeout=timeout or self.timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        msg = data.get('message', {}) or {}
+        raw_calls = msg.get('tool_calls') or []
+        calls: List[Dict[str, Any]] = []
+        for i, tc in enumerate(raw_calls):
+            fn = tc.get('function', {}) or {}
+            args_raw = fn.get('arguments')
+            if isinstance(args_raw, str):
+                try:
+                    args = json.loads(args_raw)
+                except json.JSONDecodeError:
+                    args = {"_raw": args_raw}
+            elif isinstance(args_raw, dict):
+                args = args_raw
+            else:
+                args = {}
+            calls.append({
+                "id": tc.get("id") or f"call_{i}",
+                "name": fn.get("name", ""),
+                "arguments": args,
+            })
+        content = (msg.get('content') or '').strip() or None
+        return {
+            "content": content,
+            "tool_calls": calls,
+            "finish_reason": "tool_calls" if calls else "stop",
+        }
 
 
 class LlamaCppProvider(LLMProvider):
@@ -249,6 +326,45 @@ class OpenAIProvider(LLMProvider):
         except Exception:
             return False
 
+    def supports_tool_calling(self) -> bool:
+        return True
+
+    def query_with_tools(self, messages: list, tools: List[Dict[str, Any]],
+                         temperature: float, max_tokens: int,
+                         timeout: Optional[float] = None,
+                         tool_choice: Optional[str] = None) -> Dict[str, Any]:
+        kwargs = {
+            'model': self.model,
+            'messages': messages,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'tools': tools,
+            'timeout': timeout or self.timeout,
+        }
+        if tool_choice:
+            kwargs['tool_choice'] = tool_choice
+        response = self.client.chat.completions.create(**kwargs)
+        # Convert SDK response into the normalized dict
+        result = response.model_dump() if hasattr(response, 'model_dump') else {
+            'choices': [{
+                'finish_reason': response.choices[0].finish_reason,
+                'message': {
+                    'content': response.choices[0].message.content,
+                    'tool_calls': [
+                        {
+                            'id': tc.id,
+                            'function': {
+                                'name': tc.function.name,
+                                'arguments': tc.function.arguments,
+                            }
+                        }
+                        for tc in (response.choices[0].message.tool_calls or [])
+                    ],
+                }
+            }]
+        }
+        return _parse_openai_tool_response(result)
+
 
 class AnthropicProvider(LLMProvider):
     """Anthropic API provider via SDK (Claude Sonnet, Haiku, etc.)."""
@@ -357,6 +473,56 @@ class AnthropicProvider(LLMProvider):
         except Exception:
             return False
 
+    def supports_tool_calling(self) -> bool:
+        return True
+
+    @staticmethod
+    def _openai_tools_to_anthropic(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for t in tools:
+            fn = t.get('function', t)
+            out.append({
+                'name': fn.get('name', ''),
+                'description': fn.get('description', ''),
+                'input_schema': fn.get('parameters', {'type': 'object', 'properties': {}}),
+            })
+        return out
+
+    def query_with_tools(self, messages: list, tools: List[Dict[str, Any]],
+                         temperature: float, max_tokens: int,
+                         timeout: Optional[float] = None,
+                         tool_choice: Optional[str] = None) -> Dict[str, Any]:
+        system_text, filtered_messages = self._extract_system_and_messages(messages, json_mode=False)
+        kwargs = {
+            'model': self.model,
+            'messages': filtered_messages,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'timeout': timeout or self.timeout,
+            'tools': self._openai_tools_to_anthropic(tools),
+        }
+        if system_text:
+            kwargs['system'] = system_text
+        response = self.client.messages.create(**kwargs)
+        calls: List[Dict[str, Any]] = []
+        texts: List[str] = []
+        for block in response.content or []:
+            btype = getattr(block, 'type', None)
+            if btype == 'tool_use':
+                calls.append({
+                    'id': getattr(block, 'id', f"call_{len(calls)}"),
+                    'name': getattr(block, 'name', ''),
+                    'arguments': getattr(block, 'input', {}) or {},
+                })
+            elif btype == 'text':
+                texts.append(getattr(block, 'text', ''))
+        content = ''.join(texts).strip() or None
+        return {
+            'content': content,
+            'tool_calls': calls,
+            'finish_reason': getattr(response, 'stop_reason', None),
+        }
+
 
 class OpenAICompatProvider(LLMProvider):
     """
@@ -463,3 +629,29 @@ class OpenAICompatProvider(LLMProvider):
             return response.status_code == 200
         except Exception:
             return False
+
+    def supports_tool_calling(self) -> bool:
+        return True
+
+    def query_with_tools(self, messages: list, tools: List[Dict[str, Any]],
+                         temperature: float, max_tokens: int,
+                         timeout: Optional[float] = None,
+                         tool_choice: Optional[str] = None) -> Dict[str, Any]:
+        request_body = {
+            'model': self.model,
+            'messages': messages,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'tools': tools,
+            'stream': False,
+        }
+        if tool_choice:
+            request_body['tool_choice'] = tool_choice
+        response = requests.post(
+            f"{self.base_url}{self.api_endpoint}",
+            headers=self._headers(),
+            json=request_body,
+            timeout=timeout or self.timeout,
+        )
+        response.raise_for_status()
+        return _parse_openai_tool_response(response.json())

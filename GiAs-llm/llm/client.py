@@ -247,6 +247,34 @@ class LLMClient:
             logger.error(f"LLM streaming error: {e}")
             return
 
+    def supports_tool_calling(self) -> bool:
+        """Return True if the underlying provider supports native tool calling."""
+        if not self.use_real_llm or self._provider is None:
+            return False
+        return self._provider.supports_tool_calling()
+
+    def query_with_tools(self, messages: list, tools: list,
+                         temperature: float = None, max_tokens: int = None,
+                         timeout: float = None, tool_choice: str = None) -> dict:
+        """Facade for tool-calling requests. Returns the normalized provider dict
+        {content, tool_calls, finish_reason}. Raises if the provider does not
+        support tool calling or the LLM is unavailable.
+        """
+        if not self.use_real_llm or self._provider is None:
+            raise RuntimeError("LLM not available, cannot call tools")
+        if temperature is None:
+            temperature = AppConfig.CLASSIFICATION_TEMPERATURE
+        if max_tokens is None:
+            max_tokens = AppConfig.MAX_TOKENS
+        return self._provider.query_with_tools(
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            tool_choice=tool_choice,
+        )
+
     def ping(self) -> bool:
         """
         Health check for LLM availability.
