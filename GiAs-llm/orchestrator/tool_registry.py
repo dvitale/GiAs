@@ -176,11 +176,22 @@ def build_agent_tools(
     # 3) piani_in_ritardo — piani con ritardo programmati-eseguiti
     # ------------------------------------------------------------------
     _delayed_desc = (
-        f"Elenco dei piani con ritardo tra controlli programmati ed eseguiti. "
-        f"NON chiedere mai l'anno all'utente: se non specificato viene usato "
-        f"l'anno corrente ({_default_anno}) automaticamente. Passa `anno` SOLO "
-        f"se l'utente ha indicato un anno diverso. "
-        f"Args: anno (default {_default_anno}), top_n (default 10)."
+        f"Elenco di piani/indicatori/attivita' con ritardo tra controlli "
+        f"programmati ed eseguiti. NOTA DOMINIO: nel linguaggio GIAS, "
+        f"'indicatore' e 'sotto-piano' sono sinonimi di una sotto-voce del "
+        f"piano di controllo (alias_indicatore). Usare questo tool quando "
+        f"l'utente chiede 'piani in ritardo', 'indicatori in ritardo', "
+        f"'sotto-piani in ritardo', 'attivita in ritardo', 'cosa e in "
+        f"ritardo', SENZA chiedere 'di quale piano' se la query e' generica: "
+        f"il tool di default analizza tutti i piani/indicatori della UOC "
+        f"dell'utente. Chiedi solo se l'utente cita un piano specifico "
+        f"(es. 'il piano A1 e in ritardo?'). "
+        f"Parametri: `tipo` accetta 'piano' (solo piani macro), 'attivita' "
+        f"(solo indicatori/sotto-piani) o 'tutti' (default None = tutti). "
+        f"NON chiedere mai l'anno: se non specificato viene usato l'anno "
+        f"corrente ({_default_anno}). "
+        f"Args: anno (default {_default_anno}), piano_code (opzionale), "
+        f"tipo (None/'piano'/'attivita'/'tutti')."
     )
 
     @tool("piani_in_ritardo", description=_delayed_desc)
