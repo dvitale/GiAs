@@ -236,6 +236,139 @@ def build_agent_tools(
         )
 
     # ------------------------------------------------------------------
+    # 3b) indicatori_non_completati — programmati > eseguiti (definizione
+    #     letterale, NON pro-rata temporis)
+    # ------------------------------------------------------------------
+    _incompleti_desc = (
+        "Elenco di piani/indicatori con avanzamento incompleto: "
+        "`programmati > 0 AND eseguiti < programmati`. Definizione "
+        "LETTERALE, indipendente dal periodo dell'anno. "
+        "Differenza con `piani_in_ritardo`: quest'ultimo usa una definizione "
+        "PRO-RATA TEMPORIS (attesi = programmati x frazione_anno_trascorsa) "
+        "che a inizio anno considera 'in pari' anche indicatori con "
+        "eseguiti=0. Usa `indicatori_non_completati` quando l'utente vuole "
+        "vedere TUTTI gli indicatori dove eseguiti < programmati, compresi "
+        "quelli con eseguiti=0, indipendentemente dalla frazione d'anno. "
+        "Trigger tipici: 'indicatori non completati', 'piani non completati', "
+        "'dove eseguiti e minore di programmati', 'indicatori con 0 eseguiti', "
+        "'indicatori ancora da fare'. "
+        "Filtra di default sulla UOC/UOS dell'utente (iniettate). "
+        f"Args: anno (default {_default_anno}), piano_code (opzionale), "
+        "tipo (None/'piano'/'attivita'/'tutti', default 'tutti'), "
+        "limit (default 30)."
+    )
+
+    @tool("indicatori_non_completati", description=_incompleti_desc)
+    def indicatori_non_completati(
+        anno: Optional[int] = None,
+        piano_code: Optional[str] = None,
+        tipo: Optional[str] = None,
+        limit: int = 30,
+    ) -> Dict[str, Any]:
+        """Indicatori con eseguiti < programmati (letterale)."""
+        from agents.data import diff_prog_eseg_df
+        if diff_prog_eseg_df is None or diff_prog_eseg_df.empty:
+            return {"formatted_response": "Dati programmazione non disponibili."}
+
+        df = diff_prog_eseg_df
+        effective_anno = _normalize_int(anno) or _default_anno
+        if "anno" in df.columns:
+            df = df[df["anno"] == effective_anno]
+
+        # Scope: UOC dell'utente (obbligatorio nel tool legacy) + UOS se presente
+        if user_uoc and "descrizione_uoc" in df.columns:
+            df = df[df["descrizione_uoc"].astype(str).str.upper() == user_uoc.upper()]
+        if user_uos and "descrizione_uos" in df.columns:
+            df = df[df["descrizione_uos"].astype(str).str.upper() == user_uos.upper()]
+
+        if df.empty:
+            return {
+                "formatted_response": (
+                    f"Nessun dato di programmazione trovato per l'anno "
+                    f"{effective_anno} nella tua struttura."
+                )
+            }
+
+        prog = df["programmati"].fillna(0)
+        eseg = df["eseguiti"].fillna(0)
+        df = df.assign(
+            programmati=prog.astype(int),
+            eseguiti=eseg.astype(int),
+            mancanti=(prog - eseg).clip(lower=0).astype(int),
+        )
+
+        # Filtro letterale
+        df = df[(df["programmati"] > 0) & (df["eseguiti"] < df["programmati"])]
+
+        # Filtro tipo piano vs attivita (convenzione prefisso ATT)
+        if "alias_indicatore" in df.columns and tipo and tipo != "tutti":
+            upper = df["alias_indicatore"].astype(str).str.upper()
+            is_att = upper.str.startswith("ATT ") | upper.str.startswith("ATT_")
+            df = df[is_att] if tipo == "attivita" else df[~is_att]
+
+        if piano_code:
+            pc = piano_code.upper()
+            df = df[
+                df["alias_indicatore"].astype(str).str.upper().str.startswith(pc)
+            ]
+
+        if df.empty:
+            return {
+                "formatted_response": (
+                    f"Non ho trovato indicatori non completati (eseguiti < "
+                    f"programmati) per l'anno {effective_anno} nella tua "
+                    f"struttura con i filtri richiesti."
+                )
+            }
+
+        # Aggrega su (alias_piano_attivita, alias_indicatore, descrizioni)
+        group_cols = [
+            "alias_piano_attivita", "alias_indicatore",
+            "descrizione_piano", "descrizione_indicatore",
+        ]
+        agg = (
+            df.groupby(group_cols, dropna=False)
+            .agg({"programmati": "sum", "eseguiti": "sum", "mancanti": "sum"})
+            .reset_index()
+            .sort_values("mancanti", ascending=False)
+            .head(limit)
+        )
+        records = agg.to_dict("records")
+
+        lines = [
+            f"### Indicatori non completati (anno {effective_anno})",
+            "",
+            f"Definizione: `eseguiti < programmati`. Top {len(records)} "
+            f"ordinati per controlli mancanti:",
+            "",
+        ]
+        for i, r in enumerate(records, 1):
+            piano = r.get("alias_piano_attivita") or "—"
+            indic = r.get("alias_indicatore") or "—"
+            prog_v = int(r.get("programmati", 0))
+            eseg_v = int(r.get("eseguiti", 0))
+            manc = int(r.get("mancanti", 0))
+            desc = r.get("descrizione_indicatore") or ""
+            lines.append(
+                f"**{i}. {piano} · {indic}** — {eseg_v}/{prog_v} eseguiti "
+                f"(**{manc} mancanti**)"
+            )
+            if desc:
+                lines.append(f"   _{desc}_")
+        lines.append("")
+        lines.append(
+            f"Fonte: `cu_diff_programmati_eseguiti` anno {effective_anno}, "
+            f"filtro letterale `eseguiti < programmati`."
+        )
+
+        return {
+            "formatted_response": "\n".join(lines),
+            "total": int(len(agg)),
+            "anno": effective_anno,
+            "data": records,
+        }
+
+    # ------------------------------------------------------------------
     # 4b) piani_attivita_piu_rischiosi — top N attivita per risk score
     # ------------------------------------------------------------------
     _top_risk_desc = (
@@ -410,6 +543,7 @@ def build_agent_tools(
         statistiche_controlli,
         descrizione_piano,
         piani_in_ritardo,
+        indicatori_non_completati,
         priorita_ispezione_rischio,
         piani_attivita_piu_rischiosi,
         top_piani_per_nc,
