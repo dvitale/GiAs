@@ -249,6 +249,101 @@ def build_agent_tools(
         return unwrap_tool(get_top_risk_activities)(limit=limit)
 
     # ------------------------------------------------------------------
+    # 4c) top_piani_per_nc — classifica piani/indicatori per conteggio NC
+    # ------------------------------------------------------------------
+    _nc_desc = (
+        "Classifica di PIANI e INDICATORI (alias_piano_attivita, alias_indicatore) "
+        "ordinati per numero TOTALE di Non Conformita' (NC) GRAVI rilevate dai "
+        "controlli ufficiali eseguiti. Conteggio GREZZO, non risk score. "
+        "Usare quando l'utente chiede 'piani/attivita che generano piu NC', "
+        "'piani con piu non conformita', 'indicatori con piu NC', 'classifica NC "
+        "per piano', 'dove si rilevano piu NC'. Filtra automaticamente l'anno "
+        f"corrente ({_default_anno}) se non specificato. "
+        "Differenze con gli altri tool: "
+        "- `piani_attivita_piu_rischiosi` usa Risk Score (tasso probabilistico), "
+        "  questo tool usa CONTEGGIO ASSOLUTO di NC gravi. "
+        "- `priorita_ispezione_rischio` ritorna STABILIMENTI, questo PIANI. "
+        f"Args: anno (default {_default_anno}), tipo_nc ('gravi' default o 'non_gravi' o 'tutte'), limit (default 20)."
+    )
+
+    @tool("top_piani_per_nc", description=_nc_desc)
+    def top_piani_per_nc(
+        anno: Optional[int] = None,
+        tipo_nc: str = "gravi",
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        """Top piani/indicatori per conteggio NC."""
+        from agents.data import controlli_df
+        if controlli_df is None or controlli_df.empty:
+            return {"formatted_response": "Dati controlli non disponibili."}
+
+        df = controlli_df
+        effective_anno = _normalize_int(anno) or _default_anno
+        try:
+            anni = df["data_inizio_controllo"].dt.year
+            df = df[anni == effective_anno]
+        except Exception:
+            pass
+
+        if tipo_nc == "non_gravi":
+            nc_col = "numero_nc_non_gravi"
+            label_nc = "NC non gravi"
+        elif tipo_nc == "tutte":
+            df = df.assign(_nc_totali=df["numero_nc_gravi"].fillna(0) + df["numero_nc_non_gravi"].fillna(0))
+            nc_col = "_nc_totali"
+            label_nc = "NC totali"
+        else:
+            nc_col = "numero_nc_gravi"
+            label_nc = "NC gravi"
+
+        filtered = df[df[nc_col] > 0]
+        if filtered.empty:
+            return {
+                "formatted_response": f"Nessun controllo con {label_nc} trovato per l'anno {effective_anno}."
+            }
+
+        group_cols = ["alias_piano_attivita", "alias_indicatore",
+                      "descrizione_piano", "descrizione_indicatore"]
+        grouped = (
+            filtered.groupby(group_cols, dropna=False)[nc_col]
+            .sum()
+            .reset_index()
+            .rename(columns={nc_col: "totale_nc"})
+            .sort_values("totale_nc", ascending=False)
+            .head(limit)
+        )
+
+        records = grouped.to_dict("records")
+
+        # Formatta risposta markdown
+        lines = [
+            f"### Piani/attivita' con piu' {label_nc} (anno {effective_anno})",
+            "",
+            f"Top {len(records)} combinazioni piano+indicatore ordinate per totale NC rilevate:",
+            "",
+        ]
+        for i, row in enumerate(records, 1):
+            piano = row.get("alias_piano_attivita") or "—"
+            indic = row.get("alias_indicatore") or "—"
+            desc_piano = row.get("descrizione_piano") or ""
+            desc_indic = row.get("descrizione_indicatore") or ""
+            nc = int(row.get("totale_nc", 0))
+            lines.append(f"**{i}. {piano} · {indic}** — {nc} {label_nc}")
+            if desc_piano or desc_indic:
+                lines.append(f"   _{desc_piano} · {desc_indic}_")
+        lines.append("")
+        lines.append(f"Fonte: `cu_eseguiti_nc` filtrata anno {effective_anno}, "
+                     f"aggregazione per (piano, indicatore), ordine decrescente.")
+
+        return {
+            "formatted_response": "\n".join(lines),
+            "total_groups": int(len(grouped)),
+            "anno": effective_anno,
+            "tipo_nc": tipo_nc,
+            "data": records,
+        }
+
+    # ------------------------------------------------------------------
     # 5) cerca_piani — ricerca per topic/parole chiave
     # ------------------------------------------------------------------
     @tool("cerca_piani")
@@ -306,6 +401,7 @@ def build_agent_tools(
         piani_in_ritardo,
         priorita_ispezione_rischio,
         piani_attivita_piu_rischiosi,
+        top_piani_per_nc,
         cerca_piani,
         mostra_dettagli_completi,
         aiuto,
