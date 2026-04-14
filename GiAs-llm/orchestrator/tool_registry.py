@@ -203,15 +203,21 @@ def build_agent_tools(
     # ------------------------------------------------------------------
     # 4) priorita_ispezione_rischio — stabilimenti prioritari per rischio
     # ------------------------------------------------------------------
-    @tool("priorita_ispezione_rischio")
+    _prio_desc = (
+        "Classifica degli STABILIMENTI/OSA singoli da ispezionare prima, "
+        "ordinati per probabilita' di NC (predittore ML o statistico). "
+        "Granularita': singolo stabilimento/azienda (NON piano/attivita'). "
+        "Usa questo tool quando l'utente chiede STABILIMENTI/OSA/AZIENDE/"
+        "PRIORITA di ispezione: 'quali stabilimenti ispezionare prima', "
+        "'OSA a rischio', 'priorita ispettiva'. "
+        "Se l'utente parla di PIANI/ATTIVITA/LINEE a rischio usa invece "
+        "`piani_attivita_piu_rischiosi`. "
+        "Args: piano_code (opzionale, filtra su un singolo piano)."
+    )
+
+    @tool("priorita_ispezione_rischio", description=_prio_desc)
     def priorita_ispezione_rischio(piano_code: Optional[str] = None) -> Dict[str, Any]:
-        """Classifica degli stabilimenti da ispezionare prima in base al rischio.
-
-        Usa il predittore (ML o statistico) per ordinare per probabilita' di NC.
-
-        Args:
-            piano_code: filtra su un singolo piano (es. "A1"). Opzionale.
-        """
+        """Stabilimenti prioritari per rischio."""
         from tools.risk_tools import get_risk_based_priority
         return unwrap_tool(get_risk_based_priority)(
             asl=user_asl,
@@ -221,18 +227,24 @@ def build_agent_tools(
     # ------------------------------------------------------------------
     # 4b) piani_attivita_piu_rischiosi — top N attivita per risk score
     # ------------------------------------------------------------------
-    @tool("piani_attivita_piu_rischiosi")
+    _top_risk_desc = (
+        "Top N linee di attivita'/piani con il risk score piu' alto, "
+        "ordinate per probabilita' di non conformita' (NC) storica. "
+        "Granularita': PIANO/ATTIVITA' (NON stabilimento). Usa questo tool "
+        "quando l'utente chiede, riferendosi a PIANI/ATTIVITA'/LINEE/TIPOLOGIE "
+        "(NON a singoli stabilimenti): "
+        "'piani/attivita piu rischiosi', 'motivi di ispezione piu rischiosi', "
+        "'piani che generano piu NC', 'piani con piu non conformita', "
+        "'tipologie di controllo piu problematiche', 'attivita con piu violazioni', "
+        "'linee di attivita a maggior rischio', 'ranking rischio piani'. "
+        "IMPORTANTE: se l'utente chiede STABILIMENTI/OSA singoli da ispezionare "
+        "prima, NON usare questo tool ma `priorita_ispezione_rischio`. "
+        "Args: limit (default 10)."
+    )
+
+    @tool("piani_attivita_piu_rischiosi", description=_top_risk_desc)
     def piani_attivita_piu_rischiosi(limit: int = 10) -> Dict[str, Any]:
-        """Top N linee di attivita'/piani con il risk score piu' alto.
-
-        Usare quando l'utente chiede "piani/attivita/motivi di ispezione
-        piu' rischiosi", "quali piani presentano piu' rischio", "ranking
-        rischio piani". A differenza di `priorita_ispezione_rischio`
-        (che restituisce STABILIMENTI), questo ritorna PIANI/ATTIVITA.
-
-        Args:
-            limit: numero di attivita' da restituire (default 10).
-        """
+        """Top attivita/piani per risk score."""
         from tools.risk_analysis_tools import get_top_risk_activities
         return unwrap_tool(get_top_risk_activities)(limit=limit)
 
