@@ -488,6 +488,39 @@ def build_agent_tools(
         }
 
     # ------------------------------------------------------------------
+    # 4d) storico_stabilimento — controlli + NC di un singolo OSA
+    # ------------------------------------------------------------------
+    @tool("storico_stabilimento")
+    def storico_stabilimento(
+        num_registrazione: Optional[str] = None,
+        numero_riconoscimento: Optional[str] = None,
+        partita_iva: Optional[str] = None,
+        ragione_sociale: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Storico controlli ufficiali e non conformita' di un singolo stabilimento/OSA.
+
+        Usare quando l'utente fornisce un identificativo di stabilimento
+        (codice identificativo tipo "U150058BN000649", numero registrazione,
+        riconoscimento UE, partita IVA, ragione sociale) e chiede "storico",
+        "cronologia controlli", "precedenti ispezioni", "NC passate".
+        Almeno UNO dei parametri va valorizzato.
+
+        Args:
+            num_registrazione: numero registrazione stabilimento (anche codici
+                alfanumerici tipo "U150058BN000649", "IT 123", "UE IT 2287 M").
+            numero_riconoscimento: numero riconoscimento UE.
+            partita_iva: partita IVA (solo cifre).
+            ragione_sociale: parte della ragione sociale (match parziale).
+        """
+        from tools.establishment_tools import get_establishment_history
+        return unwrap_tool(get_establishment_history)(
+            num_registrazione=num_registrazione,
+            numero_riconoscimento=numero_riconoscimento,
+            partita_iva=partita_iva,
+            ragione_sociale=ragione_sociale,
+        )
+
+    # ------------------------------------------------------------------
     # 5) cerca_piani — ricerca per topic/parole chiave
     # ------------------------------------------------------------------
     @tool("cerca_piani")
@@ -547,6 +580,7 @@ def build_agent_tools(
         priorita_ispezione_rischio,
         piani_attivita_piu_rischiosi,
         top_piani_per_nc,
+        storico_stabilimento,
         cerca_piani,
         mostra_dettagli_completi,
         aiuto,
