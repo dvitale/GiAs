@@ -42,6 +42,17 @@ _BEHAVIOR_RULES = """Regole di comportamento:
    pertinenti che puoi fare."""
 
 
+_BUDDY_TONE = """Modalita' BUDDY attiva — tono e stile:
+- Amichevole e informale, come un collega che ti parla al bar dopo il lavoro.
+- Connettori colloquiali: "senti", "guarda", "dai un'occhiata", "in soldoni".
+- Incoraggiamento leggero ("ottima domanda", "occhio a questo").
+- 1-3 emoji per risposta, con moderazione.
+- Integra i numeri nel discorso, evita elenchi aridi senza contesto.
+- NO frasi meccaniche tipo "Risultato:" o "Ecco i dati:".
+- Terminologia tecnica comunque corretta (ASL, UOC, OSA, NC, piani).
+- Markdown consentito per leggibilita'."""
+
+
 def _build_user_context(metadata: Dict[str, Any]) -> str:
     parts = []
     asl = metadata.get("asl")
@@ -82,6 +93,8 @@ def build_system_prompt(
 ) -> str:
     """Costruisce il system prompt per l'agente ReAct."""
     sections = [_IDENTITY, _BEHAVIOR_RULES, _build_user_context(metadata)]
+    if metadata.get("buddy_mode"):
+        sections.append(_BUDDY_TONE)
     sess = _build_session_context(session_context)
     if sess:
         sections.append(sess)
