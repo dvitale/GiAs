@@ -14,7 +14,26 @@
 2. **Response Layer** (`agents/response_agent.py`): `ResponseFormatter` (data → testo italiano), `SuggestionGenerator`. Template-based, no domain logic.
 3. **Tool Layer** (`tools/`): Funzioni `@tool` con parametri espliciti, return serializable dict con `formatted_response` key. Include `hybrid_search/` per ricerca avanzata.
 
-### Orchestration Flow (LangGraph)
+### Orchestration Modes
+
+Il `ConversationGraph` espone due modalita' di esecuzione selezionabili a runtime:
+
+| Mode | Default | Flusso | Moduli chiave |
+|------|---------|--------|---------------|
+| `graph` | ✅ | classify → dialogue_manager → tool_node → response_generator | `router.py`, `dialogue_manager.py`, `tool_nodes.py`, `response_node.py` |
+| `agent` | | ReactOrchestrator (create_react_agent, 1 call LLM con tool calls inline) | `react_node.py`, `react_prompts.py`, `tool_registry.py`, `langchain_adapter.py` |
+
+**Selezione**: `config.json → orchestration.mode` oppure env `GIAS_ORCHESTRATION_MODE`. In caso di errore dell'agent, fallback automatico al grafo legacy → zero rischio di regressione.
+
+**Cosa cambia in mode `agent`**: bypassa `router.py`, `dialogue_manager.py`, `tool_nodes.py`, `two_phase.py`, `response_node.py`, `few_shot_retriever.py`, `intent_cache.py`. L'LLM sceglie tool e parametri direttamente dal `tool_registry.py` (metadata ASL/UOC/UOS iniettati via closure). Persistenza cross-turno via `InMemorySaver` checkpointer (thread_id = sender).
+
+**Cosa resta invariato**: `tools/*.py` (logica dominio), `agents/`, `data_sources/`, `llm/*` (esteso con tool calling, non sostituito), API contract, `chat_log`, Qdrant `piani_monitoraggio`.
+
+**Cosa diventa inerte in mode `agent`**: tabelle `intents`, `intent_examples` (+ Qdrant omonima), `schema_metadata` (finche' `query_data` non e' nel registry). RAG docs (`info_procedure`) orfano finche' non si aggiunge un wrapper `consulta_procedura`.
+
+Dettagli completi in `SDD/design/orchestration_modes_comparison.md` (non committato, `SDD/` in gitignore).
+
+### Orchestration Flow (LangGraph) — mode `graph`
 
 **Entry point**: `orchestrator/graph.py` → `ConversationGraph`
 
@@ -32,6 +51,30 @@ User Message → [1] classify (Router) → [2] dialogue_manager (rule-based)
 **Dialogue Manager** (`orchestrator/dialogue_manager.py`): rule engine con funzioni regola separate: `_rule_slot_continuation`, `_rule_oppure`, `_rule_refinement`, `_rule_strategy_confirmation`, `_rule_high_confidence_execute`, `_rule_ambiguous`. `evaluate()` le invoca in sequenza. Helper pubblici: `is_oppure()`, `is_refinement()`, `is_vague()`.
 
 **Topic change**: se `_session_last_intent != intent`, resetta `DialogueState`. Slot carry-forward solo se stesso intent.
+
+### Orchestration Flow — mode `agent` (ReAct)
+
+**Entry point**: `orchestrator/graph.py` → hook `_run_agent_mode` → `orchestrator/react_node.py` → `ReactOrchestrator`.
+
+```
+User Message → react_agent loop (create_react_agent)
+    │  - model: GiAsLLM(BaseChatModel) adapter attorno a LLMClient
+    │  - tools: build_agent_tools(metadata) con asl/uoc/uos iniettati via closure
+    │  - prompt: identity + glossario + rules + user ctx + session ctx (+ buddy tone)
+    │  - checkpointer: InMemorySaver (thread_id = sender/user_id)
+    ├── LLM con tool_calls → ToolNode esegue → feedback → loop
+    └── LLM risponde con testo → END → post_processor
+```
+
+**Tool disponibili** (in `tool_registry.py`, attuali): `statistiche_controlli`, `descrizione_piano`, `piani_in_ritardo`, `indicatori_non_completati`, `priorita_ispezione_rischio`, `piani_attivita_piu_rischiosi`, `top_piani_per_nc`, `storico_stabilimento`, `cerca_piani`, `mostra_dettagli_completi`, `aiuto`. Espandere aggiungendo blocchi `@tool` in `tool_registry.py`.
+
+**Two-phase**: gestito via tool esplicito `mostra_dettagli_completi(context_id)` + `DetailStore` per thread (non piu' soglie per-intent in `intents.two_phase_threshold`).
+
+**Memoria conversazione**: `InMemorySaver` persiste lo state `messages` tra turni con `thread_id = sender`. In caso di errore tool, `delete_thread(thread_id)` pulisce lo state per evitare `INVALID_CHAT_HISTORY` nei turni successivi.
+
+**Buddy mode**: attiva via `metadata.buddy_mode=True`; `build_system_prompt` appende una sezione `_BUDDY_TONE` (stile informale, connettori colloquiali, emoji moderate).
+
+**Limite corrente**: `InMemorySaver` e' in-process (memoria si azzera al restart server). Per persistenza tra restart sostituibile con `PostgresSaver` (1 riga in `ReactOrchestrator.__init__`).
 
 ### Intent Registry (DB-driven)
 
@@ -51,6 +94,8 @@ User Message → [1] classify (Router) → [2] dialogue_manager (rule-based)
 | Keywords/categoria | `keywords`, `category`, `emoji` | Fallback classifier, help, prompt |
 
 Ogni modulo Python mantiene un fallback hardcoded per il boot senza DB, ma al primo utilizzo carica i valori dal servizio.
+
+**Nota mode `agent`**: tutti i metadati in tabella (required_slots, graph_node, two_phase_threshold, self_sufficient, is_direct_response, followup_excluded) **non sono piu' letti** in modalita' agent — la scelta del tool e dei parametri e' delegata all'LLM, il two-phase e' un tool esplicito, e non c'e' un nodo response_generator separato. Restano utili solo per il mode `graph` (fallback) e per eventuali pagine help UI (`title`/`category`/`emoji`).
 
 ### Intent Classification
 
@@ -90,18 +135,26 @@ Prompt in `_build_response_prompt`: spiega risultati in italiano, motiva priorit
 ```
 agents/          # DataRetriever, ResponseFormatter, qdrant/embedding singletons
 app/             # FastAPI: api.py, session_manager.py, models.py
-orchestrator/    # graph.py, router.py, dialogue_manager.py, tool_nodes.py,
-                 # response_node.py, two_phase.py, followup_suggestions.py,
-                 # intent_metadata_service.py (broker DB-first, singola fonte di verita'),
-                 # intent_metadata.py (fallback Python), schema_catalog.py,
-                 # fallback_recovery.py, workflow_strategies.py,
-                 # few_shot_retriever.py, intent_cache.py,
-                 # constants.py (SLOT_PROMPTS condivisi)
+orchestrator/    # Mode graph (legacy):
+                 #   graph.py (entry, hook mode), router.py, dialogue_manager.py,
+                 #   tool_nodes.py, response_node.py, two_phase.py,
+                 #   followup_suggestions.py, fallback_recovery.py,
+                 #   workflow_strategies.py, few_shot_retriever.py,
+                 #   intent_cache.py, constants.py (SLOT_PROMPTS)
+                 # Mode agent (ReAct):
+                 #   react_node.py (ReactOrchestrator + checkpointer + detail_store),
+                 #   react_prompts.py (system prompt modulare),
+                 #   tool_registry.py (build_agent_tools, metadata injection)
+                 # Condivisi:
+                 #   intent_metadata_service.py (broker DB-first, SSOT),
+                 #   intent_metadata.py (fallback Python), schema_catalog.py
 tools/           # piano_, priority_, risk_, search_, establishment_, procedure_,
                  # query_builder_, proximity_tools.py, geo_utils.py, rag_cache.py
   hybrid_search/ # hybrid_engine, smart_router, query_analyzer, llm_reranker, bm25_scorer
   indexing/      # build_qdrant_index, build_intent_examples_index, build_docs_index
-llm/             # client.py, provider_base.py, providers.py, fallback_classifier.py
+llm/             # client.py, provider_base.py (+ query_with_tools, supports_tool_calling),
+                 # providers.py (tool calling per OpenAI/OpenAICompat/Ollama/Anthropic),
+                 # fallback_classifier.py, langchain_adapter.py (GiAsLLM BaseChatModel per mode agent)
 predictor_ml/    # MLRiskPredictor (XGBoost), production_assets/, mappings/
 data_sources/    # csv_source, postgresql_source, factory (CSV/PostgreSQL abstraction)
 configs/         # config.py, config.json, config_loader.py
@@ -119,6 +172,10 @@ tests/           # pytest.ini in tests/. Dir: unit/, integration/, e2e/, legacy/
 5. Aggiungi tool node e conditional edge in `graph.py`
 
 ### Adding a New Intent
+
+> **Nota mode `agent`**: se il sistema gira solo in mode agent, la procedura si riduce a **1 passo**: aggiungere un blocco `@tool("nome_tool", description=...)` in `orchestrator/tool_registry.py` all'interno di `build_agent_tools(metadata)`. Nessun INSERT DB, nessun fallback classifier, nessun SLOT_PROMPTS, nessun rebuild indice. Description ricca con trigger, sinonimi e contrasti con altri tool affini (vedi esempi in tool_registry). Se il tool esiste gia' in `tools/*.py` come `@tool`-decorato, usare `unwrap_tool()` per chiamarlo dalla closure del registry.
+>
+> Gli step sotto valgono per il **mode `graph` legacy**. In regime di coesistenza, aggiungere comunque l'intent legacy se si vuole preservare funzionamento in fallback.
 
 La tabella `intents` in PostgreSQL e' la **singola fonte di verita'**. La procedura si riduce a 4 step obbligatori + 2 opzionali:
 
@@ -444,9 +501,12 @@ Questo file e' la **fonte di verita' unica** per i dettagli architetturali del b
 
 Aggiorna questo file quando tocchi:
 - `SLOT_PROMPTS` → `orchestrator/constants.py` (fonte unica, importato da graph.py e dialogue_manager.py)
-- `TOOL_REGISTRY` → sezione Common Patterns
-- Flusso del grafo (`_build_graph`) → sezione Orchestration Flow
+- `TOOL_REGISTRY` (graph) → sezione Common Patterns
+- `build_agent_tools` (agent) → sezione Orchestration Flow — mode `agent`
+- Flusso del grafo (`_build_graph`) → sezione Orchestration Flow — mode `graph`
 - `ConversationState` → sezione State
+- Modalita' di orchestrazione → sezione Orchestration Modes
 - Nuovo endpoint API → tabella Endpoint API
-- Nuovo intent → `INSERT INTO intents` + tool + esempi + fallback classifier
+- Nuovo intent → mode graph: `INSERT INTO intents` + tool + esempi + fallback classifier. Mode agent: solo `@tool` in `tool_registry.py`
+- Nuovo provider LLM con tool calling → `llm/providers.py` (`query_with_tools`, `supports_tool_calling`)
 - Nuovo requisito → `SDD/traceability.md` e `SDD/requirements/`

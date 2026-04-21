@@ -149,5 +149,9 @@
   },
   "pre_execution_confirmation": {
     "enabled": true
+  },
+  "orchestration": {
+    "mode": "graph",
+    "description": "graph = grafo LangGraph legacy (default, 7 regole DM + tool_wrappers); agent = nodo ReAct via create_react_agent (LLM sceglie tool/parametri/risposta); shadow = esegue entrambi per confronto (futuro). Override con env GIAS_ORCHESTRATION_MODE."
   }
 }

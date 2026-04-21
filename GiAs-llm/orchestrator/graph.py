@@ -108,6 +108,73 @@ class ConversationGraph:
         self.graph = self._build_graph()
         self._event_callback = None
         self._fallback_engine = None
+        self._react_orchestrator = None  # lazy
+
+    def _get_react_orchestrator(self):
+        """Istanzia (lazy) il ReactOrchestrator condividendo l'LLMClient."""
+        if self._react_orchestrator is None:
+            from .react_node import ReactOrchestrator
+            self._react_orchestrator = ReactOrchestrator(llm_client=self.llm_client)
+        return self._react_orchestrator
+
+    def _run_agent_mode(
+        self,
+        message: str,
+        metadata: Dict[str, Any],
+        workflow_context: Dict[str, Any],
+        execution_start: float,
+    ) -> Dict[str, Any]:
+        """Esecuzione via ReactOrchestrator. Ritorna lo stesso shape di run()."""
+        import time as _time
+        try:
+            orch = self._get_react_orchestrator()
+        except Exception as exc:
+            logger.exception("ReactOrchestrator init fallita, fallback al grafo legacy: %s", exc)
+            return None  # type: ignore[return-value]
+
+        history = (workflow_context or {}).get("messages") or []
+        session_context = {
+            "last_intent": (workflow_context or {}).get("last_intent"),
+            "last_response_context": (workflow_context or {}).get("last_response_context"),
+        }
+        result = orch.run(
+            message=message,
+            metadata=metadata,
+            session_context=session_context,
+            history=history,
+        )
+        total_ms = round((_time.perf_counter() - execution_start) * 1000, 2)
+        tool_output = result.get("tool_output")
+        return {
+            "response": result.get("final_response", ""),
+            "intent": result.get("intent", ""),
+            "slots": result.get("slots", {}),
+            "needs_clarification": False,
+            "error": result.get("error", ""),
+            "has_more_details": result.get("has_more_details", False),
+            "detail_context": {"context_id": result.get("detail_context_id")} if result.get("detail_context_id") else {},
+            "suggestions": [],
+            "response_context": None,
+            "dialogue_state": None,
+            "workflow_stage": None,
+            "workflow_id": None,
+            "workflow_nonce": None,
+            "workflow_type": None,
+            "workflow_context": workflow_context or {},
+            "pending_question": None,
+            "available_options": None,
+            "workflow_history": None,
+            "accumulated_filters": None,
+            "fallback_suggestions": None,
+            "fallback_phase": None,
+            "fallback_count": None,
+            "fallback_selected_category": None,
+            "execution_path": ["react_agent"],
+            "node_timings": {"react_agent": total_ms},
+            "total_execution_ms": total_ms,
+            "tool_output": self._summarize_tool_output(tool_output) if tool_output else None,
+            "tool_calls_trace": result.get("tool_calls_trace", []),
+        }
 
     @staticmethod
     def _apply_two_phase_check(state, intent, result, item_count, summary_text):
@@ -730,6 +797,28 @@ class ConversationGraph:
 
         self._event_callback = event_callback
         execution_start = time.perf_counter()
+
+        # ------------------------------------------------------------------
+        # Hook mode: "agent" delega al ReactOrchestrator (grafo legacy
+        # bypassato). "graph" (default) prosegue col flusso esistente.
+        # In caso di errore dell'agent, fallback automatico al grafo.
+        # ------------------------------------------------------------------
+        try:
+            from configs.config import AppConfig as _AppConfig
+            mode = _AppConfig.get_orchestration_mode()
+        except Exception:
+            mode = "graph"
+
+        if mode == "agent":
+            agent_out = self._run_agent_mode(
+                message=message,
+                metadata=effective_metadata,
+                workflow_context=workflow_context or {},
+                execution_start=execution_start,
+            )
+            if agent_out is not None:
+                return agent_out
+            logger.warning("agent mode fallito, fallback automatico al grafo legacy")
 
         try:
             initial_state: ConversationState = {

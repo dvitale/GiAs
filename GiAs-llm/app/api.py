@@ -3,6 +3,13 @@ FastAPI wrapper per GiAs-llm
 API nativa per GChat (protocollo v1)
 """
 
+# Abilita offline mode HuggingFace PRIMA di qualsiasi import che tira
+# sentence_transformers / transformers (i modelli sono gia' in cache
+# locale, le HEAD request online causavano timeout a cascata in cerca_piani).
+import os as _os_boot
+_os_boot.environ.setdefault("HF_HUB_OFFLINE", "1")
+_os_boot.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
